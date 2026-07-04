@@ -1,0 +1,9 @@
+{
+  "name": "store-invoicer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Barcode till + ATO tax-invoice printer with a shared sales log",
+  "dependencies": {
+    "@netlify/blobs": ">=7.0.0"
+  }
+}

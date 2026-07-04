@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Store Till &amp; Tax Invoice</title>
+<style>
+  :root{
+    --bg:#f5f5f7; --panel:#ffffff; --ink:#1d1d1f; --muted:#6e6e73;
+    --line:#e3e3e6; --accent:#0071e3; --accent-ink:#fff;
+    --cash:#1a9e57; --card:#0071e3; --danger:#d70015; --ok:#1a9e57;
+    --radius:14px; --shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  button{font:inherit;cursor:pointer;border:none;border-radius:10px;padding:10px 14px;background:#e8e8ed;color:var(--ink)}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent);color:var(--accent-ink)}
+  button.ghost{background:transparent;border:1px solid var(--line)}
+  input,select{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* Header */
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header .store{font-weight:650;font-size:17px}
+  header .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);background:#f0f0f4;border-radius:999px;padding:6px 11px}
+  .pill b{color:var(--ink)}
+  .dot{width:8px;height:8px;border-radius:50%;background:#c7c7cc}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--danger)}
+  .today{display:flex;gap:16px;font-size:12.5px;color:var(--muted)}
+  .today b{color:var(--ink)}
+
+  main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:16px;padding:16px;overflow:hidden}
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+  .panel{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+
+  /* Scan + basket (left) */
+  .scanbar{padding:16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  .scanbar .scanwrap{flex:1;position:relative}
+  #scan{font-size:18px;padding:14px 16px;padding-left:44px}
+  .scanwrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.4}
+  .flash{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:600;opacity:0;transition:opacity .15s}
+  .flash.show{opacity:1}
+  .flash.ok{color:var(--ok)} .flash.bad{color:var(--danger)}
+
+  .basket{flex:1;overflow:auto}
+  table{width:100%;border-collapse:collapse}
+  thead th{position:sticky;top:0;background:#fafafa;text-align:left;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--line)}
+  th.num,td.num{text-align:right}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .iname{font-weight:550}
+  .isku{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .qty{display:inline-flex;align-items:center;gap:8px}
+  .qty button{width:32px;height:32px;padding:0;font-size:18px;line-height:1;border-radius:8px;background:#f0f0f4}
+  .qty input{width:52px;text-align:center;padding:6px}
+  .money{font-variant-numeric:tabular-nums}
+  .rm{background:transparent;color:var(--danger);padding:6px 8px}
+  .empty{padding:56px 20px;text-align:center;color:var(--muted)}
+  .empty h3{color:var(--ink);margin:0 0 6px}
+
+  /* Totals (right) */
+  .totals{padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+  .lines{display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;justify-content:space-between;font-size:14.5px}
+  .row .lbl{color:var(--muted)}
+  .row.total{font-size:26px;font-weight:700;padding-top:8px;border-top:1px solid var(--line);margin-top:2px}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .paybtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .paybtns button{padding:16px;font-size:16px;font-weight:600;border:2px solid transparent}
+  .paybtns button.cash{background:#e9f7ef;color:var(--cash)}
+  .paybtns button.card{background:#e8f1fd;color:var(--card)}
+  .paybtns button.sel{border-color:currentColor}
+  .cashbox{display:flex;flex-direction:column;gap:10px;background:#f7f7f9;border-radius:12px;padding:14px}
+  .quicktender{display:flex;flex-wrap:wrap;gap:6px}
+  .quicktender button{padding:8px 10px;font-size:13px;background:#fff;border:1px solid var(--line)}
+  .finalize{padding:18px;font-size:18px;font-weight:700}
+  .finalize:disabled{opacity:.45;cursor:not-allowed}
+  .warn{color:var(--danger);font-size:13px}
+  .muted{color:var(--muted);font-size:12.5px}
+
+  /* Modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal.show{display:flex}
+  .sheet{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--shadow)}
+  .sheet header{position:sticky;top:0}
+  .sheet .body{padding:18px;display:flex;flex-direction:column;gap:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .sheet .foot{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:14px 18px;display:flex;gap:10px;justify-content:flex-end}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  fieldset{border:1px solid var(--line);border-radius:12px;padding:14px;margin:0}
+  legend{font-size:12px;color:var(--muted);padding:0 6px}
+  .searchlist{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px}
+  .searchlist .r{display:flex;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .searchlist .r:hover{background:#f5f5f7}
+  .today{cursor:pointer}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:#1d1d1f;color:#fff;
+    padding:12px 20px;border-radius:12px;font-size:14px;font-weight:550;opacity:0;transition:.25s;z-index:80;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .bignum{font-size:40px;font-weight:800;line-height:1.1}
+
+  /* ---------- Receipt (screen hidden, print only) ---------- */
+  .receipt{display:none}
+  @media print{
+    @page{ size:var(--paper,80mm) auto; margin:3mm; }
+    body{background:#fff}
+    .app,.modal{display:none !important}
+    .receipt{display:block;width:var(--rwidth,72mm);margin:0 auto;
+      font-family:"SFMono-Regular",Menlo,Consolas,monospace;font-size:12px;line-height:1.35;color:#000}
+    .receipt .c{text-align:center}
+    .receipt .b{font-weight:700}
+    .receipt .big{font-size:15px}
+    .receipt hr{border:none;border-top:1px dashed #000;margin:6px 0}
+    .receipt .it{margin:2px 0}
+    .receipt .it .nm{}
+    .receipt .it .ln{display:flex;justify-content:space-between}
+    .receipt .tot{display:flex;justify-content:space-between}
+    .receipt .tot.g{font-weight:700;font-size:14px}
+    .receipt .sp{height:6px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="store" id="hStore">Store Till</span>
+    <span class="pill"><span class="dot" id="catDot"></span><b id="catCount">0</b>&nbsp;products <span id="catWhen" class="muted"></span></span>
+    <button class="ghost" id="btnSync">Sync catalog</button>
+    <button class="ghost" id="btnReprint">⟲ Reprint last</button>
+    <button class="ghost" id="btnInvoices">Invoices</button>
+    <button class="ghost" id="btnTakings">Takings</button>
+    <span class="spacer"></span>
+    <div class="today" id="todayBox" title="Click for full day takings"></div>
+    <button class="ghost" id="btnSettings">⚙︎ Settings</button>
+  </header>
+
+  <main>
+    <!-- LEFT: scan + basket -->
+    <section class="panel">
+      <div class="scanbar">
+        <div class="scanwrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14"/></svg>
+          <input id="scan" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Scan barcode… (or type SKU and press Enter)" />
+          <span class="flash" id="flash"></span>
+        </div>
+        <button class="ghost" id="btnFind">Search</button>
+      </div>
+      <div class="basket">
+        <table>
+          <thead><tr>
+            <th>Item</th><th style="width:150px">Qty</th><th class="num" style="width:100px">Price</th>
+            <th class="num" style="width:100px">Total</th><th style="width:44px"></th>
+          </tr></thead>
+          <tbody id="basketBody"></tbody>
+        </table>
+        <div class="empty" id="emptyState">
+          <h3>Basket is empty</h3>
+          <div class="muted">Scan a barcode to start a sale.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: totals + payment -->
+    <aside class="panel">
+      <div class="totals">
+        <div class="lines">
+          <div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money" id="tSub">$0.00</span></div>
+          <div class="row"><span class="lbl">GST (<span id="tRate">10</span>%)</span><span class="money" id="tGst">$0.00</span></div>
+          <div class="row total"><span>Total</span><span class="money" id="tTotal">$0.00</span></div>
+          <div class="muted" id="incGst">Total includes GST $0.00</div>
+        </div>
+
+        <div class="field">
+          <label for="servedBy">Served by</label>
+          <select id="servedBy"></select>
+        </div>
+
+        <div class="field" id="customerField" style="display:none">
+          <label for="customer">Customer name / ABN <span class="muted">(required for sales $1,000+)</span></label>
+          <input id="customer" placeholder="Customer name or ABN" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label>Payment method</label>
+          <div class="paybtns">
+            <button class="cash" id="payCash">Cash</button>
+            <button class="card" id="payCard">Card</button>
+          </div>
+        </div>
+
+        <div class="cashbox" id="cashBox" style="display:none">
+          <div class="row"><span class="lbl">Rounded total (5¢)</span><span class="money b" id="cashTotal">$0.00</span></div>
+          <div class="row"><span class="lbl muted" id="roundLbl">Rounding</span><span class="money muted" id="roundAdj">$0.00</span></div>
+          <div class="field"><label for="tender">Cash received</label><input id="tender" inputmode="decimal" placeholder="0.00" autocomplete="off" /></div>
+          <div class="quicktender" id="quickTender"></div>
+          <div class="row" style="font-size:18px;font-weight:700"><span>Change</span><span class="money" id="change">$0.00</span></div>
+        </div>
+
+        <div class="warn" id="finalizeWarn"></div>
+        <button class="primary finalize" id="btnFinalize" disabled>Finalise &amp; Print</button>
+        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled>Finalise — no print</button>
+        <button class="ghost" id="btnClear">Clear sale</button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal" id="settingsModal">
+  <div class="sheet">
+    <header><span class="store">Settings</span><span class="spacer"></span><button class="ghost" id="closeSettings">Close</button></header>
+    <div class="body">
+      <fieldset><legend>Business details (printed on the tax invoice)</legend>
+        <div class="field"><label>Business name</label><input id="sName" placeholder="Your Store Pty Ltd" /></div>
+        <div class="grid2">
+          <div class="field"><label>ABN</label><input id="sAbn" placeholder="12 345 678 901" /></div>
+          <div class="field"><label>Phone</label><input id="sPhone" placeholder="(0x) xxxx xxxx" /></div>
+        </div>
+        <div class="field"><label>Address</label><input id="sAddress" placeholder="123 Main St, Suburb VIC 3000" /></div>
+        <div class="field"><label>Receipt footer message</label><input id="sFooter" placeholder="Thank you — no refunds without receipt" /></div>
+      </fieldset>
+
+      <fieldset><legend>Product catalog (from your Squarespace store)</legend>
+        <div class="field"><label>Catalog proxy URL</label><input id="sCatUrl" placeholder="https://your-worker.workers.dev" />
+          <div class="hint">The address of the read-only proxy that holds your Squarespace API key. See README to deploy it. Leave blank to work offline with demo/pasted products.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="ghost" id="btnDemo">Load demo products</button>
+          <button class="ghost" id="btnCsvToggle">Paste products (CSV)</button>
+        </div>
+        <div class="field" id="csvWrap" style="display:none">
+          <label>CSV: sku,name,price  (one product per line, price includes GST)</label>
+          <textarea id="sCsv" rows="5" style="width:100%;font-family:monospace;padding:10px;border:1px solid var(--line);border-radius:10px"></textarea>
+          <button class="ghost" id="btnCsvImport" style="margin-top:8px">Import CSV</button>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Shared log — combine both tills (optional)</legend>
+        <div class="field"><label>Shared log URL</label><input id="sShareUrl" placeholder="https://your-site.netlify.app/api/sales" />
+          <div class="hint">Both devices point here so the day's takings and invoices combine live. Leave blank to keep this device on its own.</div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Shared log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" /></div>
+          <div class="field"><label>Device tag</label><input id="sDevice" placeholder="e.g. 1 or A" />
+            <div class="hint">Give each till a different tag so invoice numbers never clash (INV-1-0007 vs INV-2-0007).</div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Staff (the "Served by" list)</legend>
+        <div class="field"><label>Names — one per line</label>
+          <textarea id="sStaff" rows="3" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px" placeholder="Alex&#10;Sam&#10;Jordan"></textarea>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Tax &amp; printing</legend>
+        <div class="grid2">
+          <div class="field"><label>GST rate (%)</label><input id="sGst" inputmode="decimal" value="10" /></div>
+          <div class="field"><label>Receipt paper</label>
+            <select id="sPaper"><option value="80">80mm thermal</option><option value="58">58mm thermal</option><option value="A4">A4 / regular</option></select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Invoice prefix</label><input id="sPrefix" value="INV-" /></div>
+          <div class="field"><label>Next invoice #</label><input id="sCounter" inputmode="numeric" value="1" /></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Sales log</legend>
+        <div class="muted" id="logInfo">No sales recorded yet.</div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button class="ghost" id="btnExport">Export sales CSV</button>
+          <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear sales log</button>
+        </div>
+      </fieldset>
+    </div>
+    <div class="foot"><button class="primary" id="saveSettings">Save</button></div>
+  </div>
+</div>
+
+<!-- SEARCH MODAL -->
+<div class="modal" id="searchModal">
+  <div class="sheet">
+    <header><span class="store">Find product</span><span class="spacer"></span><button class="ghost" id="closeSearch">Close</button></header>
+    <div class="body">
+      <input id="searchInput" placeholder="Type a product name or SKU…" autocomplete="off" />
+      <div class="searchlist" id="searchResults"></div>
+    </div>
+  </div>
+</div>
+
+<!-- INVOICES / HISTORY MODAL -->
+<div class="modal" id="invoicesModal">
+  <div class="sheet">
+    <header><span class="store">Previous invoices</span><span class="spacer"></span><button class="ghost" id="closeInvoices">Close</button></header>
+    <div class="body">
+      <div class="grid2">
+        <div class="field"><label for="invDate">Date</label><input type="date" id="invDate" /></div>
+        <div class="field"><label>&nbsp;</label><input id="invSearch" placeholder="Search #, staff, customer, item…" autocomplete="off" /></div>
+      </div>
+      <div class="muted" id="invScope"></div>
+      <div class="searchlist" id="invList"></div>
+      <div id="invDetail"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DAY TAKINGS MODAL -->
+<div class="modal" id="takingsModal">
+  <div class="sheet">
+    <header><span class="store">Day takings</span><span class="spacer"></span><button class="ghost" id="closeTakings">Close</button></header>
+    <div class="body">
+      <div class="field"><label for="takDate">Date</label><input type="date" id="takDate" /></div>
+      <div id="takSummary"></div>
+      <div class="muted" id="takScope" style="text-align:center"></div>
+      <button class="ghost" id="btnPrintTakings">Print takings summary</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- RECEIPT (print only) -->
+<div class="receipt" id="receipt"></div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ *
+ *  Store Till & Tax Invoice — self-contained, no build step.
+ *  Data lives in localStorage. Catalog comes from a read-only proxy
+ *  (see README) that holds the secret Squarespace API key.
+ * ------------------------------------------------------------------ */
+
+const LS = {
+  settings:'inv_settings', catalog:'inv_catalog', catalogAt:'inv_catalog_at',
+  counter:'inv_counter', sales:'inv_sales'
+};
+
+const DEFAULTS = {
+  name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
+  catUrl:'', staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
+  shareUrl:'', shareToken:'', device:''
+};
+
+const DEMO = [
+  {sku:'9310072000012', name:'Full Cream Milk 2L', price:3.90, stock:24},
+  {sku:'9300633123456', name:'White Bread Loaf 700g', price:3.20, stock:12},
+  {sku:'9414559001234', name:'Free Range Eggs 12pk', price:6.50, stock:9},
+  {sku:'9300605000123', name:'Bananas per kg', price:4.90, stock:null},
+  {sku:'93123457', name:'Chocolate Bar 50g', price:2.50, stock:40},
+  {sku:'9310155001111', name:'Sparkling Water 1.25L', price:2.20, stock:30}
+];
+
+/* ---------------- state ---------------- */
+let settings = loadSettings();
+let catalog = load(LS.catalog, []);
+let catalogAt = localStorage.getItem(LS.catalogAt) || '';
+let skuMap = new Map();
+let basket = [];             // {sku,name,price,qty}
+let method = null;           // 'cash' | 'card'
+
+/* ---------------- helpers ---------------- */
+function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
+function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+function loadSettings(){ return Object.assign({}, DEFAULTS, load(LS.settings, {})); }
+function money(n){ return settings.currency + (Math.round((n+Number.EPSILON)*100)/100).toFixed(2); }
+function round2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
+function round5(n){ return Math.round(n*20)/20; }                 // nearest 0.05
+function normSku(s){ return String(s==null?'':s).trim().toUpperCase().replace(/\s+/g,''); }
+function todayKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function $(id){ return document.getElementById(id); }
+
+function rebuildSkuMap(){
+  skuMap = new Map();
+  for(const p of catalog){ skuMap.set(normSku(p.sku), p); }
+}
+
+/* ---------------- catalog ---------------- */
+async function syncCatalog(){
+  if(!settings.catUrl){ alert('No catalog proxy URL set. Open Settings to add it, or load demo products.'); return; }
+  const dot=$('catDot'); dot.className='dot';
+  try{
+    const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json'}});
+    if(!res.ok) throw new Error('HTTP '+res.status+' — '+(await res.text()).slice(0,140));
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : (data.items||[]);
+    if(!items.length) throw new Error('Proxy returned 0 products.');
+    catalog = items.map(x=>({sku:x.sku, name:x.name, price:Number(x.price)||0, stock:(x.stock===undefined?null:x.stock)}));
+    catalogAt = new Date().toISOString();
+    save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+    rebuildSkuMap(); renderCatalogStatus(true);
+  }catch(e){
+    renderCatalogStatus(false);
+    alert('Could not sync catalog:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+  }
+}
+function loadDemo(){
+  catalog = DEMO.map(x=>Object.assign({}, x));
+  catalogAt = new Date().toISOString();
+  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  rebuildSkuMap(); renderCatalogStatus(true);
+}
+function importCsv(text){
+  const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+  const out=[];
+  for(const r of rows){
+    const parts = r.split(',');
+    if(parts.length<3) continue;
+    const price = Number(parts[parts.length-1]);
+    const sku = parts[0].trim();
+    const name = parts.slice(1,-1).join(',').trim();
+    if(!sku || isNaN(price)) continue;
+    out.push({sku, name, price, stock:null});
+  }
+  if(!out.length){ alert('No valid rows found. Format: sku,name,price'); return; }
+  catalog = out; catalogAt = new Date().toISOString();
+  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  rebuildSkuMap(); renderCatalogStatus(true);
+  alert('Imported '+out.length+' products.');
+}
+function renderCatalogStatus(ok){
+  $('catCount').textContent = catalog.length;
+  $('catDot').className = 'dot ' + (catalog.length ? (ok?'ok':'bad') : '');
+  if(catalogAt){ const d=new Date(catalogAt); $('catWhen').textContent='· synced '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}); }
+}
+
+/* ---------------- basket ---------------- */
+function beep(ok){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value = ok?880:220; o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(.08,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.16);
+    o.start(); o.stop(ctx.currentTime+.16);
+  }catch(e){}
+}
+function flash(msg, ok){
+  const el=$('flash'); el.textContent=msg; el.className='flash show '+(ok?'ok':'bad');
+  clearTimeout(flash._t); flash._t=setTimeout(()=>{ el.className='flash'; }, 1400);
+}
+function addByBarcode(code){
+  const key = normSku(code);
+  if(!key) return;
+  const p = skuMap.get(key);
+  if(!p){ flash('Not found: '+code, false); beep(false); return; }
+  addItem(p); flash('Added '+p.name, true); beep(true);
+}
+function addItem(p){
+  const line = basket.find(b=>normSku(b.sku)===normSku(p.sku));
+  if(line){ line.qty++; }
+  else { basket.push({sku:p.sku, name:p.name, price:Number(p.price)||0, qty:1}); }
+  render();
+}
+function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
+function removeItem(i){ basket.splice(i,1); render(); }
+function clearSale(){ basket=[]; method=null; $('tender').value=''; $('customer').value=''; render(); }
+
+/* ---------------- totals ---------------- */
+function totals(){
+  const rate = Number(settings.gst)||0;
+  const total = round2(basket.reduce((s,b)=>s + b.price*b.qty, 0));
+  const gst = round2(total * rate/(100+rate));
+  const sub = round2(total - gst);
+  return {rate, total, gst, sub};
+}
+
+/* ---------------- render ---------------- */
+function render(){
+  const tb=$('basketBody'); tb.innerHTML='';
+  $('emptyState').style.display = basket.length ? 'none':'block';
+  basket.forEach((b,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML =
+      '<td><div class="iname">'+esc(b.name)+'</div><div class="isku">'+esc(b.sku)+'</div></td>'+
+      '<td><div class="qty">'+
+        '<button data-act="dec" data-i="'+i+'">−</button>'+
+        '<input data-act="qty" data-i="'+i+'" value="'+b.qty+'" inputmode="numeric">'+
+        '<button data-act="inc" data-i="'+i+'">+</button></div></td>'+
+      '<td class="num money">'+money(b.price)+'</td>'+
+      '<td class="num money">'+money(b.price*b.qty)+'</td>'+
+      '<td><button class="rm" data-act="rm" data-i="'+i+'">✕</button></td>';
+    tb.appendChild(tr);
+  });
+
+  const t=totals();
+  $('tSub').textContent=money(t.sub);
+  $('tGst').textContent=money(t.gst);
+  $('tRate').textContent=t.rate;
+  $('tTotal').textContent=money(t.total);
+  $('incGst').textContent='Total includes GST '+money(t.gst);
+
+  // large-sale buyer field
+  $('customerField').style.display = t.total>=1000 ? 'block':'none';
+
+  // cash box
+  if(method==='cash'){
+    const ct=round5(t.total);
+    $('cashTotal').textContent=money(ct);
+    const adj=round2(ct-t.total);
+    $('roundLbl').textContent = adj===0?'Rounding':'Rounding ('+(adj>0?'+':'')+money(adj).replace(settings.currency,settings.currency)+')';
+    $('roundAdj').textContent = (adj>0?'+':'')+money(adj);
+    const tender=parseFloat($('tender').value);
+    const change = (isFinite(tender)? tender-ct : NaN);
+    $('change').textContent = isFinite(change)? money(Math.max(0,change)) : '$0.00';
+    renderQuickTender(ct);
+  }
+  $('payCash').classList.toggle('sel', method==='cash');
+  $('payCard').classList.toggle('sel', method==='card');
+  $('cashBox').style.display = method==='cash'?'flex':'none';
+
+  updateFinalizeState();
+  renderToday();
+}
+function renderQuickTender(ct){
+  const wrap=$('quickTender'); wrap.innerHTML='';
+  const notes=[ct, Math.ceil(ct/5)*5, Math.ceil(ct/10)*10, Math.ceil(ct/20)*20, Math.ceil(ct/50)*50];
+  const seen=new Set();
+  notes.forEach(v=>{ v=round2(v); if(seen.has(v)||v<=0)return; seen.add(v);
+    const b=document.createElement('button'); b.textContent=(v===ct?'Exact ':'')+money(v);
+    b.onclick=()=>{ $('tender').value=v.toFixed(2); render(); focusScan(); }; wrap.appendChild(b);
+  });
+}
+function updateFinalizeState(){
+  const t=totals(); const warn=$('finalizeWarn'); let msg='';
+  let ok = basket.length>0 && !!method && !!$('servedBy').value;
+  if(!basket.length) msg='';
+  else if(!$('servedBy').value) msg='Select who served the customer.';
+  else if(!method) msg='Choose Cash or Card.';
+  else if(t.total>=1000 && !$('customer').value.trim()) { msg='Enter customer name/ABN (sale is $1,000+).'; ok=false; }
+  else if(method==='cash'){
+    const ct=round5(t.total), tender=parseFloat($('tender').value);
+    if(isFinite(tender) && tender<ct){ msg='Cash received is less than the total.'; ok=false; }
+  }
+  warn.textContent=msg;
+  $('btnFinalize').disabled=!ok;
+  $('btnFinalizeNoPrint').disabled=!ok;
+}
+
+/* ---------------- today summary ---------------- */
+function renderToday(){
+  const sales=load(LS.sales,[]).filter(s=>s.day===todayKey());
+  let cash=0, card=0, gst=0;
+  sales.forEach(s=>{ if(s.method==='cash')cash+=s.paid; else card+=s.paid; gst+=s.gst; });
+  $('todayBox').innerHTML =
+    '<span>Today: <b>'+sales.length+'</b> sales</span>'+
+    '<span>Cash <b>'+money(cash)+'</b></span>'+
+    '<span>Card <b>'+money(card)+'</b></span>'+
+    '<span>GST <b>'+money(gst)+'</b></span>';
+}
+
+/* ---------------- finalise + print ---------------- */
+let suppressClearOnPrint=false;   // true while re-printing a sale or a report (keep current basket)
+
+function commitSale(){
+  const t=totals();
+  if(!basket.length || !method || !$('servedBy').value) return null;
+  if(t.total>=1000 && !$('customer').value.trim()) return null;
+  if(method==='cash'){ const tv=parseFloat($('tender').value); if(isFinite(tv) && tv<round5(t.total)) return null; }
+  const servedBy=$('servedBy').value;
+  const customer=$('customer').value.trim();
+  let paid=t.total, tendered=null, change=null, rounding=0;
+  if(method==='cash'){
+    const ct=round5(t.total); rounding=round2(ct-t.total); paid=ct;
+    const tv=parseFloat($('tender').value);
+    if(isFinite(tv)){ tendered=round2(tv); change=round2(Math.max(0,tv-ct)); }
+  }
+  let counter=parseInt(localStorage.getItem(LS.counter)||'1',10); if(isNaN(counter)) counter=1;
+  const tag = settings.device ? (settings.device.trim()+'-') : '';   // per-device tag keeps numbers unique across tills
+  const invNo = settings.prefix + tag + String(counter).padStart(4,'0');
+  const sale = {
+    no:invNo, day:todayKey(), ts:new Date().toISOString(),
+    method, servedBy, customer, device: settings.device||'',
+    items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
+    sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
+    paid, tendered, change, rounding, synced:false
+  };
+  const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
+  localStorage.setItem(LS.counter, String(counter+1));
+  syncSale(sale);                 // push to shared log (no-op if not configured; retried later if offline)
+  return sale;
+}
+
+/* ---------------- shared log (combine both tills) ---------------- */
+function shareHeaders(json){
+  const h = json ? {'Content-Type':'application/json','Accept':'application/json'} : {'Accept':'application/json'};
+  if(settings.shareToken) h['x-sales-token']=settings.shareToken;
+  return h;
+}
+function markSynced(no){
+  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
+  if(s && !s.synced){ s.synced=true; save(LS.sales, sales); }
+}
+async function syncSale(sale){
+  if(!settings.shareUrl) return;
+  try{
+    const res=await fetch(settings.shareUrl, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
+    if(res.ok) markSynced(sale.no);
+  }catch(e){ /* stays unsynced; flushUnsynced() retries */ }
+}
+async function flushUnsynced(){
+  if(!settings.shareUrl) return;
+  for(const s of load(LS.sales,[])){ if(!s.synced) await syncSale(s); }
+}
+async function fetchServerSales(day){
+  if(!settings.shareUrl) return null;
+  try{
+    const res=await fetch(settings.shareUrl+'?day='+encodeURIComponent(day), {headers:shareHeaders(false)});
+    if(!res.ok) return null;
+    const d=await res.json();
+    return Array.isArray(d.sales)? d.sales : [];
+  }catch(e){ return null; }
+}
+// Combined day sales: server (both tills) merged with any local not-yet-synced sales.
+async function combinedSales(day){
+  const server=await fetchServerSales(day);
+  if(server){
+    const map=new Map(); server.forEach(s=>map.set(s.no,s));
+    load(LS.sales,[]).filter(s=>s.day===day && !s.synced).forEach(s=>{ if(!map.has(s.no)) map.set(s.no,s); });
+    return {sales:[...map.values()], combined:true};
+  }
+  return {sales: load(LS.sales,[]).filter(s=>s.day===day), combined:false};
+}
+function aggregate(sales){
+  let cash=0, card=0, gst=0, sub=0;
+  sales.forEach(s=>{ if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total; gst+=s.gst; sub+=s.sub; });
+  cash=round2(cash); card=round2(card);
+  return {count:sales.length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
+}
+function finalizeSale(doPrint){
+  const sale=commitSale();
+  if(!sale) return;
+  if(doPrint){
+    buildReceipt(sale);
+    window.print();               // afterPrint() clears the sale
+  }else{
+    toast('Saved '+sale.no+' · '+money(sale.total));
+    clearSale(); render(); focusScan();
+  }
+}
+function afterPrint(){
+  if(suppressClearOnPrint){ suppressClearOnPrint=false; render(); focusScan(); return; }
+  clearSale(); render(); focusScan();
+}
+function reprintSale(s){
+  if(!s) return;
+  buildReceipt(s);
+  suppressClearOnPrint=true;      // don't wipe the current in-progress basket
+  window.print();
+}
+function reprintLast(){
+  const sales=load(LS.sales,[]);
+  if(!sales.length){ alert('No sales to reprint yet.'); return; }
+  reprintSale(sales[sales.length-1]);
+}
+function toast(msg){
+  const el=$('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+function buildReceipt(s){
+  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
+  const paperSize = settings.paper==='58' ? '58mm' : (settings.paper==='A4' ? 'A4' : '80mm');
+  document.documentElement.style.setProperty('--rwidth', w);
+  document.documentElement.style.setProperty('--paper', paperSize);
+  const d=new Date(s.ts);
+  const dt = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+  let h='';
+  h+='<div class="c b big">'+esc(settings.name)+'</div>';
+  if(settings.address) h+='<div class="c">'+esc(settings.address)+'</div>';
+  if(settings.phone)   h+='<div class="c">'+esc(settings.phone)+'</div>';
+  if(settings.abn)     h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
+  h+='<hr>';
+  h+='<div class="c b">TAX INVOICE</div>';
+  h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
+  h+='<div>Served by: '+esc(s.servedBy)+'</div>';
+  if(s.customer) h+='<div>Customer: '+esc(s.customer)+'</div>';
+  h+='<hr>';
+  s.items.forEach(it=>{
+    h+='<div class="it"><div class="nm">'+esc(it.name)+'</div>'+
+       '<div class="ln"><span>'+it.qty+' × '+money(it.price)+'</span><span>'+money(it.price*it.qty)+'</span></div></div>';
+  });
+  h+='<hr>';
+  h+='<div class="tot"><span>Subtotal (ex GST)</span><span>'+money(s.sub)+'</span></div>';
+  h+='<div class="tot"><span>GST ('+s.rate+'%)</span><span>'+money(s.gst)+'</span></div>';
+  h+='<div class="tot g"><span>TOTAL</span><span>'+money(s.total)+'</span></div>';
+  h+='<div style="font-size:11px">Total price includes GST '+money(s.gst)+'</div>';
+  h+='<div class="sp"></div>';
+  if(s.method==='cash'){
+    if(s.rounding!==0) h+='<div class="tot"><span>Rounding</span><span>'+(s.rounding>0?'+':'')+money(s.rounding)+'</span></div>';
+    h+='<div class="tot"><span>Rounded total</span><span>'+money(s.paid)+'</span></div>';
+    h+='<div class="tot"><span>CASH</span><span>'+(s.tendered!=null?money(s.tendered):money(s.paid))+'</span></div>';
+    if(s.change!=null) h+='<div class="tot"><span>Change</span><span>'+money(s.change)+'</span></div>';
+  }else{
+    h+='<div class="tot"><span>CARD</span><span>'+money(s.paid)+'</span></div>';
+  }
+  h+='<hr>';
+  if(settings.footer) h+='<div class="c">'+esc(settings.footer)+'</div>';
+  h+='<div class="c" style="font-size:11px">'+dt+'</div>';
+  $('receipt').innerHTML=h;
+}
+
+/* ---------------- search ---------------- */
+function openSearch(){ $('searchModal').classList.add('show'); $('searchInput').value=''; renderSearch(''); setTimeout(()=>$('searchInput').focus(),50); }
+function renderSearch(q){
+  q=q.trim().toLowerCase();
+  const list=$('searchResults'); list.innerHTML='';
+  const res = catalog.filter(p=> !q || (p.name||'').toLowerCase().includes(q) || normSku(p.sku).includes(normSku(q))).slice(0,50);
+  if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No matches</span></div>'; return; }
+  res.forEach(p=>{
+    const r=document.createElement('div'); r.className='r';
+    r.innerHTML='<span>'+esc(p.name)+' <span class="isku">'+esc(p.sku)+'</span></span><span class="money">'+money(p.price)+'</span>';
+    r.onclick=()=>{ addItem(p); $('searchModal').classList.remove('show'); focusScan(); };
+    list.appendChild(r);
+  });
+}
+
+/* ---------------- previous invoices ---------------- */
+let invCache=[];   // sales for the selected date (combined across tills)
+async function openInvoices(){
+  $('invoicesModal').classList.add('show'); $('invSearch').value=''; $('invDetail').innerHTML='';
+  $('invDate').value=todayKey();
+  await loadInvoices(); setTimeout(()=>$('invSearch').focus(),50);
+}
+async function loadInvoices(){
+  const day=$('invDate').value||todayKey();
+  $('invScope').textContent='Loading…';
+  const {sales,combined}=await combinedSales(day);
+  invCache=sales;
+  $('invScope').textContent=(combined?'Combined — both tills':'This device')+' · '+sales.length+' invoice'+(sales.length===1?'':'s');
+  renderInvList($('invSearch').value);
+}
+function renderInvList(q){
+  q=(q||'').trim().toLowerCase();
+  const res=invCache.slice().sort((a,b)=>String(b.ts).localeCompare(String(a.ts))).filter(s=>{
+    if(!q) return true;
+    const hay=(s.no+' '+s.servedBy+' '+(s.customer||'')+' '+s.items.map(i=>i.name).join(' ')).toLowerCase();
+    return hay.includes(q);
+  }).slice(0,300);
+  const list=$('invList');
+  if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No invoices</span></div>'; return; }
+  list.innerHTML=res.map(s=>{ const d=new Date(s.ts);
+    return '<div class="r" data-no="'+esc(s.no)+'">'+
+      '<span>'+esc(s.no)+' <span class="isku">'+
+        d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+'</span></span>'+
+      '<span class="money">'+money(s.total)+'</span></div>';
+  }).join('');
+}
+function showInvoiceDetail(no){
+  const s=invCache.find(x=>x.no===no) || load(LS.sales,[]).find(x=>x.no===no); if(!s) return;
+  const d=new Date(s.ts);
+  let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
+  h+='<div class="muted">'+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+'</div>';
+  h+='<div style="margin:10px 0">';
+  s.items.forEach(i=>{ h+='<div class="row"><span>'+i.qty+' × '+esc(i.name)+'</span><span class="money">'+money(i.price*i.qty)+'</span></div>'; });
+  h+='</div>';
+  h+='<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(s.sub)+'</span></div>';
+  h+='<div class="row"><span class="lbl">GST ('+s.rate+'%)</span><span class="money">'+money(s.gst)+'</span></div>';
+  h+='<div class="row" style="font-weight:700"><span>Total ('+esc(s.method)+')</span><span class="money">'+money(s.total)+'</span></div>';
+  h+='<button class="ghost" id="btnReprintOne" style="margin-top:12px">Reprint this invoice</button></fieldset>';
+  $('invDetail').innerHTML=h;
+  $('btnReprintOne').onclick=()=>reprintSale(s);
+}
+
+/* ---------------- day takings ---------------- */
+function openTakings(){ $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
+async function renderTakings(){
+  const key=$('takDate').value||todayKey();
+  $('takScope').textContent='Loading…';
+  const {sales,combined}=await combinedSales(key);
+  const t=aggregate(sales);
+  const d=new Date(key+'T00:00:00');
+  $('takScope').textContent = combined ? '✓ Combined — both tills'
+    : (settings.shareUrl ? 'This device only (shared log unreachable)' : 'This device');
+  $('takSummary').innerHTML=
+    '<div style="text-align:center;margin:6px 0 14px">'+
+      '<div class="muted">Total takings — '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
+      '<div class="bignum">'+money(t.total)+'</div>'+
+      '<div class="muted">'+t.count+' sale'+(t.count===1?'':'s')+'</div>'+
+    '</div>'+
+    '<div class="lines">'+
+      '<div class="row"><span class="lbl">Cash</span><span class="money">'+money(t.cash)+'</span></div>'+
+      '<div class="row"><span class="lbl">Card</span><span class="money">'+money(t.card)+'</span></div>'+
+      '<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(t.sub)+'</span></div>'+
+      '<div class="row"><span class="lbl">GST collected</span><span class="money">'+money(t.gst)+'</span></div>'+
+    '</div>';
+}
+async function printTakings(){
+  const key=$('takDate').value||todayKey();
+  const {sales}=await combinedSales(key);
+  const t=aggregate(sales); const d=new Date(key+'T00:00:00');
+  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
+  const paperSize = settings.paper==='58' ? '58mm' : (settings.paper==='A4' ? 'A4' : '80mm');
+  document.documentElement.style.setProperty('--rwidth', w);
+  document.documentElement.style.setProperty('--paper', paperSize);
+  let h='';
+  h+='<div class="c b big">'+esc(settings.name)+'</div>';
+  if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
+  h+='<hr><div class="c b">DAILY TAKINGS</div>';
+  h+='<div class="c">'+d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'</div><hr>';
+  h+='<div class="tot"><span>Sales</span><span>'+t.count+'</span></div>';
+  h+='<div class="tot"><span>Cash</span><span>'+money(t.cash)+'</span></div>';
+  h+='<div class="tot"><span>Card</span><span>'+money(t.card)+'</span></div>';
+  h+='<div class="tot g"><span>TOTAL</span><span>'+money(t.total)+'</span></div>';
+  h+='<hr><div class="tot"><span>Subtotal ex GST</span><span>'+money(t.sub)+'</span></div>';
+  h+='<div class="tot"><span>GST collected</span><span>'+money(t.gst)+'</span></div>';
+  h+='<hr><div class="c" style="font-size:11px">Printed '+new Date().toLocaleString('en-AU')+'</div>';
+  $('receipt').innerHTML=h;
+  suppressClearOnPrint=true; window.print();
+}
+
+/* ---------------- settings UI ---------------- */
+function openSettings(){
+  $('sName').value=settings.name; $('sAbn').value=settings.abn; $('sPhone').value=settings.phone;
+  $('sAddress').value=settings.address; $('sFooter').value=settings.footer; $('sCatUrl').value=settings.catUrl;
+  $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;
+  $('sPrefix').value=settings.prefix; $('sCounter').value=localStorage.getItem(LS.counter)||'1';
+  $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
+  const sales=load(LS.sales,[]);
+  $('logInfo').textContent = sales.length? (sales.length+' sales recorded. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.') : 'No sales recorded yet.';
+  $('settingsModal').classList.add('show');
+}
+function saveSettingsUI(){
+  settings.name=$('sName').value.trim()||'My Store';
+  settings.abn=$('sAbn').value.trim(); settings.phone=$('sPhone').value.trim();
+  settings.address=$('sAddress').value.trim(); settings.footer=$('sFooter').value.trim();
+  settings.catUrl=$('sCatUrl').value.trim().replace(/\/+$/,'');
+  settings.staff=$('sStaff').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); if(!settings.staff.length) settings.staff=['Staff'];
+  settings.gst=Number($('sGst').value)||0; settings.paper=$('sPaper').value; settings.prefix=$('sPrefix').value;
+  settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
+  settings.device=$('sDevice').value.trim();
+  const c=parseInt($('sCounter').value,10); if(!isNaN(c)) localStorage.setItem(LS.counter,String(c));
+  save(LS.settings, settings);
+  applySettings();
+  $('settingsModal').classList.remove('show');
+  flushUnsynced();               // push any backlog now that the shared log may be configured
+}
+function applySettings(){
+  $('hStore').textContent=settings.name;
+  const sel=$('servedBy'); const cur=sel.value;
+  sel.innerHTML='<option value="">— select —</option>'+settings.staff.map(n=>'<option>'+esc(n)+'</option>').join('');
+  if(settings.staff.includes(cur)) sel.value=cur;
+  render();
+}
+
+/* ---------------- export ---------------- */
+function exportCsv(){
+  const sales=load(LS.sales,[]);
+  if(!sales.length){ alert('No sales to export.'); return; }
+  const head=['Invoice','Date','Time','Served by','Customer','Method','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
+  const rows=sales.map(s=>{ const d=new Date(s.ts);
+    const items=s.items.map(i=>i.qty+'x '+i.name).join(' | ');
+    return [s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.method,
+      s.sub.toFixed(2), s.gst.toFixed(2), s.total.toFixed(2), (s.paid||s.total).toFixed(2),
+      s.tendered!=null?s.tendered.toFixed(2):'', s.change!=null?s.change.toFixed(2):'', items]
+      .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');
+  });
+  const csv=[head.join(','),...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='sales-'+todayKey()+'.csv'; a.click();
+}
+
+/* ---------------- focus management ---------------- */
+function focusScan(){ const s=$('scan'); if(s) s.focus(); }
+function anyModalOpen(){ return document.querySelector('.modal.show'); }
+
+/* ---------------- wire up ---------------- */
+function bind(){
+  rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
+
+  // scan input — a barcode scanner "types" the code then sends Enter, so this
+  // auto-adds the item and keeps the cursor here, ready for the next scan. No button needed.
+  $('scan').addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ e.preventDefault(); const v=$('scan').value; $('scan').value=''; addByBarcode(v); focusScan(); }
+  });
+
+  // basket delegation
+  $('basketBody').addEventListener('click', e=>{
+    const b=e.target.closest('[data-act]'); if(!b)return; const i=+b.dataset.i;
+    if(b.dataset.act==='inc') setQty(i, basket[i].qty+1);
+    else if(b.dataset.act==='dec') setQty(i, basket[i].qty-1);
+    else if(b.dataset.act==='rm') removeItem(i);
+  });
+  $('basketBody').addEventListener('change', e=>{
+    const b=e.target.closest('[data-act="qty"]'); if(!b)return; setQty(+b.dataset.i, parseInt(b.value,10));
+  });
+
+  // payment
+  $('payCash').onclick=()=>{ method='cash'; render(); setTimeout(()=>$('tender').focus(),30); };
+  $('payCard').onclick=()=>{ method='card'; render(); };
+  $('tender').addEventListener('input', ()=>render());
+  $('servedBy').addEventListener('change', ()=>{ updateFinalizeState(); });
+  $('customer').addEventListener('input', ()=>updateFinalizeState());
+
+  $('btnFinalize').onclick=()=>finalizeSale(true);
+  $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
+  $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
+  window.addEventListener('afterprint', afterPrint);
+
+  // header
+  $('btnSync').onclick=syncCatalog;
+  $('btnReprint').onclick=reprintLast;
+  $('btnInvoices').onclick=openInvoices;
+  $('btnTakings').onclick=openTakings;
+  $('btnSettings').onclick=openSettings;
+
+  // search
+  $('btnFind').onclick=openSearch;
+  $('closeSearch').onclick=()=>{ $('searchModal').classList.remove('show'); focusScan(); };
+  $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
+
+  // previous invoices
+  $('closeInvoices').onclick=()=>{ $('invoicesModal').classList.remove('show'); focusScan(); };
+  $('invSearch').addEventListener('input', e=>renderInvList(e.target.value));
+  $('invDate').addEventListener('change', loadInvoices);
+  $('invList').addEventListener('click', e=>{ const r=e.target.closest('[data-no]'); if(r) showInvoiceDetail(r.dataset.no); });
+
+  // day takings
+  $('todayBox').onclick=openTakings;
+  $('closeTakings').onclick=()=>{ $('takingsModal').classList.remove('show'); focusScan(); };
+  $('takDate').addEventListener('change', renderTakings);
+  $('btnPrintTakings').onclick=printTakings;
+
+  // settings actions
+  $('closeSettings').onclick=()=>{ $('settingsModal').classList.remove('show'); focusScan(); };
+  $('saveSettings').onclick=saveSettingsUI;
+  $('btnDemo').onclick=()=>{ loadDemo(); alert('Loaded '+catalog.length+' demo products.'); };
+  $('btnCsvToggle').onclick=()=>{ const w=$('csvWrap'); w.style.display = w.style.display==='none'?'block':'none'; };
+  $('btnCsvImport').onclick=()=>importCsv($('sCsv').value);
+  $('btnExport').onclick=exportCsv;
+  $('btnClearLog').onclick=()=>{ if(confirm('Delete the entire sales log? This cannot be undone.')){ save(LS.sales,[]); renderToday(); openSettings(); } };
+
+  // keep scanner focused
+  document.addEventListener('click', e=>{
+    if(anyModalOpen()) return;
+    if(e.target.closest('input,select,textarea,button')) return;
+    focusScan();
+  });
+  window.addEventListener('load', focusScan);
+  focusScan();
+  flushUnsynced();               // push any sales that were saved while offline
+}
+bind();
+</script>
+</body>
+</html>

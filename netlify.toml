@@ -1,0 +1,12 @@
+# Netlify config — hosts the till (static) + the catalog proxy (function) on one site.
+# The secret Squarespace key lives in an env var (SQUARESPACE_API_KEY), never in the browser.
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Pretty URL: the app calls /api/catalog, Netlify routes it to the function.
+[[redirects]]
+  from = "/api/catalog"
+  to = "/.netlify/functions/catalog"
+  status = 200
