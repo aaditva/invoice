@@ -146,6 +146,7 @@
           <span class="flash" id="flash"></span>
         </div>
         <button class="ghost" id="btnFind">Search</button>
+        <button class="ghost" id="btnMisc" title="Add a custom-priced line">+ Misc&nbsp;$</button>
       </div>
       <div class="basket">
         <table>
@@ -222,9 +223,9 @@
         <div class="field"><label>Receipt footer message</label><input id="sFooter" placeholder="Thank you — no refunds without receipt" /></div>
       </fieldset>
 
-      <fieldset><legend>Product catalog (from your Squarespace store)</legend>
-        <div class="field"><label>Catalog proxy URL</label><input id="sCatUrl" placeholder="https://your-worker.workers.dev" />
-          <div class="hint">The address of the read-only proxy that holds your Squarespace API key. See README to deploy it. Leave blank to work offline with demo/pasted products.</div>
+      <fieldset><legend>Products link</legend>
+        <div class="field"><label>Products link (Google Sheet CSV, or proxy URL)</label><input id="sCatUrl" placeholder="https://docs.google.com/…/pub?output=csv" />
+          <div class="hint">Paste a <b>published Google Sheet</b> (File → Share → Publish to web → CSV) with columns <b>barcode, name, price</b> — no server needed. Or the URL of a Squarespace proxy (see README). Leave blank to use demo/pasted products.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="ghost" id="btnDemo">Load demo products</button>
@@ -340,7 +341,9 @@ const LS = {
 
 const DEFAULTS = {
   name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
-  catUrl:'', staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
+  // Live Squarespace feed via the Netlify function. Every device works with no setup.
+  catUrl:'/api/catalog',
+  staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
   shareUrl:'', shareToken:'', device:''
 };
 
@@ -379,23 +382,73 @@ function rebuildSkuMap(){
 }
 
 /* ---------------- catalog ---------------- */
-async function syncCatalog(){
-  if(!settings.catUrl){ alert('No catalog proxy URL set. Open Settings to add it, or load demo products.'); return; }
-  const dot=$('catDot'); dot.className='dot';
+async function syncCatalog(silent){
+  if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return; }
+  $('catDot').className='dot';
   try{
-    const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json'}});
+    const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json, text/csv, */*'}});
     if(!res.ok) throw new Error('HTTP '+res.status+' — '+(await res.text()).slice(0,140));
-    const data = await res.json();
-    const items = Array.isArray(data) ? data : (data.items||[]);
-    if(!items.length) throw new Error('Proxy returned 0 products.');
-    catalog = items.map(x=>({sku:x.sku, name:x.name, price:Number(x.price)||0, stock:(x.stock===undefined?null:x.stock)}));
+    const text = await res.text();
+    const items = parseCatalog(text, res.headers.get('content-type')||'', settings.catUrl);
+    if(!items.length) throw new Error('No products found at that link (need columns: barcode/SKU, name, price).');
+    catalog = items;
     catalogAt = new Date().toISOString();
     save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
     rebuildSkuMap(); renderCatalogStatus(true);
   }catch(e){
     renderCatalogStatus(false);
-    alert('Could not sync catalog:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+    if(!silent) alert('Could not sync products:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
   }
+}
+// Accepts a JSON proxy response OR a CSV (e.g. a published Google Sheet).
+function parseCatalog(text, ctype, url){
+  const t=(text||'').trim();
+  const looksJson = /json/i.test(ctype) || /^[\[{]/.test(t);
+  const looksCsv  = /csv/i.test(ctype) || /output=csv|gviz\/tq|\/pub\b/i.test(url||'');
+  if(looksJson && !looksCsv){
+    const data=JSON.parse(t);
+    const arr=Array.isArray(data)?data:(data.items||[]);
+    return arr.map(x=>({
+      sku:String(x.sku||x.barcode||'').trim(),
+      name:x.name||x.title||'Item',
+      price:Number(x.price)||0,
+      stock:(x.stock===undefined?null:x.stock)
+    })).filter(x=>x.sku);
+  }
+  return parseCsvText(t);
+}
+function splitCsvLine(line){
+  const out=[]; let cur='', q=false;
+  for(let i=0;i<line.length;i++){ const ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else { if(ch==='"') q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; }
+  }
+  out.push(cur); return out.map(s=>s.trim());
+}
+function parseCsvText(text){
+  const rows=(text||'').split(/\r?\n/).map(r=>r.trim()).filter(Boolean).map(splitCsvLine);
+  if(!rows.length) return [];
+  let start=0, idx={sku:0, name:1, price:2};
+  const first=rows[0].map(c=>c.toLowerCase());
+  const lastCell=String(rows[0][rows[0].length-1]||'').replace(/[^0-9.\-]/g,'');
+  const lastIsNum = lastCell!=='' && !isNaN(Number(lastCell));   // empty (e.g. a "Price" header) is NOT a number
+  const headerish=first.some(c=>/sku|barcode|code|name|title|product|item|price|amount|cost/.test(c));
+  if(headerish && !lastIsNum){                 // treat row 0 as a header
+    const find=(...keys)=>{ for(let i=0;i<first.length;i++){ if(keys.some(k=>first[i].includes(k))) return i; } return -1; };
+    const s=find('barcode','sku','code'), n=find('name','title','product','item','desc'), p=find('price','amount','cost');
+    idx={ sku:s>=0?s:0, name:n>=0?n:1, price:p>=0?p:(rows[0].length-1) };
+    start=1;
+  }
+  const out=[];
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i];
+    const sku=String(r[idx.sku]||'').trim();
+    const name=String(r[idx.name]||'').trim();
+    const price=Number(String(r[idx.price]||'').replace(/[^0-9.\-]/g,''));
+    if(!sku || isNaN(price)) continue;
+    out.push({sku, name:name||sku, price, stock:null});
+  }
+  return out;
 }
 function loadDemo(){
   catalog = DEMO.map(x=>Object.assign({}, x));
@@ -404,18 +457,8 @@ function loadDemo(){
   rebuildSkuMap(); renderCatalogStatus(true);
 }
 function importCsv(text){
-  const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
-  const out=[];
-  for(const r of rows){
-    const parts = r.split(',');
-    if(parts.length<3) continue;
-    const price = Number(parts[parts.length-1]);
-    const sku = parts[0].trim();
-    const name = parts.slice(1,-1).join(',').trim();
-    if(!sku || isNaN(price)) continue;
-    out.push({sku, name, price, stock:null});
-  }
-  if(!out.length){ alert('No valid rows found. Format: sku,name,price'); return; }
+  const out = parseCsvText(text);
+  if(!out.length){ alert('No valid rows found. Format: barcode,name,price (one per line).'); return; }
   catalog = out; catalogAt = new Date().toISOString();
   save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
   rebuildSkuMap(); renderCatalogStatus(true);
@@ -454,6 +497,14 @@ function addItem(p){
   else { basket.push({sku:p.sku, name:p.name, price:Number(p.price)||0, qty:1}); }
   render();
 }
+let miscSeq=1;
+function addMisc(){
+  basket.push({sku:'MISC-'+(miscSeq++), name:'Miscellaneous', price:0, qty:1, misc:true});
+  render();
+  // focus the new amount box so they can type the price straight away
+  setTimeout(()=>{ const inp=document.querySelector('[data-act="price"][data-i="'+(basket.length-1)+'"]'); if(inp){ inp.focus(); inp.select(); } }, 30);
+}
+function setMiscPrice(i, v){ const n=parseFloat(v); basket[i].price = isNaN(n)?0:round2(Math.max(0,n)); render(); }
 function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
 function removeItem(i){ basket.splice(i,1); render(); }
 function clearSale(){ basket=[]; method=null; $('tender').value=''; $('customer').value=''; render(); }
@@ -473,13 +524,17 @@ function render(){
   $('emptyState').style.display = basket.length ? 'none':'block';
   basket.forEach((b,i)=>{
     const tr=document.createElement('tr');
+    const sub = b.misc ? 'custom item' : esc(b.sku);
+    const priceCell = b.misc
+      ? '<td class="num"><input data-act="price" data-i="'+i+'" value="'+b.price+'" inputmode="decimal" placeholder="0.00" style="width:76px;text-align:right;padding:6px 8px" title="Type the amount"></td>'
+      : '<td class="num money">'+money(b.price)+'</td>';
     tr.innerHTML =
-      '<td><div class="iname">'+esc(b.name)+'</div><div class="isku">'+esc(b.sku)+'</div></td>'+
+      '<td><div class="iname">'+esc(b.name)+'</div><div class="isku">'+sub+'</div></td>'+
       '<td><div class="qty">'+
         '<button data-act="dec" data-i="'+i+'">−</button>'+
         '<input data-act="qty" data-i="'+i+'" value="'+b.qty+'" inputmode="numeric">'+
         '<button data-act="inc" data-i="'+i+'">+</button></div></td>'+
-      '<td class="num money">'+money(b.price)+'</td>'+
+      priceCell+
       '<td class="num money">'+money(b.price*b.qty)+'</td>'+
       '<td><button class="rm" data-act="rm" data-i="'+i+'">✕</button></td>';
     tb.appendChild(tr);
@@ -885,7 +940,8 @@ function bind(){
     else if(b.dataset.act==='rm') removeItem(i);
   });
   $('basketBody').addEventListener('change', e=>{
-    const b=e.target.closest('[data-act="qty"]'); if(!b)return; setQty(+b.dataset.i, parseInt(b.value,10));
+    const q=e.target.closest('[data-act="qty"]'); if(q){ setQty(+q.dataset.i, parseInt(q.value,10)); return; }
+    const p=e.target.closest('[data-act="price"]'); if(p){ setMiscPrice(+p.dataset.i, p.value); return; }
   });
 
   // payment
@@ -901,14 +957,15 @@ function bind(){
   window.addEventListener('afterprint', afterPrint);
 
   // header
-  $('btnSync').onclick=syncCatalog;
+  $('btnSync').onclick=()=>syncCatalog(false);
   $('btnReprint').onclick=reprintLast;
   $('btnInvoices').onclick=openInvoices;
   $('btnTakings').onclick=openTakings;
   $('btnSettings').onclick=openSettings;
 
-  // search
+  // search / misc
   $('btnFind').onclick=openSearch;
+  $('btnMisc').onclick=addMisc;
   $('closeSearch').onclick=()=>{ $('searchModal').classList.remove('show'); focusScan(); };
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
 
@@ -942,6 +999,8 @@ function bind(){
   window.addEventListener('load', focusScan);
   focusScan();
   flushUnsynced();               // push any sales that were saved while offline
+  // Auto-refresh the product list on open, so it's always current with Squarespace.
+  if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
 }
 bind();
 </script>
