@@ -93,7 +93,8 @@ function flatten(products) {
       const price = bp ? Number(bp.value) || 0 : 0;
       const currency = (bp && bp.currency) || 'AUD';
       const stock = v.stock && v.stock.unlimited ? null : (v.stock ? (v.stock.quantity ?? null) : null);
-      items.push({ sku, name, price, currency, stock });
+      const variantId = v.id || v.variantId || null;   // Inventory API keys stock adjustments off this
+      items.push({ sku, name, price, currency, stock, variantId });
     }
   }
   return items;
