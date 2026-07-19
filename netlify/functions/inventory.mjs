@@ -32,7 +32,7 @@ export default async (req) => {
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json',
   };
-  if (req.method === 'OPTIONS') return new Response('', { status: 204, headers });
+  if (req.method === 'OPTIONS') return new Response('{}', { status: 200, headers });  // non-empty body: Netlify's lambda decoder 502s on an empty 204
 
   const need = process.env.SALES_TOKEN;
   if (need && req.headers.get('x-sales-token') !== need) return json({ error: 'Unauthorized' }, 401, headers);
