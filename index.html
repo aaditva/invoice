@@ -250,6 +250,12 @@
         </div>
       </fieldset>
 
+      <fieldset><legend>Live stock — update Squarespace on each sale (optional)</legend>
+        <div class="field"><label>Inventory update URL</label><input id="sInvUrl" placeholder="/api/inventory" />
+          <div class="hint">Leave as <b>/api/inventory</b> if this till is hosted on your Netlify site. Each finalised sale then <b>decrements the matching Squarespace stock</b> (matched by barcode/SKU). Uses the same <b>shared-log token</b> above, and needs the Netlify env var <b>SQUARESPACE_API_KEY</b> to have <b>Inventory Read/Write</b> permission. Blank = never change stock.</div>
+        </div>
+      </fieldset>
+
       <fieldset><legend>Staff (the "Served by" list)</legend>
         <div class="field"><label>Names — one per line</label>
           <textarea id="sStaff" rows="3" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px" placeholder="Alex&#10;Sam&#10;Jordan"></textarea>
@@ -343,6 +349,8 @@ const DEFAULTS = {
   name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
   // Live Squarespace feed via the Netlify function. Every device works with no setup.
   catUrl:'/api/catalog',
+  // Live stock write-back to Squarespace on each sale (blank = don't touch stock).
+  invUrl:'/api/inventory',
   staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
   shareUrl:'', shareToken:'', device:''
 };
@@ -381,6 +389,14 @@ function rebuildSkuMap(){
   for(const p of catalog){ skuMap.set(normSku(p.sku), p); }
 }
 
+/* ---------------- stock lookups ---------------- */
+function catItem(sku){ return skuMap.get(normSku(sku)) || null; }
+// current Squarespace stock for a sku, or null if unlimited / unknown / not tracked
+function stockOf(sku){ const p=catItem(sku); if(!p) return null; const s=p.stock; return (s===null||s===undefined)?null:Number(s); }
+function basketQty(sku){ return basket.filter(b=>normSku(b.sku)===normSku(sku)).reduce((n,b)=>n+b.qty,0); }
+// how many would be left after selling what's in the basket (null = not tracked)
+function remainingStock(sku){ const s=stockOf(sku); return s===null?null:(s - basketQty(sku)); }
+
 /* ---------------- catalog ---------------- */
 async function syncCatalog(silent){
   if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return; }
@@ -412,7 +428,8 @@ function parseCatalog(text, ctype, url){
       sku:String(x.sku||x.barcode||'').trim(),
       name:x.name||x.title||'Item',
       price:Number(x.price)||0,
-      stock:(x.stock===undefined?null:x.stock)
+      stock:(x.stock===undefined?null:x.stock),
+      variantId:(x.variantId||x.id||null)
     })).filter(x=>x.sku);
   }
   return parseCsvText(t);
@@ -489,7 +506,11 @@ function addByBarcode(code){
   if(!key) return;
   const p = skuMap.get(key);
   if(!p){ flash('Not found: '+code, false); beep(false); return; }
-  addItem(p); flash('Added '+p.name, true); beep(true);
+  addItem(p);
+  const rem = remainingStock(p.sku);         // after adding this unit
+  if(rem!==null && rem<0){ flash('⚠ '+p.name+' · over by '+(-rem)+' (allowed)', false); beep(false); }
+  else if(rem!==null){ flash('Added '+p.name+' · '+rem+' left', true); beep(true); }
+  else { flash('Added '+p.name, true); beep(true); }
 }
 function addItem(p){
   const line = basket.find(b=>normSku(b.sku)===normSku(p.sku));
@@ -524,7 +545,18 @@ function render(){
   $('emptyState').style.display = basket.length ? 'none':'block';
   basket.forEach((b,i)=>{
     const tr=document.createElement('tr');
-    const sub = b.misc ? 'custom item' : esc(b.sku);
+    let sub;
+    if(b.misc){ sub='custom item'; }
+    else {
+      sub = esc(b.sku);
+      const s = stockOf(b.sku);
+      if(s!==null){
+        const rem = s - b.qty;                 // left in Squarespace after this line
+        sub += rem<0
+          ? ' · <span style="color:var(--danger)">over by '+(-rem)+'</span>'
+          : ' · '+rem+' in stock';
+      }
+    }
     const priceCell = b.misc
       ? '<td class="num"><input data-act="price" data-i="'+i+'" value="'+b.price+'" inputmode="decimal" placeholder="0.00" style="width:76px;text-align:right;padding:6px 8px" title="Type the amount"></td>'
       : '<td class="num money">'+money(b.price)+'</td>';
@@ -589,6 +621,12 @@ function updateFinalizeState(){
     const ct=round5(t.total), tender=parseFloat($('tender').value);
     if(isFinite(tender) && tender<ct){ msg='Cash received is less than the total.'; ok=false; }
   }
+  // Warn-but-allow: flag any line selling more than Squarespace shows in stock, but never block.
+  if(ok && !msg){
+    const over=[];
+    basket.forEach(b=>{ if(b.misc) return; const s=stockOf(b.sku); if(s!==null && b.qty>s) over.push((catItem(b.sku)&&catItem(b.sku).name)||b.name); });
+    if(over.length) msg='⚠ Selling more than in stock (allowed): '+over.join(', ');
+  }
   warn.textContent=msg;
   $('btnFinalize').disabled=!ok;
   $('btnFinalizeNoPrint').disabled=!ok;
@@ -625,17 +663,34 @@ function commitSale(){
   let counter=parseInt(localStorage.getItem(LS.counter)||'1',10); if(isNaN(counter)) counter=1;
   const tag = settings.device ? (settings.device.trim()+'-') : '';   // per-device tag keeps numbers unique across tills
   const invNo = settings.prefix + tag + String(counter).padStart(4,'0');
+  // Real catalog lines whose stock should drop in Squarespace (skip misc/custom lines).
+  const stockItems = basket.filter(b=>!b.misc).map(b=>{
+    const p=catItem(b.sku);
+    return { variantId:(p&&p.variantId)||null, sku:b.sku, quantity:b.qty };
+  }).filter(x=>x.variantId || x.sku);
   const sale = {
     no:invNo, day:todayKey(), ts:new Date().toISOString(),
     method, servedBy, customer, device: settings.device||'',
     items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
     sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
-    paid, tendered, change, rounding, synced:false
+    paid, tendered, change, rounding, synced:false,
+    stockItems, stockAdjusted: stockItems.length ? false : true
   };
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
   localStorage.setItem(LS.counter, String(counter+1));
+  applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
   syncSale(sale);                 // push to shared log (no-op if not configured; retried later if offline)
+  adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
   return sale;
+}
+// Optimistically lower the cached stock so "X left" updates instantly between catalog syncs.
+function applyLocalStock(stockItems){
+  let changed=false;
+  for(const it of (stockItems||[])){
+    const p=catItem(it.sku);
+    if(p && p.stock!==null && p.stock!==undefined){ p.stock=Number(p.stock)-it.quantity; changed=true; }
+  }
+  if(changed) save(LS.catalog, catalog);
 }
 
 /* ---------------- shared log (combine both tills) ---------------- */
@@ -658,6 +713,53 @@ async function syncSale(sale){
 async function flushUnsynced(){
   if(!settings.shareUrl) return;
   for(const s of load(LS.sales,[])){ if(!s.synced) await syncSale(s); }
+}
+
+/* ---------------- live stock (decrement Squarespace on each sale) ---------------- */
+// Resolve the inventory endpoint. Relative '/api/inventory' works when the till is
+// hosted on Netlify; if catUrl is a full URL (a second till), resolve against its origin.
+function inventoryUrl(){
+  const u=(settings.invUrl||'').trim();
+  if(!u) return '';
+  if(/^https?:\/\//i.test(u)) return u;
+  try{ if(/^https?:\/\//i.test(settings.catUrl)) return new URL(u, settings.catUrl).href; }catch(e){}
+  return u;
+}
+function markStockAdjusted(no){
+  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
+  if(s && !s.stockAdjusted){ s.stockAdjusted=true; save(LS.sales, sales); }
+}
+// POST the sold lines so Squarespace decrements. Idempotent per invoice (server uses the
+// invoice no as the Idempotency-Key), and only fires while stockAdjusted===false → exactly once.
+async function adjustStock(sale){
+  if(!sale || sale.stockAdjusted) return;
+  const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
+  if(!items.length){ markStockAdjusted(sale.no); return; }
+  const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
+  try{
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, items})});
+    if(res.ok){
+      markStockAdjusted(sale.no);
+      try{ const d=await res.json(); reconcileStock(d && d.inventory); }catch(e){}
+    }
+  }catch(e){ /* stays unadjusted; flushUnadjusted() retries */ }
+}
+async function flushUnadjusted(){
+  if(!inventoryUrl()) return;
+  for(const s of load(LS.sales,[])){ if(!s.stockAdjusted && (s.stockItems||[]).length) await adjustStock(s); }
+}
+// Snap the cached stock to Squarespace's authoritative post-adjustment quantities.
+function reconcileStock(inv){
+  if(!Array.isArray(inv) || !inv.length) return;
+  let changed=false;
+  for(const row of inv){
+    if(!row) continue;
+    const q = row.isUnlimited ? null : (row.quantity==null?null:Number(row.quantity));
+    let p = row.variantId ? (catalog.find(x=>x.variantId===row.variantId)||null) : null;
+    if(!p && row.sku) p=catItem(row.sku);
+    if(p){ p.stock=q; changed=true; }
+  }
+  if(changed){ save(LS.catalog, catalog); render(); }
 }
 async function fetchServerSales(day){
   if(!settings.shareUrl) return null;
@@ -766,7 +868,9 @@ function renderSearch(q){
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No matches</span></div>'; return; }
   res.forEach(p=>{
     const r=document.createElement('div'); r.className='r';
-    r.innerHTML='<span>'+esc(p.name)+' <span class="isku">'+esc(p.sku)+'</span></span><span class="money">'+money(p.price)+'</span>';
+    const s=(p.stock===null||p.stock===undefined)?null:Number(p.stock);
+    const stk = s===null?'':' · '+s+' in stock';
+    r.innerHTML='<span>'+esc(p.name)+' <span class="isku">'+esc(p.sku)+stk+'</span></span><span class="money">'+money(p.price)+'</span>';
     r.onclick=()=>{ addItem(p); $('searchModal').classList.remove('show'); focusScan(); };
     list.appendChild(r);
   });
@@ -873,6 +977,7 @@ function openSettings(){
   $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;
   $('sPrefix').value=settings.prefix; $('sCounter').value=localStorage.getItem(LS.counter)||'1';
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
+  $('sInvUrl').value=settings.invUrl;
   const sales=load(LS.sales,[]);
   $('logInfo').textContent = sales.length? (sales.length+' sales recorded. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.') : 'No sales recorded yet.';
   $('settingsModal').classList.add('show');
@@ -886,11 +991,13 @@ function saveSettingsUI(){
   settings.gst=Number($('sGst').value)||0; settings.paper=$('sPaper').value; settings.prefix=$('sPrefix').value;
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
+  settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
   const c=parseInt($('sCounter').value,10); if(!isNaN(c)) localStorage.setItem(LS.counter,String(c));
   save(LS.settings, settings);
   applySettings();
   $('settingsModal').classList.remove('show');
   flushUnsynced();               // push any backlog now that the shared log may be configured
+  flushUnadjusted();             // and any stock decrements now that the inventory URL may be set
 }
 function applySettings(){
   $('hStore').textContent=settings.name;
@@ -999,6 +1106,7 @@ function bind(){
   window.addEventListener('load', focusScan);
   focusScan();
   flushUnsynced();               // push any sales that were saved while offline
+  flushUnadjusted();             // decrement Squarespace for any sales that couldn't reach it yet
   // Auto-refresh the product list on open, so it's always current with Squarespace.
   if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
 }
