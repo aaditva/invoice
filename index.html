@@ -104,8 +104,10 @@
   /* ---------- Receipt (screen hidden, print only) ---------- */
   .receipt{display:none}
   @media print{
-    @page{ size:var(--paper,80mm) auto; margin:3mm; }
-    body{background:#fff}
+    /* The real @page rule is injected at print time by applyPageSize() into
+       #pageStyle. It cannot live here: `size` may not mix a length with `auto`,
+       and var() is not honoured inside @page. */
+    body{background:#fff;margin:0}
     .app,.modal{display:none !important}
     .receipt{display:block;width:var(--rwidth,72mm);margin:0 auto;
       font-family:"SFMono-Regular",Menlo,Consolas,monospace;font-size:12px;line-height:1.35;color:#000}
@@ -121,6 +123,8 @@
     .receipt .sp{height:6px}
   }
 </style>
+<!-- Rewritten before every print job by applyPageSize(). -->
+<style id="pageStyle">@page{ size:80mm 200mm; margin:0 }</style>
 </head>
 <body>
 <div class="app">
@@ -790,8 +794,7 @@ function finalizeSale(doPrint){
   const sale=commitSale();
   if(!sale) return;
   if(doPrint){
-    buildReceipt(sale);
-    window.print();               // afterPrint() clears the sale
+    printSale(sale, false);       // bridge, or window.print() -> afterPrint()
   }else{
     toast('Saved '+sale.no+' · '+money(sale.total));
     clearSale(); render(); focusScan();
@@ -803,9 +806,8 @@ function afterPrint(){
 }
 function reprintSale(s){
   if(!s) return;
-  buildReceipt(s);
   suppressClearOnPrint=true;      // don't wipe the current in-progress basket
-  window.print();
+  printSale(s, true);
 }
 function reprintLast(){
   const sales=load(LS.sales,[]);
@@ -817,11 +819,115 @@ function toast(msg){
   clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('show'), 2200);
 }
 
+/* ---------------- receipt bridge ----------------
+   The TM-T88V speaks ESC/POS, but macOS has no driver for it and falls back to
+   "Epson 24-Pin Series" (ESC/P2, for dot-matrix). The printer can't read ESC/P2
+   and prints the escape bytes as characters — the "binary junk" symptom. So for
+   thermal paper we skip the print dialog entirely and POST the sale to a local
+   helper (receipt-bridge/), which builds ESC/POS and spools it with `lp -o raw`.
+
+   If the helper isn't running we silently fall back to window.print(), so the
+   till still works — just with the old broken-driver output. A4 always uses the
+   normal print dialog. */
+const BRIDGE_URL = 'http://127.0.0.1:9100';
+
+async function bridgeReady(){
+  if(settings.paper === 'A4') return false;
+  try{
+    const c = new AbortController();
+    const t = setTimeout(()=>c.abort(), 800);      // never hang the till
+    const r = await fetch(BRIDGE_URL + '/health', {signal:c.signal});
+    clearTimeout(t);
+    return r.ok;
+  }catch(e){ return false; }
+}
+
+async function bridgeSend(payload){
+  const c = new AbortController();
+  const t = setTimeout(()=>c.abort(), 6000);
+  let r;
+  try{
+    r = await fetch(BRIDGE_URL + '/print', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload), signal:c.signal});
+  } finally { clearTimeout(t); }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+function storeForBridge(){
+  return {name:settings.name, address:settings.address, phone:settings.phone,
+          abn:settings.abn, footer:settings.footer};
+}
+
+/* Shared tail: whatever route we printed by, the basket handling is the same. */
+function finishPrint(isReprint){
+  if(isReprint) suppressClearOnPrint = false; else clearSale();
+  render(); focusScan();
+}
+
+async function printSale(sale, isReprint){
+  if(await bridgeReady()){
+    try{
+      await bridgeSend({type:'receipt', store:storeForBridge(), sale,
+                        options:{cut:true, drawer:true}});
+      toast('Printed ' + sale.no);
+      finishPrint(isReprint);
+      return;
+    }catch(e){
+      console.error('[bridge] falling back to print dialog:', e);
+      toast('Printer bridge error - using print dialog');
+    }
+  } else if(settings.paper !== 'A4'){
+    // Thermal paper with no bridge = the broken ESC/P2 driver = binary junk.
+    // Say so loudly rather than quietly printing garbage.
+    toast('Receipt bridge not running - output may be unreadable');
+    console.warn('[bridge] not reachable at ' + BRIDGE_URL +
+      '. Start it via receipt-bridge/, and open the till over http:// or https:// ' +
+      '- a file:// page is not allowed to reach localhost.');
+  }
+  buildReceipt(sale);
+  if(isReprint) suppressClearOnPrint = true;
+  window.print();
+}
+
+/* ---------------- page geometry ----------------
+   Receipt roll is continuous, so each job must declare a page exactly as tall as
+   its own content. CSS can't express that — `@page{size:80mm auto}` is invalid
+   (a length may not be paired with `auto`), and var() is ignored inside @page.
+   An invalid `size` is dropped silently and the browser falls back to the
+   printer default (A4), which is why receipts landed on a strip of a 297mm page
+   and fed the remainder out blank. So: measure the receipt, then emit literal mm. */
+const PX_PER_MM = 96 / 25.4;
+
+function applyPageSize(){
+  const st = $('pageStyle');
+  if(settings.paper === 'A4'){
+    st.textContent = '@page{ size:A4 portrait; margin:12mm }';
+    return;
+  }
+  const pageW    = settings.paper === '58' ? 58 : 80;  // roll width
+  const contentW = settings.paper === '58' ? 48 : 72;  // printable width
+  const rec = $('receipt');
+
+  // .receipt is display:none until @media print applies, so measure it off-screen.
+  const saved = rec.getAttribute('style');
+  rec.style.cssText =
+    'display:block;position:absolute;visibility:hidden;left:-10000px;top:0;width:'+
+    contentW+'mm;font-family:"SFMono-Regular",Menlo,Consolas,monospace;'+
+    'font-size:12px;line-height:1.35';
+  const measuredMm = rec.scrollHeight / PX_PER_MM;
+  if(saved === null) rec.removeAttribute('style'); else rec.setAttribute('style', saved);
+
+  // +6mm tail so the final line clears the tear bar.
+  const pageH = Math.max(40, Math.ceil(measuredMm) + 6);
+  st.textContent = '@page{ size:'+pageW+'mm '+pageH+'mm; margin:0 }';
+}
+
 function buildReceipt(s){
   const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
-  const paperSize = settings.paper==='58' ? '58mm' : (settings.paper==='A4' ? 'A4' : '80mm');
   document.documentElement.style.setProperty('--rwidth', w);
-  document.documentElement.style.setProperty('--paper', paperSize);
   const d=new Date(s.ts);
   const dt = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   let h='';
@@ -857,6 +963,7 @@ function buildReceipt(s){
   if(settings.footer) h+='<div class="c">'+esc(settings.footer)+'</div>';
   h+='<div class="c" style="font-size:11px">'+dt+'</div>';
   $('receipt').innerHTML=h;
+  applyPageSize();
 }
 
 /* ---------------- search ---------------- */
@@ -950,10 +1057,31 @@ async function printTakings(){
   const key=$('takDate').value||todayKey();
   const {sales}=await combinedSales(key);
   const t=aggregate(sales); const d=new Date(key+'T00:00:00');
+  const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+  if(await bridgeReady()){
+    try{
+      await bridgeSend({type:'report', store:storeForBridge(),
+        report:{title:'DAILY TAKINGS', subtitle:dayLabel, rows:[
+          ['Sales', String(t.count)],
+          ['Cash', money(t.cash)],
+          ['Card', money(t.card)],
+          '-',
+          ['TOTAL', money(t.total), true],
+          '-',
+          ['Subtotal ex GST', money(t.sub)],
+          ['GST collected', money(t.gst)],
+        ]}, options:{cut:true, drawer:false}});
+      toast('Takings printed');
+      return;
+    }catch(e){
+      console.error('[bridge] falling back to print dialog:', e);
+      toast('Printer bridge error - using print dialog');
+    }
+  }
+
   const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
-  const paperSize = settings.paper==='58' ? '58mm' : (settings.paper==='A4' ? 'A4' : '80mm');
   document.documentElement.style.setProperty('--rwidth', w);
-  document.documentElement.style.setProperty('--paper', paperSize);
   let h='';
   h+='<div class="c b big">'+esc(settings.name)+'</div>';
   if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
@@ -967,6 +1095,7 @@ async function printTakings(){
   h+='<div class="tot"><span>GST collected</span><span>'+money(t.gst)+'</span></div>';
   h+='<hr><div class="c" style="font-size:11px">Printed '+new Date().toLocaleString('en-AU')+'</div>';
   $('receipt').innerHTML=h;
+  applyPageSize();
   suppressClearOnPrint=true; window.print();
 }
 

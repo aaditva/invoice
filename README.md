@@ -1,22 +1,46 @@
 # Store Till & Tax Invoice
 
 A barcode-scanning point-of-sale + **ATO tax-invoice** printer for a single Australian
-retail store. Reads your products live from your **Squarespace** store catalogue,
-tallies a basket as you scan, calculates GST (10% inclusive), takes **cash or card**,
-records **who served**, and prints to an **80 mm thermal receipt printer**.
+retail store. Tallies a basket as you scan, calculates GST (10% inclusive), takes
+**cash or card**, records **who served**, and prints to an **80 mm thermal receipt printer**.
 
 - **No build step.** `index.html` is the whole app. Runs on any browser/tablet/PC.
-- **Works offline** after the first catalogue sync (the product list is cached).
-- Your **secret API key never touches the browser** — a tiny read-only proxy holds it.
+- **Works offline** after the first sync (the product list is cached).
 
 ---
 
-## How it fits together
+## Getting your products in — pick ONE
+
+### ⭐ Option A — Google Sheet (no server, recommended, ~5 min)
+The simplest path — **no Netlify, no GitHub, no API key, nothing to deploy.**
+
+1. Make a Google Sheet with three columns and a header row:
+
+   | barcode | name | price |
+   |---------|------|-------|
+   | 9310072000012 | Full Cream Milk 2L | 3.90 |
+   | 93123457 | Chocolate Bar 50g | 2.50 |
+
+   - **barcode** = the number your scanner reads (EAN/UPC). **price** = shelf price, **GST included**.
+2. **File → Share → Publish to web → Entire document → "Comma-separated values (.csv)" → Publish.**
+   Copy the link it gives you (ends in `...pub?output=csv`).
+3. In the till: **⚙︎ Settings → Products link** → paste that link → **Save** → **Sync catalog**.
+4. To change a price or add a product, just **edit the Sheet**, then hit **Sync catalog** again.
+
+That's it. Skip to [step 5 (Point the till / daily use)](#5-daily-use) below. Everything else in
+this README (proxy, Netlify, API keys) is **only** for Option B.
+
+### Option B — Live sync from Squarespace (advanced, needs a deployed proxy)
+Pulls products straight from your Squarespace catalogue so you never re-type them. This needs a
+small server-side proxy because the browser can't call Squarespace directly. Follow steps 1–4 below.
 
 ```
-Squarespace store  ──►  proxy (worker.js / api/catalog.js)  ──►  index.html (the till)
-  (your products)        holds the secret API key, read-only        scans, totals, prints
+Squarespace store  ──►  proxy (Netlify / worker.js)  ──►  index.html (the till)
+  (your products)       holds the secret API key           scans, totals, prints
 ```
+
+> **Note:** Options A and B both feed the same "Products link" box in Settings — one is a Sheet
+> link, the other a proxy URL. You only need one.
 
 ---
 
@@ -38,6 +62,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 
 1. Squarespace → **Settings → Developer API Keys** (or *Advanced → Developer API Keys*).
 2. **Generate Key** → give it a name → permission **Products: Read Only**.
+   - To also use **live stock sync** ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)), give the *same* key **Inventory: Read/Write** as well.
 3. Copy the key (you only see it once). Keep it secret — it is *not* pasted into the app.
 
 ---
@@ -110,10 +135,71 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Reprint last** re-prints the most recent invoice (paper jams / cancelled print).
 - Settings → **Export sales CSV** gives your accountant an end-of-day/-month file.
 
-### Printer setup
-Use your browser's print dialog once to select the thermal printer and set margins to
-**None**. Chrome/Edge remember it. The receipt is sized from **Settings → Receipt paper**
+### Receipt printer: the ESC/POS bridge
+
+**The TM-T88V cannot be driven by the macOS print dialog.** It speaks ESC/POS.
+Epson no longer ships a Mac driver for it, so macOS assigns `Epson 24-Pin Series`
+— an ESC/P2 dot-matrix driver. The printer doesn't understand ESC/P2 and prints
+the escape bytes as characters, which comes out as pages of binary junk.
+
+The fix is `receipt-bridge/`: a small local helper that builds ESC/POS itself and
+hands it to CUPS with `lp -o raw`, which bypasses every filter so no driver ever
+touches the data.
+
+**Setup — pick one:**
+
+| Installer | Scope | Password | Starts |
+|---|---|---|---|
+| `Install For All Profiles.command` | **every account on the Mac** | admin password | at boot |
+| `Install Receipt Printer.command` | just the account that runs it | none | at login |
+
+Use the all-profiles one if more than one macOS account uses the till. It copies
+the bridge to `/usr/local/share/receipt-bridge/` (other accounts can't read your
+home folder) and installs a LaunchDaemon in `/Library/LaunchDaemons/`. It also
+removes the single-user login item if one exists, so the two can't fight over
+port 9100.
+
+Re-run the installer after editing `escpos-bridge.pl` — the daemon runs the
+deployed copy, not the one in this folder.
+
+**Single-user setup:** double-click **`receipt-bridge/Install Receipt Printer.command`**.
+No admin password, no driver install. It finds your Epson queue, prints a test
+docket, asks you to confirm it's readable, then installs a login item so the
+bridge starts automatically. To remove it, double-click
+`Uninstall Receipt Printer.command`.
+
+**Two requirements, or it silently falls back to the broken print dialog:**
+
+- The bridge must be running — check `curl http://127.0.0.1:9100/health`.
+- **The till must be served over `http://` or `https://`, not opened as a
+  `file://` page.** Chrome forbids a `file://` page from reaching localhost, so
+  the bridge is unreachable and you'll get binary output again. Use the Netlify
+  URL, or serve the folder locally.
+
+When thermal paper is selected and the bridge can't be reached, the till toasts
+*"Receipt bridge not running"* rather than quietly printing garbage.
+
+Logs: `~/Library/Logs/receipt-bridge.log`.
+
+### Printer setup (A4 only)
+Use your browser's print dialog once to select the thermal printer, then set:
+
+- **Margins: None** — the page already carries its own 4 mm side gutter.
+- **Scale: 100%** (not "Fit to page", which will shrink the receipt).
+- **Headers and footers: off** — otherwise the browser stamps the URL and date on every docket.
+
+Chrome/Edge remember these. The receipt is sized from **Settings → Receipt paper**
 (80 mm / 58 mm / A4).
+
+**How page height works.** Roll paper is continuous, so each job has to declare a page
+exactly as tall as its own content. `applyPageSize()` measures the rendered receipt just
+before printing and writes a literal rule such as `@page{ size:80mm 115mm; margin:0 }`.
+
+Do **not** be tempted to write `@page{ size:80mm auto }` — mixing a length with `auto` is
+invalid CSS, so the browser silently discards the whole `size` declaration and falls back
+to the system default paper. On an A4 machine that lays every receipt out on a 210×297 mm
+page: the text prints in a narrow strip and the printer feeds ~30 cm of blank roll after
+each sale. `var()` inside `@page` fails the same way. Literal millimetres only.
 
 ---
 
@@ -135,6 +221,40 @@ Turn on the shared log and **both tills feed one combined day total** that eithe
 4. Now **Takings** and **Invoices** show **✓ Combined — both tills**. If a device is offline,
    its sales still complete and print, and sync automatically once it's back online.
 
+## 7. Live stock sync (decrement Squarespace on each sale) — optional
+
+Turn this on and **every finalised sale lowers the matching Squarespace stock**, so the quantity
+on remactables.com drops automatically. You keep entering/restocking inventory in Squarespace as
+normal; the till just subtracts what you sell. Needs the **Squarespace (Option B)** product path —
+it matches each sold line to a Squarespace **variant by barcode/SKU**.
+
+```
+Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventory  ─► website stock drops
+                  decrementOperations[{variantId, qty}]   (Inventory: Read/Write)
+```
+
+1. It deploys automatically with the Netlify setup — it's the `netlify/functions/inventory.mjs`
+   function (served at `/api/inventory`). No extra dependency.
+2. Give your **`SQUARESPACE_API_KEY`** the **Inventory: Read/Write** permission (section 2). One key
+   with *Products: Read* **and** *Inventory: Read/Write* covers both the catalogue and stock sync.
+3. In Squarespace, make sure each sellable variant has **stock tracking on** (a *Limited* quantity,
+   not *Unlimited*) — there has to be a number to subtract from.
+4. On **each** till, **⚙︎ Settings → Live stock**: leave **Inventory update URL** as `/api/inventory`
+   (or the full `https://<your-site>.netlify.app/api/inventory` on a till hosted elsewhere). It reuses
+   the **Shared log token** from section 6 for auth. Blank = never touch stock.
+
+**How it behaves**
+- The till shows each item's **live stock** as you scan (`3 left`) and in Search/basket.
+- Selling more than is in stock **warns but still lets the sale through** (the item's in your hand) —
+  Squarespace stock can go negative, which flags what to reorder.
+- **Offline-safe & exactly-once:** a sale made offline still completes and prints, then decrements
+  when the connection returns. Each sale carries the invoice number as an **Idempotency-Key**, and the
+  till only sends the decrement once per sale, so a resync can't double-subtract.
+- After each sync the till snaps its counts to Squarespace's authoritative numbers.
+
+> Google-Sheet-only products (no Squarespace variant) can't be decremented — stock sync needs the
+> Squarespace catalogue path. If a scanned SKU isn't a Squarespace variant, that line is simply skipped.
+
 ## Where to run the till
 - **Recommended:** deploy to **Netlify** (Option A) — the till, the catalogue proxy and the
   shared log all live on one public site; open it in Chrome/Edge on each of your 2 devices.
@@ -142,8 +262,8 @@ Turn on the shared log and **both tills feed one combined day total** that eithe
   (no shared log — single device only).
 
 ## Notes & limits
-- This till **reads** your catalogue and prints invoices; it does **not** write sales
-  back into Squarespace or adjust its stock (by design — chosen setup).
+- This till **reads** your catalogue and prints invoices. It does **not** write *sales* back
+  into Squarespace, but it can optionally **adjust stock** on each sale ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)).
 - GST is treated as **inclusive** (price ÷ 11). Change the rate in Settings if needed.
 - Settings, catalogue cache and the invoice counter are per-device (localStorage). With the
   **shared log** on, the *sales record* is centralised in Netlify Blobs; without it, each
@@ -155,6 +275,7 @@ Turn on the shared log and **both tills feed one combined day total** that eithe
 | `index.html` | The till app — the only file you actually run. |
 | `netlify/functions/catalog.js` | Netlify catalogue proxy (holds the Squarespace key). |
 | `netlify/functions/sales.mjs` | Netlify shared sales log (combines both tills). |
+| `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
 | `api/catalog.js` | Vercel catalogue proxy (alt to Netlify). |
