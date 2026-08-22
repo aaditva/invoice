@@ -72,8 +72,10 @@ export default async (req) => {
     const unresolved = lines.filter(l => !l.variantId).map(l => l.sku);
     if (!ops.length) return json({ ok: true, adjusted: [], unresolved }, 200, headers);
 
-    // Idempotency-Key = the invoice number, so an offline resync can't double-deduct.
-    const idem = 'till-' + String((body && body.invoiceNo) || ops.map(o => o.variantId).join('-')).slice(0, 240);
+    // Idempotency-Key must be UNIQUE per sale (else Squarespace silently skips a "seen" key —
+    // invoice numbers repeat over time) yet STABLE for retries (so an offline resync can't
+    // double-deduct). The till sends idemKey = invoiceNo + '|' + sale timestamp, which is both.
+    const idem = 'till-' + String((body && body.idemKey) || (body && body.invoiceNo) || ops.map(o => o.variantId).join('-')).slice(0, 240);
     const r = await fetch(`${SQ}/inventory/adjustments`, {
       method: 'POST',
       headers: {
