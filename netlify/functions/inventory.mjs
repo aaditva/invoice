@@ -78,6 +78,8 @@ export default async (req) => {
     // Squarespace restricts this header to [a-zA-Z0-9-_], so sanitize (the till's key has ':'/'.' from the timestamp).
     const idem = ('till-' + String((body && body.idemKey) || (body && body.invoiceNo) || ops.map(o => o.variantId).join('-')))
       .replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 240);
+    // mode:'increment' PUTS stock back (a void/refund); default decrements (a sale).
+    const opKey = (body && body.mode) === 'increment' ? 'incrementOperations' : 'decrementOperations';
     const r = await fetch(`${SQ}/inventory/adjustments`, {
       method: 'POST',
       headers: {
@@ -86,7 +88,7 @@ export default async (req) => {
         'Content-Type': 'application/json',
         'Idempotency-Key': idem,
       },
-      body: JSON.stringify({ decrementOperations: ops }),
+      body: JSON.stringify({ [opKey]: ops }),
     });
     const text = await r.text();
     if (!r.ok) return json({ error: `Squarespace ${r.status}: ${text.slice(0, 300)}`, ops }, 502, headers);
