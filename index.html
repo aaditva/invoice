@@ -682,7 +682,7 @@ function updateFinalizeState(){
 
 /* ---------------- today summary ---------------- */
 function renderToday(){
-  const sales=load(LS.sales,[]).filter(s=>s.day===todayKey());
+  const sales=load(LS.sales,[]).filter(s=>s.day===todayKey() && !s.voided);
   let cash=0, card=0, gst=0;
   sales.forEach(s=>{ if(s.method==='cash')cash+=s.paid; else card+=s.paid; gst+=s.gst; });
   $('todayBox').innerHTML =
@@ -732,12 +732,14 @@ function commitSale(){
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
   return sale;
 }
-// Optimistically lower the cached stock so "X left" updates instantly between catalog syncs.
-function applyLocalStock(stockItems){
+// Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
+// dir = -1 for a sale (lower), +1 for a void/refund (put back).
+function applyLocalStock(stockItems, dir){
+  dir = dir || -1;
   let changed=false;
   for(const it of (stockItems||[])){
     const p=catItem(it.sku);
-    if(p && p.stock!==null && p.stock!==undefined){ p.stock=Number(p.stock)-it.quantity; changed=true; }
+    if(p && p.stock!==null && p.stock!==undefined){ p.stock=Number(p.stock)+dir*it.quantity; changed=true; }
   }
   if(changed) save(LS.catalog, catalog);
 }
@@ -797,7 +799,53 @@ async function adjustStock(sale){
 }
 async function flushUnadjusted(){
   if(!inventoryUrl()) return;
-  for(const s of load(LS.sales,[])){ if(!s.stockAdjusted && (s.stockItems||[]).length) await adjustStock(s); }
+  for(const s of load(LS.sales,[])){ if(!s.voided && !s.stockAdjusted && (s.stockItems||[]).length) await adjustStock(s); }
+}
+
+/* ---------------- void / refund a sale ---------------- */
+function markRestocked(no){
+  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
+  if(s && !s.restocked){ s.restocked=true; save(LS.sales, sales); }
+}
+// PUT the stock back in Squarespace for a voided sale (increment). Distinct idemKey from the sale's
+// decrement, and only while restocked===false → exactly once.
+async function restockInventory(sale){
+  if(!sale || !sale.voided || sale.restocked) return;
+  const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
+  if(!items.length){ markRestocked(sale.no); return; }
+  const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
+  try{
+    const idemKey = sale.no + '|void|' + (sale.voidedAt || '');
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, idemKey, mode:'increment', items})});
+    if(res.ok){ markRestocked(sale.no); try{ const d=await res.json(); reconcileStock(d && d.inventory); }catch(e){} }
+  }catch(e){ /* stays not-restocked; flushRestocks() retries */ }
+}
+async function flushRestocks(){
+  if(!inventoryUrl()) return;
+  for(const s of load(LS.sales,[])){ if(s.voided && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
+}
+// Void a sale (immediate refund): drops it from takings, puts the stock back, keeps a voided record.
+function voidSale(no){
+  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
+  if(!s){ alert('This invoice was rung up on the other till — void it from that device.'); return; }
+  if(s.voided) return;
+  if(!confirm('Void '+s.no+' ('+money(s.total)+')?\nThis removes it from takings and returns the stock to Squarespace.')) return;
+  s.voided=true; s.voidedAt=new Date().toISOString();
+  const wasDecremented = s.stockAdjusted===true && (s.stockItems||[]).length;
+  applyLocalStock(s.stockItems, +1);           // reverse the sale's optimistic on-screen drop (both cases)
+  if(wasDecremented){
+    s.restocked=false;                         // the decrement applied → put the stock back in Squarespace too
+  }else{
+    s.stockAdjusted=true;                      // decrement never applied → cancel it so it never does
+    s.restocked=true;                          // nothing to put back in Squarespace
+  }
+  s.synced=false;                              // push the voided state to the shared log
+  save(LS.sales, sales);
+  if(!s.restocked) restockInventory(s);        // reverse the Squarespace decrement
+  syncSale(s);                                 // update the shared log so combined takings drop it too
+  toast('Voided '+s.no);
+  renderToday();
+  return s;
 }
 // Snap the cached stock to Squarespace's authoritative post-adjustment quantities.
 function reconcileStock(inv){
@@ -832,10 +880,11 @@ async function combinedSales(day){
   return {sales: load(LS.sales,[]).filter(s=>s.day===day), combined:false};
 }
 function aggregate(sales){
+  const live=(sales||[]).filter(s=>!s.voided);   // voided/refunded sales don't count
   let cash=0, card=0, gst=0, sub=0;
-  sales.forEach(s=>{ if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total; gst+=s.gst; sub+=s.sub; });
+  live.forEach(s=>{ if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total; gst+=s.gst; sub+=s.sub; });
   cash=round2(cash); card=round2(card);
-  return {count:sales.length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
+  return {count:live.length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
 }
 function finalizeSale(doPrint){
   const sale=commitSale();
@@ -1058,11 +1107,11 @@ function renderInvList(q){
   }).slice(0,300);
   const list=$('invList');
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No invoices</span></div>'; return; }
-  list.innerHTML=res.map(s=>{ const d=new Date(s.ts);
-    return '<div class="r" data-no="'+esc(s.no)+'">'+
-      '<span>'+esc(s.no)+' <span class="isku">'+
+  list.innerHTML=res.map(s=>{ const d=new Date(s.ts); const v=s.voided;
+    return '<div class="r" data-no="'+esc(s.no)+'"'+(v?' style="opacity:.55"':'')+'>'+
+      '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+' <span class="isku">'+
         d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+'</span></span>'+
-      '<span class="money">'+money(s.total)+'</span></div>';
+      '<span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span></div>';
   }).join('');
 }
 function showInvoiceDetail(no){
@@ -1080,9 +1129,14 @@ function showInvoiceDetail(no){
   h+='<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(s.sub)+'</span></div>';
   h+='<div class="row"><span class="lbl">GST ('+s.rate+'%)</span><span class="money">'+money(s.gst)+'</span></div>';
   h+='<div class="row" style="font-weight:700"><span>Total ('+esc(s.method)+')</span><span class="money">'+money(s.total)+'</span></div>';
-  h+='<button class="ghost" id="btnReprintOne" style="margin-top:12px">Reprint this invoice</button></fieldset>';
+  if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+' — removed from takings; stock returned to Squarespace.</div>';
+  h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
+  h+='<button class="ghost" id="btnReprintOne">Reprint this invoice</button>';
+  if(!s.voided) h+='<button class="ghost" id="btnVoidOne" style="color:var(--danger)">Void / Refund</button>';
+  h+='</div></fieldset>';
   $('invDetail').innerHTML=h;
   $('btnReprintOne').onclick=()=>reprintSale(s);
+  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no)){ await loadInvoices(); showInvoiceDetail(s.no); } };
 }
 
 /* ---------------- day takings ---------------- */
@@ -1182,6 +1236,7 @@ function saveSettingsUI(){
   $('settingsModal').classList.remove('show');
   flushUnsynced();               // push any backlog now that the shared log may be configured
   flushUnadjusted();             // and any stock decrements now that the inventory URL may be set
+  flushRestocks();               // and any voided-sale restocks
 }
 function applySettings(){
   $('hStore').textContent=settings.name;
@@ -1193,7 +1248,7 @@ function applySettings(){
 
 /* ---------------- export ---------------- */
 function exportCsv(){
-  const sales=load(LS.sales,[]);
+  const sales=load(LS.sales,[]).filter(s=>!s.voided);   // voided/refunded sales are excluded
   if(!sales.length){ alert('No sales to export.'); return; }
   const head=['Invoice','Date','Time','Served by','Customer','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=sales.map(s=>{ const d=new Date(s.ts);
@@ -1297,6 +1352,7 @@ function bind(){
   focusScan();
   flushUnsynced();               // push any sales that were saved while offline
   flushUnadjusted();             // decrement Squarespace for any sales that couldn't reach it yet
+  flushRestocks();               // put stock back for any voided sales that couldn't reach it yet
   // Auto-refresh the product list on open, so it's always current with Squarespace.
   if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
 }
