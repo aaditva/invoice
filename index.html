@@ -786,7 +786,9 @@ async function adjustStock(sale){
   if(!items.length){ markStockAdjusted(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
   try{
-    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, items})});
+    // idemKey = invoice no + sale timestamp: unique per sale (invoice numbers repeat), stable on retry
+    const idemKey = sale.no + '|' + (sale.ts || '');
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, idemKey, items})});
     if(res.ok){
       markStockAdjusted(sale.no);
       try{ const d=await res.json(); reconcileStock(d && d.inventory); }catch(e){}
