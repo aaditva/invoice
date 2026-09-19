@@ -324,6 +324,7 @@
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="ghost" id="adRefresh">Refresh</button>
+        <button class="ghost" id="adPrint">Print sales summary</button>
         <button class="ghost" id="adExport">Export range CSV</button>
       </div>
     </div>
@@ -519,6 +520,8 @@ let settings = loadSettings();
 let catalog = load(LS.catalog, []);
 let catalogAt = localStorage.getItem(LS.catalogAt) || '';
 let skuMap = new Map();
+let variantMap = new Map();  // variantId -> product (so stock reconcile doesn't scan the catalog)
+let searchIndex = [];        // [{p, name, sku}] with the match keys pre-lowered/normalised once per sync
 let basket = [];             // {sku,name,price,qty}
 let method = null;           // 'cash' | 'card'
 let discountMode = 'amount'; // 'amount' | 'pct' — which field the user last set (held when the basket changes)
@@ -635,9 +638,20 @@ function closeAllModals(){
   document.querySelectorAll('.modal.show').forEach(m=>{ if(m.id!=='gateModal') m.classList.remove('show'); });
 }
 
+// One pass over the catalog builds every lookup the till needs: by SKU, by variant id,
+// and the pre-normalised search index. Everything downstream is then a map hit or a
+// scan over strings that are already in the right case, so a growing catalog doesn't
+// slow down scanning, searching or stock reconciliation.
 function rebuildSkuMap(){
   skuMap = new Map();
-  for(const p of catalog){ skuMap.set(normSku(p.sku), p); }
+  variantMap = new Map();
+  searchIndex = new Array(catalog.length);
+  for(let i=0;i<catalog.length;i++){
+    const p = catalog[i];
+    skuMap.set(normSku(p.sku), p);
+    if(p.variantId) variantMap.set(String(p.variantId), p);
+    searchIndex[i] = { p:p, name:String(p.name||'').toLowerCase(), sku:normSku(p.sku) };
+  }
 }
 
 /* ---------------- stock lookups ---------------- */
@@ -1105,7 +1119,7 @@ function reconcileStock(inv){
   for(const row of inv){
     if(!row) continue;
     const q = row.isUnlimited ? null : (row.quantity==null?null:Number(row.quantity));
-    let p = row.variantId ? (catalog.find(x=>x.variantId===row.variantId)||null) : null;
+    let p = row.variantId ? (variantMap.get(String(row.variantId))||null) : null;
     if(!p && row.sku) p=catItem(row.sku);
     if(p){ p.stock=q; changed=true; }
   }
@@ -1362,7 +1376,11 @@ function openSearch(){ $('searchModal').classList.add('show'); $('searchInput').
 function renderSearch(q){
   q=q.trim().toLowerCase();
   const list=$('searchResults'); list.innerHTML='';
-  const res = catalog.filter(p=> !q || (p.name||'').toLowerCase().includes(q) || normSku(p.sku).includes(normSku(q))).slice(0,50);
+  const MAX=50, qs=normSku(q), res=[];
+  for(let i=0;i<searchIndex.length && res.length<MAX;i++){
+    const e=searchIndex[i];
+    if(!q || e.name.includes(q) || e.sku.includes(qs)) res.push(e.p);
+  }
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No matches</span></div>'; return; }
   res.forEach(p=>{
     const r=document.createElement('div'); r.className='r';
@@ -1614,6 +1632,73 @@ function niceDay(key){
   const d=new Date(key+'T00:00:00');
   return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
 }
+// Print the period's takings the way Admin shows them: one total across every
+// store, then a line per store so the split is on the same docket. Same two
+// routes as a receipt — the ESC/POS bridge when it's there, the print dialog
+// when it isn't.
+async function printAdminSummary(){
+  const d=adState.data;
+  if(!d){ $('adStatus').textContent='Nothing loaded yet — hit Refresh first.'; return; }
+  const t=d.totals;
+  const scope = adState.store ? storeLabel(adState.store) : 'All stores';
+  const period = adState.from===adState.to ? niceDay(adState.from)
+    : niceDay(adState.from)+' \u2192 '+niceDay(adState.to);
+  const sub = scope+' \u00b7 '+period;
+  const ids = Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
+
+  if(await bridgeReady()){
+    try{
+      const rows=[
+        ['Sales', String(t.count)],
+        ['Cash', money(t.cash)],
+        ['Card', money(t.card)],
+        '-',
+        ['TOTAL', money(t.total), true],
+        '-',
+        ['Subtotal ex GST', money(t.sub)],
+        ['GST collected', money(t.gst)],
+      ];
+      if(ids.length>1){
+        rows.push('-');
+        rows.push(['BY STORE','']);
+        ids.forEach(id=>{ const a=d.byStore[id];
+          rows.push([storeLabel(id)+' ('+a.count+')', money(a.total)]); });
+      }
+      await bridgeSend({type:'report', store:storeForBridge(),
+        report:{title:'SALES SUMMARY', subtitle:sub, rows:rows},
+        options:{cut:true, drawer:false}});
+      toast('Sales summary printed');
+      return;
+    }catch(e){
+      console.error('[bridge] falling back to print dialog:', e);
+      toast('Printer bridge error - using print dialog');
+    }
+  }
+
+  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
+  document.documentElement.style.setProperty('--rwidth', w);
+  let h='';
+  h+='<div class="c b big">'+esc(settings.name)+'</div>';
+  if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
+  h+='<hr><div class="c b">SALES SUMMARY</div>';
+  h+='<div class="c">'+esc(sub)+'</div><hr>';
+  h+='<div class="tot"><span>Sales</span><span>'+t.count+'</span></div>';
+  h+='<div class="tot"><span>Cash</span><span>'+money(t.cash)+'</span></div>';
+  h+='<div class="tot"><span>Card</span><span>'+money(t.card)+'</span></div>';
+  h+='<div class="tot g"><span>TOTAL</span><span>'+money(t.total)+'</span></div>';
+  h+='<hr><div class="tot"><span>Subtotal ex GST</span><span>'+money(t.sub)+'</span></div>';
+  h+='<div class="tot"><span>GST collected</span><span>'+money(t.gst)+'</span></div>';
+  if(ids.length>1){
+    h+='<hr><div class="c b">BY STORE</div>';
+    ids.forEach(id=>{ const a=d.byStore[id];
+      h+='<div class="tot"><span>'+esc(storeLabel(id))+' ('+a.count+')</span><span>'+money(a.total)+'</span></div>'; });
+  }
+  h+='<hr><div class="c" style="font-size:11px">Printed '+new Date().toLocaleString('en-AU')+'</div>';
+  $('receipt').innerHTML=h;
+  applyPageSize();
+  suppressClearOnPrint=true; window.print();
+}
+
 // Every sale in the shown period, straight from the site — the file to hand the
 // accountant, with a Store column so both locations are in the one sheet.
 async function exportAdminCsv(){
@@ -1812,6 +1897,7 @@ function bind(){
   $('adFrom').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); loadAdmin(); });
   $('adTo').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); loadAdmin(); });
   $('adRefresh').onclick=()=>loadAdmin();
+  $('adPrint').onclick=printAdminSummary;
   $('adExport').onclick=exportAdminCsv;
   // A day row opens that day's invoices for that store, over the top of Admin;
   // closing it drops straight back here.
