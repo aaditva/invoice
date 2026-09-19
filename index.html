@@ -101,6 +101,50 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .bignum{font-size:40px;font-weight:800;line-height:1.1}
 
+  /* Store chip in the header — shows which location this till is ringing up for */
+  .storechip{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;
+    background:#e8f1fd;color:var(--card);padding:7px 12px;border-radius:999px}
+  .storechip .swap{opacity:.6;font-weight:400}
+
+  /* ---------- Store gate (shown before the till opens) ---------- */
+  /* Below .modal's z-index on purpose: Settings and Admin can be opened from the
+     gate and must paint over it, while the till itself stays covered. */
+  .gate{background:#f5f5f7;align-items:center;justify-content:center;padding:24px;z-index:45}
+  .gate .gatebox{width:100%;max-width:720px;text-align:center}
+  .gate h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+  .gate .gsub{color:var(--muted);margin:0 0 28px;font-size:15px}
+  .gatetiles{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:640px){ .gatetiles{grid-template-columns:1fr} }
+  .tile{background:var(--panel);border:2px solid var(--line);border-radius:18px;padding:30px 22px;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center}
+  .tile:hover{border-color:var(--accent)}
+  .tile .tname{font-size:22px;font-weight:700;letter-spacing:-.01em}
+  .tile .tsub{font-size:13px;color:var(--muted)}
+  .tile .ttag{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tile.last{border-color:var(--accent)}
+  .tile.last .tsub{color:var(--accent)}
+  .gatefoot{margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+  /* ---------- Admin ---------- */
+  .sheet.wide{max-width:860px}
+  .seg{display:inline-flex;gap:6px;flex-wrap:wrap}
+  .seg button{background:#f0f0f4;font-size:13.5px;padding:8px 14px}
+  .seg button.sel{background:var(--accent);color:var(--accent-ink)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .card{background:#f7f7f9;border-radius:12px;padding:14px}
+  .card .clbl{font-size:12.5px;color:var(--muted)}
+  .card .cval{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .card .csub{font-size:12px;color:var(--muted);margin-top:4px}
+  .dtable{width:100%;font-size:13.5px}
+  .dtable th{font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);
+    text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .dtable td{padding:9px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  .dtable tr.day td{cursor:pointer}
+  .dtable tr.day:hover td{background:#f5f5f7}
+  .dtable th.num,.dtable td.num{text-align:right}
+  .dtable tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+  .scroller{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+
   /* ---------- Receipt (screen hidden, print only) ---------- */
   .receipt{display:none}
   @media print{
@@ -130,11 +174,15 @@
 <div class="app">
   <header>
     <span class="store" id="hStore">Store Till</span>
+    <button class="storechip" id="btnSwitchStore" title="Switch to the other store">
+      <span id="hStoreName">—</span><span class="swap">⇄</span>
+    </button>
     <span class="pill"><span class="dot" id="catDot"></span><b id="catCount">0</b>&nbsp;products <span id="catWhen" class="muted"></span></span>
     <button class="ghost" id="btnSync">Sync catalog</button>
     <button class="ghost" id="btnReprint">⟲ Reprint last</button>
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
+    <button class="ghost" id="btnAdmin">Admin</button>
     <span class="spacer"></span>
     <div class="today" id="todayBox" title="Click for full day takings"></div>
     <button class="ghost" id="btnSettings">⚙︎ Settings</button>
@@ -232,6 +280,56 @@
   </main>
 </div>
 
+<!-- STORE GATE — shown before the till opens; nothing else is reachable until a store is picked -->
+<div class="modal gate" id="gateModal">
+  <div class="gatebox">
+    <h1 id="gateTitle">Which store?</h1>
+    <p class="gsub">Pick the location this till is ringing up for. Its sales are kept on the site, so either store can be opened from any device.</p>
+    <div class="gatetiles" id="gateTiles"></div>
+    <div class="gatefoot">
+      <button class="ghost" id="gateAdmin">View all stores — Admin</button>
+      <button class="ghost" id="gateSettings">⚙︎ Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN MODAL — takings and invoices for any store, any day -->
+<div class="modal" id="adminModal">
+  <div class="sheet wide">
+    <header><span class="store">Admin — all stores</span><span class="spacer"></span><button class="ghost" id="closeAdmin">Close</button></header>
+    <div class="body">
+      <div class="field">
+        <label>Store</label>
+        <div class="seg" id="adStores"></div>
+      </div>
+      <div class="field">
+        <label>Period</label>
+        <div class="seg" id="adPresets">
+          <button data-range="today">Today</button>
+          <button data-range="7">Last 7 days</button>
+          <button data-range="month">This month</button>
+          <button data-range="30">Last 30 days</button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="adFrom">From</label><input type="date" id="adFrom" /></div>
+        <div class="field"><label for="adTo">To</label><input type="date" id="adTo" /></div>
+      </div>
+      <div class="muted" id="adStatus"></div>
+      <div id="adSummary"></div>
+      <div id="adByStore"></div>
+      <div class="field" id="adDaysWrap" style="display:none">
+        <label>Day by day — click a row to see that day's invoices</label>
+        <div class="scroller"><table class="dtable" id="adDays"></table></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="ghost" id="adRefresh">Refresh</button>
+        <button class="ghost" id="adExport">Export range CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal" id="settingsModal">
   <div class="sheet">
@@ -245,6 +343,15 @@
         </div>
         <div class="field"><label>Address</label><input id="sAddress" placeholder="123 Main St, Suburb VIC 3000" /></div>
         <div class="field"><label>Receipt footer message</label><input id="sFooter" placeholder="Thank you — no refunds without receipt" /></div>
+      </fieldset>
+
+      <fieldset><legend>Stores</legend>
+        <div class="hint" style="margin:0 0 10px">The two boxes on the opening screen. A blank address or phone falls back to the business details above; whatever is filled in here is what that store's tax invoices print.</div>
+        <div id="sStores"></div>
+        <div class="field" style="margin-top:12px"><label>Admin password</label><input id="sAdminPin" autocomplete="off" placeholder="blank = no password" />
+          <div class="hint">Asked for each time the Admin tab is opened, so a customer at the counter can't read the day's takings. Blank = open to anyone.
+          <b>It is stored in this page</b>, which a public site serves to anyone — treat it as a counter lock, not a secret, and don't reuse a password from elsewhere.</div>
+        </div>
       </fieldset>
 
       <fieldset><legend>Products link</legend>
@@ -262,14 +369,14 @@
         </div>
       </fieldset>
 
-      <fieldset><legend>Shared log — combine both tills (optional)</legend>
-        <div class="field"><label>Shared log URL</label><input id="sShareUrl" placeholder="https://your-site.netlify.app/api/sales" />
-          <div class="hint">Both devices point here so the day's takings and invoices combine live. Leave blank to keep this device on its own.</div>
+      <fieldset><legend>Sales memory — where the sales are kept</legend>
+        <div class="field"><label>Sales log URL</label><input id="sShareUrl" placeholder="/api/sales" />
+          <div class="hint">Leave as <b>/api/sales</b> if this till is hosted on your Netlify site. Every sale is written here, so <b>Today, Invoices, Takings and Admin all read the site's record</b> rather than this browser — any device can see any store's sales, for today or any earlier day. Blank falls back to this browser only (single device, no Admin).</div>
         </div>
         <div class="grid2">
-          <div class="field"><label>Shared log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" /></div>
-          <div class="field"><label>Device tag</label><input id="sDevice" placeholder="e.g. 1 or A" />
-            <div class="hint">Give each till a different tag so invoice numbers never clash (INV-1-0007 vs INV-2-0007).</div>
+          <div class="field"><label>Sales log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" /></div>
+          <div class="field"><label>Device tag (optional)</label><input id="sDevice" placeholder="e.g. 2" />
+            <div class="hint">Only needed if <b>two tills share one store</b> — it keeps their invoice numbers apart (INV-SM-0007 vs INV-SM2-0007). The store already tags its own numbers.</div>
           </div>
         </div>
       </fieldset>
@@ -295,15 +402,18 @@
         </div>
         <div class="grid2">
           <div class="field"><label>Invoice prefix</label><input id="sPrefix" value="INV-" /></div>
-          <div class="field"><label>Next invoice #</label><input id="sCounter" inputmode="numeric" value="1" /></div>
+          <div class="field"><label>Next invoice # <span id="sCounterStore" class="muted"></span></label><input id="sCounter" inputmode="numeric" value="1" />
+            <div class="hint">Each store counts separately, so its invoices run in sequence.</div>
+          </div>
         </div>
       </fieldset>
 
-      <fieldset><legend>Sales log</legend>
+      <fieldset><legend>This device's copy of the log</legend>
         <div class="muted" id="logInfo">No sales recorded yet.</div>
+        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from.</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
-          <button class="ghost" id="btnExport">Export sales CSV</button>
-          <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear sales log</button>
+          <button class="ghost" id="btnExport">Export this device's CSV</button>
+          <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear local copy</button>
         </div>
       </fieldset>
     </div>
@@ -366,8 +476,18 @@
 
 const LS = {
   settings:'inv_settings', catalog:'inv_catalog', catalogAt:'inv_catalog_at',
-  counter:'inv_counter', sales:'inv_sales'
+  counter:'inv_counter', sales:'inv_sales', store:'inv_store'
 };
+
+/* The two shop locations. Pick one on the opening screen; every sale is stamped
+   with it and filed under it on the server. `tag` goes into the invoice number
+   so the two stores' numbers can never collide (INV-SM-0007 / INV-RX-0007).
+   The ids are what the server files sales under, so they never change — the
+   display name, address and phone are editable in Settings → Stores. */
+const STORE_DEFS = [
+  { id:'south-melbourne', name:'South Melbourne', tag:'SM' },
+  { id:'roxy',            name:'Roxy',            tag:'RX' }
+];
 
 const DEFAULTS = {
   name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
@@ -376,7 +496,13 @@ const DEFAULTS = {
   // Live stock write-back to Squarespace on each sale (blank = don't touch stock).
   invUrl:'/api/inventory',
   staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
-  shareUrl:'', shareToken:'', device:''
+  // The site's sales record — where Today / Invoices / Takings / Admin read from.
+  shareUrl:'/api/sales', shareToken:'', device:'',
+  // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
+  // Asked for before Admin opens. It ships set, and is changeable in Settings.
+  // Note it is in the page source of a public site, so it's a counter speed-bump
+  // that keeps a customer out of the day's takings — not a real secret.
+  stores:{}, adminPin:'lotto2rema'
 };
 
 const DEMO = [
@@ -398,18 +524,116 @@ let method = null;           // 'cash' | 'card'
 let discountMode = 'amount'; // 'amount' | 'pct' — which field the user last set (held when the basket changes)
 let discountAmt = 0;         // $ off (when mode==='amount')
 let discountPct = 0;         // % off (when mode==='pct')
+let currentStore = null;     // the location picked on the opening screen — null until then
+let todayTally = null;       // today's takings as the server reports them (see refreshToday)
 
 /* ---------------- helpers ---------------- */
 function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
 function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
-function loadSettings(){ return Object.assign({}, DEFAULTS, load(LS.settings, {})); }
+function loadSettings(){
+  const saved = load(LS.settings, {}) || {};
+  const s = Object.assign({}, DEFAULTS, saved);
+  if(!s.stores || typeof s.stores!=='object' || Array.isArray(s.stores)) s.stores = {};
+  // One-time: a till set up before the sales moved onto the site has a blank URL
+  // saved, which would keep it on browser-only storage. Point it at the site's
+  // log once. After the next Save (which stores v) a blank is taken as deliberate.
+  if(!saved.v && !saved.shareUrl) s.shareUrl = DEFAULTS.shareUrl;
+  s.v = 2;
+  return s;
+}
 function money(n){ return settings.currency + (Math.round((n+Number.EPSILON)*100)/100).toFixed(2); }
 function round2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
 function round5(n){ return Math.round(n*20)/20; }                 // nearest 0.05
 function normSku(s){ return String(s==null?'':s).trim().toUpperCase().replace(/\s+/g,''); }
-function todayKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayKey(){ return dayOf(new Date()); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function $(id){ return document.getElementById(id); }
+function dayOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function shiftDay(key, n){ const d=new Date(key+'T00:00:00'); d.setDate(d.getDate()+n); return dayOf(d); }
+
+/* ---------------- stores ---------------- *
+   A store's live details: the fixed id/tag from STORE_DEFS plus whatever
+   Settings → Stores overrides. The id is what the server files sales under, so
+   renaming a store in Settings never orphans its history. */
+function storeById(id){
+  const def = STORE_DEFS.find(s=>s.id===id);
+  if(!def) return null;
+  const ov = (settings.stores && settings.stores[id]) || {};
+  return { id:def.id, tag:def.tag,
+           name:String(ov.name||'').trim() || def.name,
+           address:String(ov.address||'').trim(),
+           phone:String(ov.phone||'').trim() };
+}
+function allStores(){ return STORE_DEFS.map(d=>storeById(d.id)); }
+// Label for any store id, including ones the server knows but we don't define
+// (e.g. 'unassigned' — sales rung up before the store selector existed).
+function storeLabel(id){
+  const s = id ? storeById(id) : null;
+  if(s) return s.name;
+  if(!id || id==='unassigned') return 'Unassigned';
+  return id;
+}
+// Invoice numbers count per store, so each location's run stays in sequence.
+function counterKey(){ return currentStore ? (LS.counter+':'+currentStore.id) : LS.counter; }
+function readCounter(){
+  const n = parseInt(localStorage.getItem(counterKey())||'', 10);
+  if(!isNaN(n)) return n;
+  // First sale for this store on this device — carry the old single counter over.
+  const legacy = parseInt(localStorage.getItem(LS.counter)||'1', 10);
+  return isNaN(legacy) ? 1 : legacy;
+}
+// Supplier details for the docket: the business, with the store's own address
+// and phone when it has them, and the location named so the two differ. Pass the
+// sale when re-printing, so a Roxy invoice still prints Roxy's details even when
+// it's re-printed from the South Melbourne till.
+function receiptStore(sale){
+  const st = (sale && sale.store ? storeById(sale.store) : null) || currentStore;
+  return {
+    name: settings.name,
+    location: st ? st.name : ((sale && sale.storeName) || ''),
+    address: (st && st.address) || settings.address,
+    phone:   (st && st.phone)   || settings.phone,
+    abn: settings.abn, footer: settings.footer
+  };
+}
+
+/* ---------------- the opening screen ---------------- *
+   The till is unusable until a store is picked: the gate sits above every other
+   panel, and nothing reads or writes a sale without currentStore set. */
+function openGate(){
+  renderGate();
+  $('gateModal').classList.add('show');
+}
+function renderGate(){
+  const last = localStorage.getItem(LS.store) || '';
+  $('gateTiles').innerHTML = allStores().map(s=>
+    '<button class="tile'+(s.id===last?' last':'')+'" data-store="'+esc(s.id)+'">'+
+      '<span class="tname">'+esc(s.name)+'</span>'+
+      '<span class="tsub">'+(s.id===last?'Last used on this device':'Open the till here')+'</span>'+
+      '<span class="ttag">'+esc(settings.prefix+s.tag+'-')+'…</span>'+
+    '</button>').join('');
+}
+function selectStore(id){
+  const s = storeById(id); if(!s) return;
+  currentStore = s;
+  localStorage.setItem(LS.store, s.id);
+  $('gateModal').classList.remove('show');
+  clearSale();                    // a basket belongs to one store, never both
+  applySettings();
+  todayTally = null; renderToday();
+  refreshToday();                 // pull this store's day from the site's record
+  flushUnsynced();
+  focusScan();
+}
+function switchStore(){
+  if(basket.length && !confirm('Switch store? The sale in progress will be cleared.')) return;
+  closeAllModals();
+  clearSale();
+  openGate();
+}
+function closeAllModals(){
+  document.querySelectorAll('.modal.show').forEach(m=>{ if(m.id!=='gateModal') m.classList.remove('show'); });
+}
 
 function rebuildSkuMap(){
   skuMap = new Map();
@@ -681,15 +905,37 @@ function updateFinalizeState(){
 }
 
 /* ---------------- today summary ---------------- */
+/* The header tally is this store's whole day as the site has it, so it counts
+   sales rung up on another device too. render() runs on every keystroke, so it
+   only paints the figure refreshToday() last fetched. */
 function renderToday(){
-  const sales=load(LS.sales,[]).filter(s=>s.day===todayKey() && !s.voided);
-  let cash=0, card=0, gst=0;
-  sales.forEach(s=>{ if(s.method==='cash')cash+=s.paid; else card+=s.paid; gst+=s.gst; });
+  const t = todayTally || localTally(todayKey());
   $('todayBox').innerHTML =
-    '<span>Today: <b>'+sales.length+'</b> sales</span>'+
-    '<span>Cash <b>'+money(cash)+'</b></span>'+
-    '<span>Card <b>'+money(card)+'</b></span>'+
-    '<span>GST <b>'+money(gst)+'</b></span>';
+    '<span>Today: <b>'+t.count+'</b> sales</span>'+
+    '<span>Cash <b>'+money(t.cash)+'</b></span>'+
+    '<span>Card <b>'+money(t.card)+'</b></span>'+
+    '<span>GST <b>'+money(t.gst)+'</b></span>'+
+    (t.local ? '<span class="muted">this device only</span>' : '');
+}
+// Does this locally-stored sale belong to the store that's open? Sales rung up
+// before the store selector existed have no store and are filed as Unassigned.
+function sameStore(s){ return !!currentStore && String((s&&s.store)||'') === currentStore.id; }
+function localTally(day){
+  const t = aggregate(load(LS.sales,[]).filter(s=>s.day===day && sameStore(s)));
+  t.local = true;
+  return t;
+}
+let todayBusy = false;
+async function refreshToday(){
+  if(!currentStore || todayBusy) return;
+  todayBusy = true;
+  try{
+    const {sales, combined} = await storeDaySales(todayKey());
+    todayTally = aggregate(sales);
+    todayTally.local = !combined;          // server unreachable → say so in the header
+  }catch(e){ todayTally = null; }
+  finally{ todayBusy = false; }
+  renderToday();
 }
 
 /* ---------------- finalise + print ---------------- */
@@ -697,6 +943,7 @@ let suppressClearOnPrint=false;   // true while re-printing a sale or a report (
 
 function commitSale(){
   const t=totals();
+  if(!currentStore) return null;          // no sale exists outside a store
   if(!basket.length || !method || !$('servedBy').value) return null;
   if(t.total>=1000 && !$('customer').value.trim()) return null;
   if(method==='cash'){ const tv=parseFloat($('tender').value); if(isFinite(tv) && tv<round5(t.total)) return null; }
@@ -708,8 +955,10 @@ function commitSale(){
     const tv=parseFloat($('tender').value);
     if(isFinite(tv)){ tendered=round2(tv); change=round2(Math.max(0,tv-ct)); }
   }
-  let counter=parseInt(localStorage.getItem(LS.counter)||'1',10); if(isNaN(counter)) counter=1;
-  const tag = settings.device ? (settings.device.trim()+'-') : '';   // per-device tag keeps numbers unique across tills
+  const counter = readCounter();
+  // The store tag keeps the two locations' numbers apart; the device tag is only
+  // needed when two tills share one store (INV-SM-0007 vs INV-SM2-0007).
+  const tag = currentStore.tag + (settings.device||'').trim() + '-';
   const invNo = settings.prefix + tag + String(counter).padStart(4,'0');
   // Real catalog lines whose stock should drop in Squarespace (skip misc/custom lines).
   const stockItems = basket.filter(b=>!b.misc).map(b=>{
@@ -718,6 +967,7 @@ function commitSale(){
   }).filter(x=>x.variantId || x.sku);
   const sale = {
     no:invNo, day:todayKey(), ts:new Date().toISOString(),
+    store: currentStore.id, storeName: currentStore.name,
     method, servedBy, customer, device: settings.device||'',
     items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
@@ -726,10 +976,11 @@ function commitSale(){
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
-  localStorage.setItem(LS.counter, String(counter+1));
+  localStorage.setItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
-  syncSale(sale);                 // push to shared log (no-op if not configured; retried later if offline)
+  syncSale(sale);                 // write to the site's record (retried later if offline)
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
+  refreshToday();                 // re-read the day from the site so both tills agree
   return sale;
 }
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
@@ -755,9 +1006,9 @@ function markSynced(no){
   if(s && !s.synced){ s.synced=true; save(LS.sales, sales); }
 }
 async function syncSale(sale){
-  if(!settings.shareUrl) return;
+  const url=salesUrl(); if(!url) return;
   try{
-    const res=await fetch(settings.shareUrl, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
     if(res.ok) markSynced(sale.no);
   }catch(e){ /* stays unsynced; flushUnsynced() retries */ }
 }
@@ -842,9 +1093,9 @@ function voidSale(no){
   s.synced=false;                              // push the voided state to the shared log
   save(LS.sales, sales);
   if(!s.restocked) restockInventory(s);        // reverse the Squarespace decrement
-  syncSale(s);                                 // update the shared log so combined takings drop it too
+  syncSale(s);                                 // update the site's record so every device drops it
   toast('Voided '+s.no);
-  renderToday();
+  refreshToday();
   return s;
 }
 // Snap the cached stock to Squarespace's authoritative post-adjustment quantities.
@@ -860,24 +1111,56 @@ function reconcileStock(inv){
   }
   if(changed){ save(LS.catalog, catalog); render(); }
 }
-async function fetchServerSales(day){
-  if(!settings.shareUrl) return null;
+/* ---------------- reading the site's record ---------------- *
+   Sales live on the site, not in this browser. These read them back: one store's
+   day for the till's own views, or a date range across stores for Admin. */
+
+// Resolve the sales-log endpoint. A relative '/api/sales' works when the till is
+// hosted on Netlify; if catUrl is a full URL (a till hosted elsewhere), resolve
+// against its origin, the same way inventoryUrl() does.
+function salesUrl(params){
+  let u=(settings.shareUrl||'').trim();
+  if(!u) return '';
+  if(!/^https?:\/\//i.test(u)){
+    try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  }
+  const q=new URLSearchParams(params||{}).toString();
+  return q ? (u+(u.indexOf('?')>=0?'&':'?')+q) : u;
+}
+// null = couldn't reach it at all. An {error} object = it answered and said why
+// (range too long, wrong token), which is worth showing instead of "offline".
+async function fetchServerSales(params){
+  const url=salesUrl(params); if(!url) return null;
   try{
-    const res=await fetch(settings.shareUrl+'?day='+encodeURIComponent(day), {headers:shareHeaders(false)});
-    if(!res.ok) return null;
-    const d=await res.json();
-    return Array.isArray(d.sales)? d.sales : [];
+    const res=await fetch(url, {headers:shareHeaders(false)});
+    let d=null; try{ d=await res.json(); }catch(e){}
+    if(res.ok) return d;
+    return (d && d.error) ? d : {error:'The sales log returned HTTP '+res.status+'.'};
   }catch(e){ return null; }
 }
-// Combined day sales: server (both tills) merged with any local not-yet-synced sales.
-async function combinedSales(day){
-  const server=await fetchServerSales(day);
-  if(server){
-    const map=new Map(); server.forEach(s=>map.set(s.no,s));
-    load(LS.sales,[]).filter(s=>s.day===day && !s.synced).forEach(s=>{ if(!map.has(s.no)) map.set(s.no,s); });
+// One store's sales for one day: the site's record, topped up with anything this
+// device hasn't managed to send yet. combined:false means the site was
+// unreachable and these are this device's own sales only.
+async function storeDaySales(day, storeId){
+  const store = storeId!==undefined ? storeId : (currentStore && currentStore.id) || '';
+  const mine = s => !store || String(s.store||'')===store;
+  const d = await fetchServerSales(store ? {day, store} : {day});
+  if(d && Array.isArray(d.sales)){
+    const map=new Map(); d.sales.forEach(s=>map.set(String(s.no), s));
+    load(LS.sales,[]).filter(s=>s.day===day && !s.synced && mine(s))
+      .forEach(s=>{ if(!map.has(String(s.no))) map.set(String(s.no), s); });
     return {sales:[...map.values()], combined:true};
   }
-  return {sales: load(LS.sales,[]).filter(s=>s.day===day), combined:false};
+  return {sales: load(LS.sales,[]).filter(s=>s.day===day && mine(s)), combined:false};
+}
+// Per-day / per-store takings for a range. The server aggregates so a month
+// doesn't have to come down the wire sale by sale; include=sales when the raw
+// rows are needed (Admin → Export CSV).
+async function rangeSales(from, to, storeId, withSales){
+  const p = {from, to};
+  if(storeId) p.store = storeId;
+  if(withSales) p.include = 'sales';
+  return await fetchServerSales(p);
 }
 function aggregate(sales){
   const live=(sales||[]).filter(s=>!s.voided);   // voided/refunded sales don't count
@@ -906,9 +1189,11 @@ function reprintSale(s){
   printSale(s, true);
 }
 function reprintLast(){
-  const sales=load(LS.sales,[]);
-  if(!sales.length){ alert('No sales to reprint yet.'); return; }
-  reprintSale(sales[sales.length-1]);
+  // The last sale rung up at this store on this device — what you want after a
+  // paper jam. The other store's docket is never what "reprint last" means.
+  const mine=load(LS.sales,[]).filter(s=>sameStore(s));
+  if(!mine.length){ alert('No sales to reprint at '+(currentStore?currentStore.name:'this store')+' yet.'); return; }
+  reprintSale(mine[mine.length-1]);
 }
 function toast(msg){
   const el=$('toast'); el.textContent=msg; el.classList.add('show');
@@ -952,9 +1237,13 @@ async function bridgeSend(payload){
   return j;
 }
 
-function storeForBridge(){
-  return {name:settings.name, address:settings.address, phone:settings.phone,
-          abn:settings.abn, footer:settings.footer};
+/* The ESC/POS bridge prints a fixed header — name, address, phone, ABN — so the
+   location rides along on the address line rather than needing its own field.
+   That keeps escpos-bridge.pl untouched, and so needs no re-install. */
+function storeForBridge(sale){
+  const st=receiptStore(sale);
+  const addr = st.location ? (st.location + (st.address ? ' · '+st.address : '')) : st.address;
+  return {name:st.name, address:addr, phone:st.phone, abn:st.abn, footer:st.footer};
 }
 
 /* Shared tail: whatever route we printed by, the basket handling is the same. */
@@ -966,7 +1255,7 @@ function finishPrint(isReprint){
 async function printSale(sale, isReprint){
   if(await bridgeReady()){
     try{
-      await bridgeSend({type:'receipt', store:storeForBridge(), sale,
+      await bridgeSend({type:'receipt', store:storeForBridge(sale), sale,
                         options:{cut:true, drawer:true}});
       toast('Printed ' + sale.no);
       finishPrint(isReprint);
@@ -1026,11 +1315,13 @@ function buildReceipt(s){
   document.documentElement.style.setProperty('--rwidth', w);
   const d=new Date(s.ts);
   const dt = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+  const st=receiptStore(s);
   let h='';
-  h+='<div class="c b big">'+esc(settings.name)+'</div>';
-  if(settings.address) h+='<div class="c">'+esc(settings.address)+'</div>';
-  if(settings.phone)   h+='<div class="c">'+esc(settings.phone)+'</div>';
-  if(settings.abn)     h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
+  h+='<div class="c b big">'+esc(st.name)+'</div>';
+  if(st.location) h+='<div class="c b">'+esc(st.location)+'</div>';
+  if(st.address)  h+='<div class="c">'+esc(st.address)+'</div>';
+  if(st.phone)    h+='<div class="c">'+esc(st.phone)+'</div>';
+  if(st.abn)      h+='<div class="c">ABN '+esc(st.abn)+'</div>';
   h+='<hr>';
   h+='<div class="c b">TAX INVOICE</div>';
   h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
@@ -1084,18 +1375,23 @@ function renderSearch(q){
 }
 
 /* ---------------- previous invoices ---------------- */
-let invCache=[];   // sales for the selected date (combined across tills)
-async function openInvoices(){
+let invCache=[];       // sales for the selected date, as the site has them
+let invScopeStore;     // undefined = the store that's open; an id = that store (Admin drill-down)
+async function openInvoices(day, storeId){
+  invScopeStore = storeId;
   $('invoicesModal').classList.add('show'); $('invSearch').value=''; $('invDetail').innerHTML='';
-  $('invDate').value=todayKey();
+  $('invDate').value = day || todayKey();
   await loadInvoices(); setTimeout(()=>$('invSearch').focus(),50);
 }
 async function loadInvoices(){
   const day=$('invDate').value||todayKey();
   $('invScope').textContent='Loading…';
-  const {sales,combined}=await combinedSales(day);
+  const {sales,combined}=await storeDaySales(day, invScopeStore);
   invCache=sales;
-  $('invScope').textContent=(combined?'Combined — both tills':'This device')+' · '+sales.length+' invoice'+(sales.length===1?'':'s');
+  const where = invScopeStore===undefined ? (currentStore ? currentStore.name : 'All stores')
+              : (invScopeStore ? storeLabel(invScopeStore) : 'All stores');
+  $('invScope').textContent = where+' · '+(combined?'from the site — every device':'this device only (site unreachable)')+
+    ' · '+sales.length+' invoice'+(sales.length===1?'':'s');
   renderInvList($('invSearch').value);
 }
 function renderInvList(q){
@@ -1118,7 +1414,7 @@ function showInvoiceDetail(no){
   const s=invCache.find(x=>x.no===no) || load(LS.sales,[]).find(x=>x.no===no); if(!s) return;
   const d=new Date(s.ts);
   let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
-  h+='<div class="muted">'+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+'</div>';
+  h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+'</div>';
   h+='<div style="margin:10px 0">';
   s.items.forEach(i=>{ h+='<div class="row"><span>'+i.qty+' × '+esc(i.name)+'</span><span class="money">'+money(i.price*i.qty)+'</span></div>'; });
   h+='</div>';
@@ -1144,14 +1440,14 @@ function openTakings(){ $('takingsModal').classList.add('show'); $('takDate').va
 async function renderTakings(){
   const key=$('takDate').value||todayKey();
   $('takScope').textContent='Loading…';
-  const {sales,combined}=await combinedSales(key);
+  const {sales,combined}=await storeDaySales(key);
   const t=aggregate(sales);
   const d=new Date(key+'T00:00:00');
-  $('takScope').textContent = combined ? '✓ Combined — both tills'
-    : (settings.shareUrl ? 'This device only (shared log unreachable)' : 'This device');
+  $('takScope').textContent = combined ? '✓ From the site — every device at this store'
+    : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device');
   $('takSummary').innerHTML=
     '<div style="text-align:center;margin:6px 0 14px">'+
-      '<div class="muted">Total takings — '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
+      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+' — '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
       '<div class="bignum">'+money(t.total)+'</div>'+
       '<div class="muted">'+t.count+' sale'+(t.count===1?'':'s')+'</div>'+
     '</div>'+
@@ -1164,9 +1460,10 @@ async function renderTakings(){
 }
 async function printTakings(){
   const key=$('takDate').value||todayKey();
-  const {sales}=await combinedSales(key);
+  const {sales}=await storeDaySales(key);
   const t=aggregate(sales); const d=new Date(key+'T00:00:00');
-  const dayLabel=d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const dayLabel=(currentStore?currentStore.name+' · ':'')+
+    d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
   if(await bridgeReady()){
     try{
@@ -1193,9 +1490,10 @@ async function printTakings(){
   document.documentElement.style.setProperty('--rwidth', w);
   let h='';
   h+='<div class="c b big">'+esc(settings.name)+'</div>';
+  if(currentStore) h+='<div class="c b">'+esc(currentStore.name)+'</div>';
   if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
   h+='<hr><div class="c b">DAILY TAKINGS</div>';
-  h+='<div class="c">'+d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'</div><hr>';
+  h+='<div class="c">'+esc(dayLabel)+'</div><hr>';
   h+='<div class="tot"><span>Sales</span><span>'+t.count+'</span></div>';
   h+='<div class="tot"><span>Cash</span><span>'+money(t.cash)+'</span></div>';
   h+='<div class="tot"><span>Card</span><span>'+money(t.card)+'</span></div>';
@@ -1208,17 +1506,176 @@ async function printTakings(){
   suppressClearOnPrint=true; window.print();
 }
 
+/* ---------------- admin — any store, any day ---------------- *
+   Reads the site's record only: this view is about what the business took, not
+   about what happens to be cached in the browser it's opened in. */
+let adState = { store:'', from:'', to:'', preset:'today', data:null };
+
+function openAdmin(){
+  const pin=String(settings.adminPin||'').trim();
+  if(pin){
+    const got=prompt('Admin password');
+    if(got===null) return;                       // cancelled
+    if(String(got).trim()!==pin){ toast('Wrong password'); return; }
+  }
+  if(!salesUrl()){
+    alert('Admin reads the sales record kept on the site, so it needs that address.\n\nSettings → Sales memory → Sales log URL = /api/sales');
+    return;
+  }
+  if(!adState.from) setAdminPreset('today');
+  $('adFrom').value=adState.from; $('adTo').value=adState.to;
+  renderAdminStores(); markAdminPreset();
+  $('adminModal').classList.add('show');
+  loadAdmin();
+}
+function renderAdminStores(){
+  const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})));
+  $('adStores').innerHTML=opts.map(o=>
+    '<button data-store="'+esc(o.id)+'"'+(o.id===adState.store?' class="sel"':'')+'>'+esc(o.name)+'</button>').join('');
+}
+function markAdminPreset(){
+  $('adPresets').querySelectorAll('button').forEach(b=>
+    b.classList.toggle('sel', b.dataset.range===adState.preset));
+}
+function setAdminPreset(kind){
+  const t=todayKey();
+  if(kind==='today'){ adState.from=t; adState.to=t; }
+  else if(kind==='month'){ const d=new Date(); adState.from=dayOf(new Date(d.getFullYear(),d.getMonth(),1)); adState.to=t; }
+  else { const n=parseInt(kind,10)||7; adState.from=shiftDay(t,-(n-1)); adState.to=t; }
+  adState.preset=kind;
+  $('adFrom').value=adState.from; $('adTo').value=adState.to;
+  markAdminPreset();
+}
+async function loadAdmin(){
+  adState.from=$('adFrom').value||todayKey();
+  adState.to=$('adTo').value||adState.from;
+  if(adState.from>adState.to){                    // dates entered back to front
+    const a=adState.from; adState.from=adState.to; adState.to=a;
+    $('adFrom').value=adState.from; $('adTo').value=adState.to;
+  }
+  $('adStatus').textContent='Reading the sales record…';
+  $('adSummary').innerHTML=''; $('adByStore').innerHTML=''; $('adDaysWrap').style.display='none';
+  const d=await rangeSales(adState.from, adState.to, adState.store, false);
+  if(!d){
+    adState.data=null;
+    $('adStatus').textContent='Could not reach the sales log. Check the URL and token in Settings, and that the site is online.';
+    return;
+  }
+  if(d.error){ adState.data=null; $('adStatus').textContent=d.error; return; }
+  adState.data=d;
+  renderAdmin();
+}
+function renderAdmin(){
+  const d=adState.data; if(!d) return;
+  const t=d.totals;
+  const period = adState.from===adState.to ? niceDay(adState.from)
+    : niceDay(adState.from)+' → '+niceDay(adState.to);
+  $('adStatus').textContent = (adState.store? storeLabel(adState.store) : 'All stores')+' · '+period+
+    ' · '+t.count+' sale'+(t.count===1?'':'s');
+
+  $('adSummary').innerHTML='<div class="cards" style="margin-bottom:14px">'+
+    adCard('Total takings', money(t.total), t.count+' sale'+(t.count===1?'':'s'))+
+    adCard('Cash', money(t.cash), '')+
+    adCard('Card', money(t.card), '')+
+    adCard('GST collected', money(t.gst), 'Subtotal ex GST '+money(t.sub))+
+    '</div>';
+
+  // Split by location — the whole point of the tab when "All stores" is picked.
+  const ids=Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
+  $('adByStore').innerHTML = ids.length ?
+    '<table class="dtable"><thead><tr><th>Store</th><th class="num">Sales</th><th class="num">Cash</th>'+
+    '<th class="num">Card</th><th class="num">GST</th><th class="num">Total</th></tr></thead><tbody>'+
+    ids.map(id=>{ const a=d.byStore[id];
+      return '<tr><td>'+esc(storeLabel(id))+'</td><td class="num">'+a.count+'</td>'+
+        '<td class="num">'+money(a.cash)+'</td><td class="num">'+money(a.card)+'</td>'+
+        '<td class="num">'+money(a.gst)+'</td><td class="num"><b>'+money(a.total)+'</b></td></tr>';
+    }).join('')+'</tbody></table>'
+    : '<div class="muted">No sales recorded for this period.</div>';
+
+  const rows=d.days||[];
+  if(rows.length){
+    $('adDaysWrap').style.display='block';
+    $('adDays').innerHTML='<thead><tr><th>Date</th><th>Store</th><th class="num">Sales</th>'+
+      '<th class="num">Cash</th><th class="num">Card</th><th class="num">Total</th></tr></thead><tbody>'+
+      rows.map(r=>'<tr class="day" data-day="'+esc(r.day)+'" data-store="'+esc(r.store)+'">'+
+        '<td>'+esc(niceDay(r.day))+'</td><td>'+esc(storeLabel(r.store))+'</td>'+
+        '<td class="num">'+r.count+'</td><td class="num">'+money(r.cash)+'</td>'+
+        '<td class="num">'+money(r.card)+'</td><td class="num"><b>'+money(r.total)+'</b></td></tr>').join('')+
+      '</tbody><tfoot><tr><td colspan="2">Total</td><td class="num">'+t.count+'</td>'+
+      '<td class="num">'+money(t.cash)+'</td><td class="num">'+money(t.card)+'</td>'+
+      '<td class="num">'+money(t.total)+'</td></tr></tfoot>';
+  }
+}
+function adCard(lbl,val,sub){
+  return '<div class="card"><div class="clbl">'+esc(lbl)+'</div><div class="cval">'+esc(val)+'</div>'+
+    (sub?'<div class="csub">'+esc(sub)+'</div>':'')+'</div>';
+}
+function niceDay(key){
+  const d=new Date(key+'T00:00:00');
+  return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+}
+// Every sale in the shown period, straight from the site — the file to hand the
+// accountant, with a Store column so both locations are in the one sheet.
+async function exportAdminCsv(){
+  $('adStatus').textContent='Building the CSV…';
+  const d=await rangeSales(adState.from, adState.to, adState.store, true);
+  if(!d || d.error || !Array.isArray(d.sales)){
+    $('adStatus').textContent=(d && d.error) || 'Could not read the sales record.';
+    return;
+  }
+  const live=d.sales.filter(s=>!s.voided);
+  if(!live.length){ $('adStatus').textContent='No sales in this period to export.'; return; }
+  const head=['Store','Invoice','Date','Time','Served by','Customer','Method','Discount',
+              'Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
+  const rows=live.map(s=>{ const dt=new Date(s.ts);
+    const items=(s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ');
+    return [storeLabel(s.store), s.no, dt.toLocaleDateString('en-AU'), dt.toLocaleTimeString('en-AU'),
+      s.servedBy, s.customer||'', s.method, (s.discount||0).toFixed(2),
+      Number(s.sub||0).toFixed(2), Number(s.gst||0).toFixed(2), Number(s.total||0).toFixed(2),
+      Number(s.paid!=null?s.paid:s.total||0).toFixed(2),
+      s.tendered!=null?Number(s.tendered).toFixed(2):'', s.change!=null?Number(s.change).toFixed(2):'', items]
+      .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');
+  });
+  const csv=[head.join(','),...rows].join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='sales-'+(adState.store||'all-stores')+'-'+adState.from+'-to-'+adState.to+'.csv';
+  a.click();
+  $('adStatus').textContent=live.length+' sale'+(live.length===1?'':'s')+' exported.';
+}
+
 /* ---------------- settings UI ---------------- */
 function openSettings(){
   $('sName').value=settings.name; $('sAbn').value=settings.abn; $('sPhone').value=settings.phone;
   $('sAddress').value=settings.address; $('sFooter').value=settings.footer; $('sCatUrl').value=settings.catUrl;
   $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;
-  $('sPrefix').value=settings.prefix; $('sCounter').value=localStorage.getItem(LS.counter)||'1';
+  $('sPrefix').value=settings.prefix; $('sCounter').value=String(readCounter());
+  $('sCounterStore').textContent = currentStore ? ('— '+currentStore.name) : '';
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
-  $('sInvUrl').value=settings.invUrl;
+  $('sInvUrl').value=settings.invUrl; $('sAdminPin').value=settings.adminPin||'';
+  renderStoreFields();
   const sales=load(LS.sales,[]);
-  $('logInfo').textContent = sales.length? (sales.length+' sales recorded. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.') : 'No sales recorded yet.';
+  const pending=sales.filter(s=>!s.synced).length;
+  $('logInfo').textContent = sales.length
+    ? (sales.length+' sales held locally. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.'+
+       (pending? ' '+pending+' still waiting to reach the site.' : ' All sent to the site.'))
+    : 'No sales on this device yet.';
   $('settingsModal').classList.add('show');
+}
+// Settings → Stores. The ids never change, so renaming a store here keeps its
+// history; a blank address or phone falls back to the business details.
+function renderStoreFields(){
+  $('sStores').innerHTML = allStores().map(s=>
+    '<fieldset style="margin-bottom:10px"><legend>'+esc(s.name)+' · '+esc(settings.prefix+s.tag+'-')+'…</legend>'+
+      '<div class="field"><label>Name (opening screen and docket)</label>'+
+        '<input data-store="'+esc(s.id)+'" data-f="name" value="'+esc(s.name)+'" /></div>'+
+      '<div class="grid2">'+
+        '<div class="field"><label>Address</label><input data-store="'+esc(s.id)+'" data-f="address" '+
+          'value="'+esc(s.address)+'" placeholder="uses the business address" /></div>'+
+        '<div class="field"><label>Phone</label><input data-store="'+esc(s.id)+'" data-f="phone" '+
+          'value="'+esc(s.phone)+'" placeholder="uses the business phone" /></div>'+
+      '</div>'+
+    '</fieldset>').join('');
 }
 function saveSettingsUI(){
   settings.name=$('sName').value.trim()||'My Store';
@@ -1230,8 +1687,19 @@ function saveSettingsUI(){
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
   settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
-  const c=parseInt($('sCounter').value,10); if(!isNaN(c)) localStorage.setItem(LS.counter,String(c));
+  settings.adminPin=$('sAdminPin').value.trim();
+  // Per-store overrides — only what was actually filled in gets stored.
+  const stores={};
+  $('sStores').querySelectorAll('input[data-store]').forEach(inp=>{
+    const id=inp.dataset.store, f=inp.dataset.f, v=inp.value.trim();
+    if(!stores[id]) stores[id]={};
+    if(v) stores[id][f]=v;
+  });
+  settings.stores=stores;
+  const c=parseInt($('sCounter').value,10); if(!isNaN(c)) localStorage.setItem(counterKey(),String(c));
   save(LS.settings, settings);
+  if(currentStore) currentStore=storeById(currentStore.id);   // pick up a rename
+  renderGate();
   applySettings();
   $('settingsModal').classList.remove('show');
   flushUnsynced();               // push any backlog now that the shared log may be configured
@@ -1240,6 +1708,8 @@ function saveSettingsUI(){
 }
 function applySettings(){
   $('hStore').textContent=settings.name;
+  $('hStoreName').textContent = currentStore ? currentStore.name : '—';
+  $('btnSwitchStore').style.display = currentStore ? 'inline-flex' : 'none';
   const sel=$('servedBy'); const cur=sel.value;
   sel.innerHTML='<option value="">— select —</option>'+settings.staff.map(n=>'<option>'+esc(n)+'</option>').join('');
   if(settings.staff.includes(cur)) sel.value=cur;
@@ -1250,10 +1720,10 @@ function applySettings(){
 function exportCsv(){
   const sales=load(LS.sales,[]).filter(s=>!s.voided);   // voided/refunded sales are excluded
   if(!sales.length){ alert('No sales to export.'); return; }
-  const head=['Invoice','Date','Time','Served by','Customer','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
+  const head=['Store','Invoice','Date','Time','Served by','Customer','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=sales.map(s=>{ const d=new Date(s.ts);
     const items=s.items.map(i=>i.qty+'x '+i.name).join(' | ');
-    return [s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.method, (s.discount||0).toFixed(2),
+    return [storeLabel(s.store), s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.method, (s.discount||0).toFixed(2),
       s.sub.toFixed(2), s.gst.toFixed(2), s.total.toFixed(2), (s.paid||s.total).toFixed(2),
       s.tendered!=null?s.tendered.toFixed(2):'', s.change!=null?s.change.toFixed(2):'', items]
       .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');
@@ -1265,7 +1735,12 @@ function exportCsv(){
 }
 
 /* ---------------- focus management ---------------- */
-function focusScan(){ const s=$('scan'); if(s) s.focus(); }
+// Never steal focus from a panel that's open — the gate included, so the scan
+// box can't be typed into before a store is picked.
+function focusScan(){
+  if(anyModalOpen()) return;
+  const s=$('scan'); if(s) s.focus();
+}
 function anyModalOpen(){ return document.querySelector('.modal.show'); }
 
 /* ---------------- wire up ---------------- */
@@ -1311,9 +1786,39 @@ function bind(){
   // header
   $('btnSync').onclick=()=>syncCatalog(false);
   $('btnReprint').onclick=reprintLast;
-  $('btnInvoices').onclick=openInvoices;
+  $('btnInvoices').onclick=()=>openInvoices();
   $('btnTakings').onclick=openTakings;
+  $('btnAdmin').onclick=openAdmin;
   $('btnSettings').onclick=openSettings;
+  $('btnSwitchStore').onclick=switchStore;
+
+  // the opening screen
+  $('gateTiles').addEventListener('click', e=>{
+    const b=e.target.closest('[data-store]'); if(b) selectStore(b.dataset.store);
+  });
+  $('gateAdmin').onclick=openAdmin;
+  $('gateSettings').onclick=openSettings;
+
+  // admin
+  $('closeAdmin').onclick=()=>{ $('adminModal').classList.remove('show'); focusScan(); };
+  $('adStores').addEventListener('click', e=>{
+    const b=e.target.closest('[data-store]'); if(!b) return;
+    adState.store=b.dataset.store; renderAdminStores(); loadAdmin();
+  });
+  $('adPresets').addEventListener('click', e=>{
+    const b=e.target.closest('[data-range]'); if(!b) return;
+    setAdminPreset(b.dataset.range); loadAdmin();
+  });
+  $('adFrom').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); loadAdmin(); });
+  $('adTo').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); loadAdmin(); });
+  $('adRefresh').onclick=()=>loadAdmin();
+  $('adExport').onclick=exportAdminCsv;
+  // A day row opens that day's invoices for that store, over the top of Admin;
+  // closing it drops straight back here.
+  $('adDays').addEventListener('click', e=>{
+    const r=e.target.closest('tr.day'); if(!r) return;
+    openInvoices(r.dataset.day, r.dataset.store);
+  });
 
   // search / misc
   $('btnFind').onclick=openSearch;
@@ -1340,7 +1845,13 @@ function bind(){
   $('btnCsvToggle').onclick=()=>{ const w=$('csvWrap'); w.style.display = w.style.display==='none'?'block':'none'; };
   $('btnCsvImport').onclick=()=>importCsv($('sCsv').value);
   $('btnExport').onclick=exportCsv;
-  $('btnClearLog').onclick=()=>{ if(confirm('Delete the entire sales log? This cannot be undone.')){ save(LS.sales,[]); renderToday(); openSettings(); } };
+  $('btnClearLog').onclick=()=>{
+    const pending=load(LS.sales,[]).filter(s=>!s.synced).length;
+    const msg = pending
+      ? 'Clear this device\'s copy of the log?\n\n'+pending+' sale'+(pending===1?'':'s')+' still haven\'t reached the site and would be lost. Everything already sent stays on the site.'
+      : 'Clear this device\'s copy of the log?\n\nThe sales stay on the site — this only empties the local cache.';
+    if(confirm(msg)){ save(LS.sales,[]); refreshToday(); openSettings(); }
+  };
 
   // keep scanner focused
   document.addEventListener('click', e=>{
@@ -1348,13 +1859,19 @@ function bind(){
     if(e.target.closest('input,select,textarea,button')) return;
     focusScan();
   });
-  window.addEventListener('load', focusScan);
-  focusScan();
   flushUnsynced();               // push any sales that were saved while offline
   flushUnadjusted();             // decrement Squarespace for any sales that couldn't reach it yet
   flushRestocks();               // put stock back for any voided sales that couldn't reach it yet
   // Auto-refresh the product list on open, so it's always current with Squarespace.
   if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
+
+  // Another device at the same store may be selling, so re-read the day's tally
+  // from the site now and then rather than trusting what this browser has seen.
+  setInterval(()=>{ if(!anyModalOpen()) refreshToday(); }, 60000);
+
+  // Nothing is usable until a store is picked. The one last used here is
+  // highlighted, so opening up in the morning is a single tap.
+  openGate();
 }
 bind();
 </script>
