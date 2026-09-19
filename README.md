@@ -1,11 +1,16 @@
 # Store Till & Tax Invoice
 
-A barcode-scanning point-of-sale + **ATO tax-invoice** printer for a single Australian
-retail store. Tallies a basket as you scan, calculates GST (10% inclusive), takes
-**cash or card**, records **who served**, and prints to an **80 mm thermal receipt printer**.
+A barcode-scanning point-of-sale + **ATO tax-invoice** printer for two Australian
+retail shopfronts — **South Melbourne** and **Roxy**. Tallies a basket as you scan, calculates
+GST (10% inclusive), takes **cash or card**, records **who served**, and prints to an
+**80 mm thermal receipt printer**.
 
 - **No build step.** `index.html` is the whole app. Runs on any browser/tablet/PC.
-- **Works offline** after the first sync (the product list is cached).
+- **Pick the store when you open it** — two boxes, one tap. Sales are filed per location.
+- **Sales live on the site,** not in the browser, so any device can see either store's takings
+  and invoices for today or any earlier day ([section 6](#6-two-stores-one-record)).
+- **Works offline** after the first sync — it keeps scanning, printing and numbering, and sends
+  the sales up when the connection is back.
 
 ---
 
@@ -121,6 +126,11 @@ Requires a **Business** or **Commerce** Squarespace plan.
 
 ## 5. Daily use
 
+- **Pick the store first.** The till opens on two boxes — **South Melbourne** and **Roxy**.
+  Tap one and that's the location this till is ringing up for; the one you used last on this
+  device is outlined, so it's a single tap each morning. Nothing behind the screen can be
+  touched until a store is chosen. The header then shows the store next to the business name —
+  click it to switch (the sale in progress is cleared, since a basket belongs to one store).
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
@@ -129,11 +139,18 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
   **Finalise — no print** to record the sale without printing (still numbered & logged).
-- **Invoices** (header) → search and view every past sale; open one to **reprint** it.
-- **Takings** (header, or click the Today tally) → the day's **total earnings** with a
+- **Invoices** (header) → search and view any past sale **for this store**, on any date;
+  open one to **reprint** it.
+- **Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
-- **Reprint last** re-prints the most recent invoice (paper jams / cancelled print).
-- Settings → **Export sales CSV** gives your accountant an end-of-day/-month file.
+- **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
+- **Reprint last** re-prints this store's most recent invoice (paper jams / cancelled print).
+- Admin → **Export range CSV** gives your accountant a file covering both stores; Settings →
+  **Export this device's CSV** dumps just the local copy.
+
+Everything above reads the sales record **kept on the site**, not the browser — so the Today
+tally, Invoices and Takings all include sales rung up on the *other* device at the same store,
+and switching devices doesn't lose history. See [section 6](#6-two-stores-one-record).
 
 ### Receipt printer: the ESC/POS bridge
 
@@ -203,23 +220,69 @@ each sale. `var()` inside `@page` fails the same way. Literal millimetres only.
 
 ---
 
-## 6. Combine both tills (one live day total) — optional but recommended for 2 devices
+## 6. Two stores, one record
 
-Without this, each device keeps its **own** sales log, so "Takings" only shows that device.
-Turn on the shared log and **both tills feed one combined day total** that either device can see live.
+Sales are kept **on the site**, not in the browser that rang them up. Each sale is stamped with
+the store picked on the opening screen, so:
 
-1. It deploys automatically with the Netlify setup above — the shared log is the
+- either device can open **either store**, and sees that store's full history — today's and
+  every earlier day — whoever rang it up;
+- clearing a browser, swapping a tablet or selling from a phone loses nothing;
+- **Admin** shows both stores side by side over any date range.
+
+```
+South Melbourne till ─┐
+                      ├─►  /api/sales  ──►  Netlify Blobs  ──►  Today · Invoices · Takings · Admin
+Roxy till ────────────┘   (one blob per sale)                    on any device, any store, any day
+```
+
+### Setup
+
+1. It deploys automatically with the Netlify setup above — the sales log is the
    `netlify/functions/sales.mjs` function (served at `/api/sales`). It stores sales in
    **Netlify Blobs** (no database to set up).
-2. Site → **Environment variables:** add `SALES_TOKEN` = any long random string (your password
-   for the shared log).
-3. On **each** device, open **⚙︎ Settings → Shared log** and set:
-   - **Shared log URL** = `https://<your-site>.netlify.app/api/sales`
-   - **Shared log token** = the same `SALES_TOKEN` value
-   - **Device tag** = a different letter/number per till (e.g. `1` on one, `2` on the other)
-     so invoice numbers never clash (`INV-1-0007` vs `INV-2-0007`).
-4. Now **Takings** and **Invoices** show **✓ Combined — both tills**. If a device is offline,
-   its sales still complete and print, and sync automatically once it's back online.
+2. Site → **Environment variables:** add `SALES_TOKEN` = any long random string.
+   **Do set this** — without it, anyone who guesses the URL can read every sale, and the site
+   is public.
+3. On **each** device, **⚙︎ Settings → Sales memory**:
+   - **Sales log URL** — leave as `/api/sales` (or the full
+     `https://<your-site>.netlify.app/api/sales` on a till hosted elsewhere).
+   - **Sales log token** = the same `SALES_TOKEN` value.
+   - **Device tag** — only needed if **two tills share one store**; it keeps their numbers apart
+     (`INV-SM-0007` vs `INV-SM2-0007`). The store already tags its own.
+4. Takings then reads **✓ From the site — every device at this store**. If a device is offline,
+   its sales still complete and print, and are sent up automatically once it's back online.
+
+### Invoice numbers
+
+Each store counts its own sequence, tagged so the two can never collide:
+`INV-SM-0001`, `INV-SM-0002`… at South Melbourne, `INV-RX-0001`… at Roxy.
+Set the prefix and each store's next number in **Settings → Tax & printing**.
+
+### The Admin tab
+
+**Admin** in the header (also reachable from the opening screen, before picking a store):
+
+- **All stores**, or one store on its own.
+- **Today / Last 7 days / This month / Last 30 days**, or any From–To you type (up to 62 days).
+- Total takings, cash, card and GST for the period, then a **per-store split** and a
+  **day-by-day table** — click any row to open that day's invoices for that store.
+- **Export range CSV** — every sale in the period, with a **Store** column, straight from the
+  site. This is the file for your accountant.
+
+Set **Settings → Stores → Admin PIN** if you don't want a customer at the counter tapping
+Admin and reading the day's takings. Blank means no PIN.
+
+### Renaming a store, or per-store details on the docket
+
+**Settings → Stores** holds each location's **name** (what the opening screen and the docket
+show) plus an optional **address** and **phone** — blank falls back to the business details, so
+each store's tax invoices can print its own address. Renaming is safe: sales are filed under a
+fixed internal id, so history follows the rename.
+
+> Sales rung up **before** the store selector existed have no store on them. They're pushed to
+> the site as **Unassigned** and show up that way in Admin, rather than being counted under a
+> store they might not belong to.
 
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
@@ -265,16 +328,20 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 - This till **reads** your catalogue and prints invoices. It does **not** write *sales* back
   into Squarespace, but it can optionally **adjust stock** on each sale ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)).
 - GST is treated as **inclusive** (price ÷ 11). Change the rate in Settings if needed.
-- Settings, catalogue cache and the invoice counter are per-device (localStorage). With the
-  **shared log** on, the *sales record* is centralised in Netlify Blobs; without it, each
-  device keeps its own — **Export sales CSV** backs up the local copy either way.
+- **Sales live on the site** (Netlify Blobs), so any device can read any store's history —
+  see [section 6](#6-two-stores-one-record). Settings, the catalogue cache, the store last
+  picked and each store's invoice counter stay per-device (localStorage), as does a copy of
+  the sales this device rang up — that copy is what it falls back on when the site is
+  unreachable, and the queue it re-sends from.
+- The till needs the internet for **live** totals. Offline it still scans, prints and numbers
+  sales, shows *"this device only"* on the tally, and sends everything up on reconnect.
 
 ## Files
 | File | What it is |
 |------|-----------|
 | `index.html` | The till app — the only file you actually run. |
 | `netlify/functions/catalog.js` | Netlify catalogue proxy (holds the Squarespace key). |
-| `netlify/functions/sales.mjs` | Netlify shared sales log (combines both tills). |
+| `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs). |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
