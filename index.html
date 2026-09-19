@@ -519,6 +519,8 @@ let settings = loadSettings();
 let catalog = load(LS.catalog, []);
 let catalogAt = localStorage.getItem(LS.catalogAt) || '';
 let skuMap = new Map();
+let variantMap = new Map();  // variantId -> product (so stock reconcile doesn't scan the catalog)
+let searchIndex = [];        // [{p, name, sku}] with the match keys pre-lowered/normalised once per sync
 let basket = [];             // {sku,name,price,qty}
 let method = null;           // 'cash' | 'card'
 let discountMode = 'amount'; // 'amount' | 'pct' — which field the user last set (held when the basket changes)
@@ -635,9 +637,20 @@ function closeAllModals(){
   document.querySelectorAll('.modal.show').forEach(m=>{ if(m.id!=='gateModal') m.classList.remove('show'); });
 }
 
+// One pass over the catalog builds every lookup the till needs: by SKU, by variant id,
+// and the pre-normalised search index. Everything downstream is then a map hit or a
+// scan over strings that are already in the right case, so a growing catalog doesn't
+// slow down scanning, searching or stock reconciliation.
 function rebuildSkuMap(){
   skuMap = new Map();
-  for(const p of catalog){ skuMap.set(normSku(p.sku), p); }
+  variantMap = new Map();
+  searchIndex = new Array(catalog.length);
+  for(let i=0;i<catalog.length;i++){
+    const p = catalog[i];
+    skuMap.set(normSku(p.sku), p);
+    if(p.variantId) variantMap.set(String(p.variantId), p);
+    searchIndex[i] = { p:p, name:String(p.name||'').toLowerCase(), sku:normSku(p.sku) };
+  }
 }
 
 /* ---------------- stock lookups ---------------- */
@@ -1105,7 +1118,7 @@ function reconcileStock(inv){
   for(const row of inv){
     if(!row) continue;
     const q = row.isUnlimited ? null : (row.quantity==null?null:Number(row.quantity));
-    let p = row.variantId ? (catalog.find(x=>x.variantId===row.variantId)||null) : null;
+    let p = row.variantId ? (variantMap.get(String(row.variantId))||null) : null;
     if(!p && row.sku) p=catItem(row.sku);
     if(p){ p.stock=q; changed=true; }
   }
@@ -1362,7 +1375,11 @@ function openSearch(){ $('searchModal').classList.add('show'); $('searchInput').
 function renderSearch(q){
   q=q.trim().toLowerCase();
   const list=$('searchResults'); list.innerHTML='';
-  const res = catalog.filter(p=> !q || (p.name||'').toLowerCase().includes(q) || normSku(p.sku).includes(normSku(q))).slice(0,50);
+  const MAX=50, qs=normSku(q), res=[];
+  for(let i=0;i<searchIndex.length && res.length<MAX;i++){
+    const e=searchIndex[i];
+    if(!q || e.name.includes(q) || e.sku.includes(qs)) res.push(e.p);
+  }
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No matches</span></div>'; return; }
   res.forEach(p=>{
     const r=document.createElement('div'); r.className='r';
