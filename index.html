@@ -348,8 +348,9 @@
       <fieldset><legend>Stores</legend>
         <div class="hint" style="margin:0 0 10px">The two boxes on the opening screen. A blank address or phone falls back to the business details above; whatever is filled in here is what that store's tax invoices print.</div>
         <div id="sStores"></div>
-        <div class="field" style="margin-top:12px"><label>Admin PIN (optional)</label><input id="sAdminPin" inputmode="numeric" autocomplete="off" placeholder="blank = no PIN" />
-          <div class="hint">Asked for before the Admin tab opens, so a customer at the counter can't read the day's takings. Blank = open.</div>
+        <div class="field" style="margin-top:12px"><label>Admin password</label><input id="sAdminPin" autocomplete="off" placeholder="blank = no password" />
+          <div class="hint">Asked for each time the Admin tab is opened, so a customer at the counter can't read the day's takings. Blank = open to anyone.
+          <b>It is stored in this page</b>, which a public site serves to anyone — treat it as a counter lock, not a secret, and don't reuse a password from elsewhere.</div>
         </div>
       </fieldset>
 
@@ -498,7 +499,10 @@ const DEFAULTS = {
   // The site's sales record — where Today / Invoices / Takings / Admin read from.
   shareUrl:'/api/sales', shareToken:'', device:'',
   // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
-  stores:{}, adminPin:''
+  // Asked for before Admin opens. It ships set, and is changeable in Settings.
+  // Note it is in the page source of a public site, so it's a counter speed-bump
+  // that keeps a customer out of the day's takings — not a real secret.
+  stores:{}, adminPin:'lotto2rema'
 };
 
 const DEMO = [
@@ -1510,9 +1514,9 @@ let adState = { store:'', from:'', to:'', preset:'today', data:null };
 function openAdmin(){
   const pin=String(settings.adminPin||'').trim();
   if(pin){
-    const got=prompt('Admin PIN');
+    const got=prompt('Admin password');
     if(got===null) return;                       // cancelled
-    if(String(got).trim()!==pin){ toast('Wrong PIN'); return; }
+    if(String(got).trim()!==pin){ toast('Wrong password'); return; }
   }
   if(!salesUrl()){
     alert('Admin reads the sales record kept on the site, so it needs that address.\n\nSettings → Sales memory → Sales log URL = /api/sales');

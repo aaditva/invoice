@@ -270,8 +270,14 @@ Set the prefix and each store's next number in **Settings → Tax & printing**.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
-Set **Settings → Stores → Admin PIN** if you don't want a customer at the counter tapping
-Admin and reading the day's takings. Blank means no PIN.
+Admin is **password-protected**, asked for each time it opens, so a customer at the counter
+can't tap it and read the day's takings. It ships with a password set; change it in
+**Settings → Stores → Admin password**, or blank the field to leave Admin open.
+
+> This password sits in `index.html`, which a public site hands to anyone who asks for the
+> page. It's a lock on the counter, not a secret — so don't reuse a password from anywhere
+> else here. If you need Admin to be genuinely private, that means moving the check into
+> `sales.mjs` behind `SALES_TOKEN` rather than doing it in the browser.
 
 ### Renaming a store, or per-store details on the docket
 
