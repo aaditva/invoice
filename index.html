@@ -349,10 +349,6 @@
       <fieldset><legend>Stores</legend>
         <div class="hint" style="margin:0 0 10px">The two boxes on the opening screen. A blank address or phone falls back to the business details above; whatever is filled in here is what that store's tax invoices print.</div>
         <div id="sStores"></div>
-        <div class="field" style="margin-top:12px"><label>Admin password</label><input id="sAdminPin" autocomplete="off" placeholder="blank = no password" />
-          <div class="hint">Asked for each time the Admin tab is opened, so a customer at the counter can't read the day's takings. Blank = open to anyone.
-          <b>It is stored in this page</b>, which a public site serves to anyone — treat it as a counter lock, not a secret, and don't reuse a password from elsewhere.</div>
-        </div>
       </fieldset>
 
       <fieldset><legend>Products link</legend>
@@ -500,11 +496,13 @@ const DEFAULTS = {
   // The site's sales record — where Today / Invoices / Takings / Admin read from.
   shareUrl:'/api/sales', shareToken:'', device:'',
   // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
-  // Asked for before Admin opens. It ships set, and is changeable in Settings.
-  // Note it is in the page source of a public site, so it's a counter speed-bump
-  // that keeps a customer out of the day's takings — not a real secret.
-  stores:{}, adminPin:'lotto2rema'
+  stores:{}
 };
+
+// Asked for before Admin opens. Deliberately not in Settings — change it here.
+// It is in the page source of a public site, so it's a counter speed-bump that
+// keeps a customer out of the day's takings — not a real secret.
+const ADMIN_PIN = 'lotto2rema';
 
 const DEMO = [
   {sku:'9310072000012', name:'Full Cream Milk 2L', price:3.90, stock:24},
@@ -537,6 +535,7 @@ function loadSettings(){
   const saved = load(LS.settings, {}) || {};
   const s = Object.assign({}, DEFAULTS, saved);
   if(!s.stores || typeof s.stores!=='object' || Array.isArray(s.stores)) s.stores = {};
+  delete s.adminPin;   // was editable in Settings once; the code's ADMIN_PIN is the only one now
   // One-time: a till set up before the sales moved onto the site has a blank URL
   // saved, which would keep it on browser-only storage. Point it at the site's
   // log once. After the next Save (which stores v) a blank is taken as deliberate.
@@ -1530,7 +1529,7 @@ async function printTakings(){
 let adState = { store:'', from:'', to:'', preset:'today', data:null };
 
 function openAdmin(){
-  const pin=String(settings.adminPin||'').trim();
+  const pin=String(ADMIN_PIN||'').trim();
   if(pin){
     const got=prompt('Admin password');
     if(got===null) return;                       // cancelled
@@ -1737,7 +1736,7 @@ function openSettings(){
   $('sPrefix').value=settings.prefix; $('sCounter').value=String(readCounter());
   $('sCounterStore').textContent = currentStore ? ('— '+currentStore.name) : '';
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
-  $('sInvUrl').value=settings.invUrl; $('sAdminPin').value=settings.adminPin||'';
+  $('sInvUrl').value=settings.invUrl;
   renderStoreFields();
   const sales=load(LS.sales,[]);
   const pending=sales.filter(s=>!s.synced).length;
@@ -1772,7 +1771,6 @@ function saveSettingsUI(){
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
   settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
-  settings.adminPin=$('sAdminPin').value.trim();
   // Per-store overrides — only what was actually filled in gets stored.
   const stores={};
   $('sStores').querySelectorAll('input[data-store]').forEach(inp=>{

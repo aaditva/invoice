@@ -271,8 +271,8 @@ Set the prefix and each store's next number in **Settings → Tax & printing**.
   site. This is the file for your accountant.
 
 Admin is **password-protected**, asked for each time it opens, so a customer at the counter
-can't tap it and read the day's takings. It ships with a password set; change it in
-**Settings → Stores → Admin password**, or blank the field to leave Admin open.
+can't tap it and read the day's takings. The password is set in code only — `ADMIN_PIN`
+in `index.html` — and can't be changed from Settings. Set it to `''` to leave Admin open.
 
 > This password sits in `index.html`, which a public site hands to anyone who asks for the
 > page. It's a lock on the counter, not a secret — so don't reuse a password from anywhere
