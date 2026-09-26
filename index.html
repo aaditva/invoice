@@ -144,6 +144,12 @@
   .dtable th.num,.dtable td.num{text-align:right}
   .dtable tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
   .scroller{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  /* Money in the header is blacked out until Admin logs in on this device */
+  .redact{background:#111;color:transparent !important;border-radius:4px;user-select:none}
+  .redact b{color:transparent !important}
+  #btnLogin.in{background:var(--ok);color:#fff}
+  .boxadd{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:8px;align-items:end}
+  @media (max-width:640px){ .boxadd{grid-template-columns:1fr 1fr} }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
   .receipt{display:none}
@@ -183,6 +189,7 @@
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
+    <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Admin login</button>
     <span class="spacer"></span>
     <div class="today" id="todayBox" title="Click for full day takings"></div>
     <button class="ghost" id="btnSettings">⚙︎ Settings</button>
@@ -327,6 +334,17 @@
         <button class="ghost" id="adPrint">Print sales summary</button>
         <button class="ghost" id="adExport">Export range CSV</button>
       </div>
+      <fieldset><legend>Boxes — open a box into single packs</legend>
+        <div class="hint" style="margin:0 0 10px"><b>Open</b> takes 1 box off stock and adds its packs to the single pack's stock, in Squarespace and on every till. The list is kept on the site, so every device shares it.</div>
+        <div class="scroller"><table class="dtable" id="bxTable"></table></div>
+        <div class="boxadd" style="margin-top:10px">
+          <div class="field"><label for="bxBox">Box barcode</label><input id="bxBox" autocomplete="off" placeholder="scan the box" /></div>
+          <div class="field"><label for="bxPack">Single pack barcode</label><input id="bxPack" autocomplete="off" placeholder="scan one pack" /></div>
+          <div class="field"><label for="bxQty">Packs per box</label><input id="bxQty" inputmode="numeric" placeholder="36" /></div>
+          <button class="primary" id="bxAdd">Add / update</button>
+        </div>
+        <div class="muted" id="bxStatus" style="margin-top:6px"></div>
+      </fieldset>
     </div>
   </div>
 </div>
@@ -504,6 +522,38 @@ const DEFAULTS = {
 // keeps a customer out of the day's takings — not a real secret.
 const ADMIN_PIN = 'lotto2rema';
 
+/* Admin login. Once logged in on a device it stays logged in (survives reloads)
+   until Log out, so the person working the till doesn't retype the password to
+   see the totals. Logged out, the header's money figures are blacked out. */
+const ADMIN_KEY = 'inv_admin';
+function isAdmin(){ try{ return localStorage.getItem(ADMIN_KEY)==='1'; }catch(e){ return false; } }
+function requireAdmin(){
+  if(isAdmin()) return true;
+  const pin=String(ADMIN_PIN||'').trim();
+  if(pin){
+    const got=prompt('Admin password');
+    if(got===null) return false;                 // cancelled
+    if(String(got).trim()!==pin){ toast('Wrong password'); return false; }
+  }
+  try{ localStorage.setItem(ADMIN_KEY,'1'); }catch(e){}
+  renderAuth();
+  return true;
+}
+function logoutAdmin(){
+  try{ localStorage.removeItem(ADMIN_KEY); }catch(e){}
+  allTally = null;
+  $('adminModal').classList.remove('show');
+  $('takingsModal').classList.remove('show');
+  renderAuth(); toast('Logged out');
+}
+function renderAuth(){
+  const b=$('btnLogin'), on=isAdmin();
+  b.textContent = on ? 'Log out' : '🔒 Admin login';
+  b.classList.toggle('in', on);
+  renderToday();
+  if(on) refreshToday();
+}
+
 const DEMO = [
   {sku:'9310072000012', name:'Full Cream Milk 2L', price:3.90, stock:24},
   {sku:'9300633123456', name:'White Bread Loaf 700g', price:3.20, stock:12},
@@ -527,6 +577,7 @@ let discountAmt = 0;         // $ off (when mode==='amount')
 let discountPct = 0;         // % off (when mode==='pct')
 let currentStore = null;     // the location picked on the opening screen — null until then
 let todayTally = null;       // today's takings as the server reports them (see refreshToday)
+let allTally = null;         // today's takings across every store (admin only)
 
 /* ---------------- helpers ---------------- */
 function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
@@ -923,11 +974,14 @@ function updateFinalizeState(){
    only paints the figure refreshToday() last fetched. */
 function renderToday(){
   const t = todayTally || localTally(todayKey());
+  const on = isAdmin();
+  const m = v => '<b'+(on?'':' class="redact"')+'>'+(on?money(v):'$0000.00')+'</b>';
   $('todayBox').innerHTML =
     '<span>Today: <b>'+t.count+'</b> sales</span>'+
-    '<span>Cash <b>'+money(t.cash)+'</b></span>'+
-    '<span>Card <b>'+money(t.card)+'</b></span>'+
-    '<span>GST <b>'+money(t.gst)+'</b></span>'+
+    '<span>This store '+m(t.total)+'</span>'+
+    '<span>All stores '+(on && !allTally ? '<b>…</b>' : m(allTally ? allTally.total : 0))+'</span>'+
+    '<span>Cash '+m(t.cash)+'</span>'+
+    '<span>Card '+m(t.card)+'</span>'+
     (t.local ? '<span class="muted">this device only</span>' : '');
 }
 // Does this locally-stored sale belong to the store that's open? Sales rung up
@@ -946,6 +1000,10 @@ async function refreshToday(){
     const {sales, combined} = await storeDaySales(todayKey());
     todayTally = aggregate(sales);
     todayTally.local = !combined;          // server unreachable → say so in the header
+    if(isAdmin()){
+      const all = await storeDaySales(todayKey(), '');
+      allTally = all.combined ? aggregate(all.sales) : null;
+    }
   }catch(e){ todayTally = null; }
   finally{ todayBusy = false; }
   renderToday();
@@ -1453,7 +1511,7 @@ function showInvoiceDetail(no){
 }
 
 /* ---------------- day takings ---------------- */
-function openTakings(){ $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
+function openTakings(){ if(!requireAdmin()) return; $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
 async function renderTakings(){
   const key=$('takDate').value||todayKey();
   $('takScope').textContent='Loading…';
@@ -1523,18 +1581,87 @@ async function printTakings(){
   suppressClearOnPrint=true; window.print();
 }
 
+/* ---------------- boxes — open a sealed box into single packs ---------------- *
+   The box → pack list lives on the site (/api/boxes) so every till shares it.
+   Opening a box sends ONE inventory adjustment: box −1 and pack +N together, so
+   Squarespace can never end up with one half done. Admin only. */
+let boxes = [];
+function boxesUrl(){
+  let u='/api/boxes';
+  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  return u;
+}
+async function loadBoxes(){
+  $('bxStatus').textContent='Loading…';
+  try{
+    const res=await fetch(boxesUrl(), {headers:shareHeaders(false)});
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    boxes=d.boxes||[];
+    $('bxStatus').textContent=d.seeded?'Starter list — saved to the site the first time you change it.':'';
+  }catch(e){ $('bxStatus').textContent='Could not load the box list: '+e.message; }
+  renderBoxes();
+}
+async function saveBoxes(list){
+  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  const res=await fetch(boxesUrl(), {method:'POST', headers:h, body:JSON.stringify({boxes:list})});
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+  boxes=d.boxes||list; $('bxStatus').textContent='Saved.'; renderBoxes();
+}
+function renderBoxes(){
+  const nm=sku=>{ const p=catItem(sku); return p?esc(p.name):'<span class="warn">not in catalog</span>'; };
+  const st=sku=>{ const s=stockOf(sku); return s===null?'–':s; };
+  $('bxTable').innerHTML='<tr><th>Box</th><th class="num">Box stock</th><th>Single pack</th><th class="num">Pack stock</th><th class="num">Packs</th><th></th></tr>'+
+    (boxes.length?boxes.map((b,i)=>'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
+      '<td>'+nm(b.pack)+'<div class="muted">'+esc(b.pack)+'</div></td><td class="num">'+st(b.pack)+'</td><td class="num">'+b.packs+'</td>'+
+      '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').join('')
+      :'<tr><td colspan="6" class="muted">No boxes yet — add one below.</td></tr>');
+}
+async function addBox(){
+  const box=$('bxBox').value.trim(), pack=$('bxPack').value.trim(), packs=Math.round(Number($('bxQty').value)||0);
+  if(!box||!pack||packs<1){ toast('Scan the box, scan a pack, and enter packs per box'); return; }
+  if(normSku(box)===normSku(pack)){ toast('Box and pack barcodes are the same'); return; }
+  const list=boxes.filter(b=>normSku(b.box)!==normSku(box));
+  list.push({box, pack, packs, name:(catItem(box)&&catItem(box).name)||''});
+  try{ await saveBoxes(list); $('bxBox').value=''; $('bxPack').value=''; $('bxQty').value=''; }
+  catch(e){ alert('Could not save: '+e.message); }
+}
+async function delBox(i){
+  const b=boxes[i]; if(!b) return;
+  if(!confirm('Remove '+((catItem(b.box)&&catItem(b.box).name)||b.box)+' from the box list?')) return;
+  try{ await saveBoxes(boxes.filter((_,j)=>j!==i)); }catch(e){ alert('Could not save: '+e.message); }
+}
+async function openBox(i){
+  const b=boxes[i]; if(!b) return;
+  const bp=catItem(b.box), pp=catItem(b.pack);
+  if(!bp||!pp){ alert('Both the box and the single pack must be in the product catalog. Sync catalog and try again.'); return; }
+  const bs=stockOf(b.box);
+  if(!confirm('Open 1 × '+bp.name+'?\n\nBox stock −1'+(bs!==null?' ('+bs+' → '+(bs-1)+')':'')+'\n'+pp.name+' +'+b.packs)) return;
+  const url=inventoryUrl();
+  if(!url){ alert('Live stock is off (Settings → Inventory update URL).'); return; }
+  const idemKey='openbox|'+b.box+'|'+new Date().toISOString();
+  try{
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({idemKey,
+      items:[{variantId:bp.variantId||null, sku:bp.sku, quantity:1}],
+      increments:[{variantId:pp.variantId||null, sku:pp.sku, quantity:b.packs}]})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    applyLocalStock([{sku:bp.sku, quantity:1}]);
+    applyLocalStock([{sku:pp.sku, quantity:b.packs}], +1);
+    reconcileStock(d.inventory);
+    renderBoxes();
+    toast('Opened 1 box → +'+b.packs+' packs');
+  }catch(e){ alert('Could not open the box — nothing was changed.\n'+e.message); }
+}
+
 /* ---------------- admin — any store, any day ---------------- *
    Reads the site's record only: this view is about what the business took, not
    about what happens to be cached in the browser it's opened in. */
 let adState = { store:'', from:'', to:'', preset:'today', data:null };
 
 function openAdmin(){
-  const pin=String(ADMIN_PIN||'').trim();
-  if(pin){
-    const got=prompt('Admin password');
-    if(got===null) return;                       // cancelled
-    if(String(got).trim()!==pin){ toast('Wrong password'); return; }
-  }
+  if(!requireAdmin()) return;
   if(!salesUrl()){
     alert('Admin reads the sales record kept on the site, so it needs that address.\n\nSettings → Sales memory → Sales log URL = /api/sales');
     return;
@@ -1544,6 +1671,7 @@ function openAdmin(){
   renderAdminStores(); markAdminPreset();
   $('adminModal').classList.add('show');
   loadAdmin();
+  loadBoxes();
 }
 function renderAdminStores(){
   const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})));
@@ -1872,6 +2000,12 @@ function bind(){
   $('btnInvoices').onclick=()=>openInvoices();
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
+  $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else if(requireAdmin()) toast('Logged in'); };
+  $('bxAdd').onclick=addBox;
+  $('bxTable').addEventListener('click', e=>{
+    const o=e.target.closest('[data-open]'); if(o) return openBox(Number(o.dataset.open));
+    const d=e.target.closest('[data-del]'); if(d) delBox(Number(d.dataset.del));
+  });
   $('btnSettings').onclick=openSettings;
   $('btnSwitchStore').onclick=switchStore;
 
@@ -1956,6 +2090,7 @@ function bind(){
   // Nothing is usable until a store is picked. The one last used here is
   // highlighted, so opening up in the morning is a single tap.
   openGate();
+  renderAuth();
 }
 bind();
 </script>
