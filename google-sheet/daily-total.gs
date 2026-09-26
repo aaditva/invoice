@@ -41,7 +41,11 @@ function updateDailyTotal() {
     writeTotal(new Date(now.getTime() - 3600 * 1000));
   }
   writeTotal(now);
-  if (EXPENSES_HEADER) writeExpenses(now);
+  // Expenses are extra: if that part fails (e.g. the site hasn't got
+  // /api/expenses yet) log it and carry on, rather than failing the run.
+  if (EXPENSES_HEADER) {
+    try { writeExpenses(now); } catch (e) { console.log('Expenses skipped: ' + e.message); }
+  }
 }
 
 function writeTotal(when) {
@@ -50,19 +54,19 @@ function writeTotal(when) {
   writeCell(day, TOTAL_HEADER, Number((data.totals || {}).total) || 0);
 }
 
-// One request covers the look-back window; days with nothing spent get 0 so a
-// deleted expense clears from the sheet too.
+// One request covers the look-back window. Only days with expenses recorded on
+// the till are written, so anything typed into the sheet by hand for other
+// days is left alone. (Deleting a day's last till expense therefore leaves the
+// old figure in the sheet — clear that cell by hand.)
 function writeExpenses(now) {
   const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');
   const from = Utilities.formatDate(new Date(now.getTime() - EXPENSE_LOOKBACK * 86400000), TIME_ZONE, 'yyyy-MM-dd');
   const data = fetchApi('expenses', from, to);
   const byDay = {};
   (data.days || []).forEach(r => { byDay[r.day] = (byDay[r.day] || 0) + (Number(r.total) || 0); });
-  for (let t = new Date(from + 'T12:00:00Z').getTime(); ; t += 86400000) {
-    const day = new Date(t).toISOString().slice(0, 10);
-    if (day > to) break;
-    writeCell(day, EXPENSES_HEADER, Math.round((byDay[day] || 0) * 100) / 100);
-  }
+  Object.keys(byDay).sort().forEach(day => {
+    writeCell(day, EXPENSES_HEADER, Math.round(byDay[day] * 100) / 100);
+  });
 }
 
 function fetchApi(what, from, to) {
