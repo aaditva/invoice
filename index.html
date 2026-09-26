@@ -205,7 +205,7 @@
           <span class="flash" id="flash"></span>
         </div>
         <button class="ghost" id="btnFind">Search</button>
-        <button class="ghost" id="btnOpenBox" title="Open a sealed box into single packs (admin)">📦 Open box</button>
+        <button class="ghost" id="btnOpenBox" title="Open a sealed box into single packs">📦 Open box</button>
         <button class="ghost" id="btnMisc" title="Add a custom-priced line">+ Misc&nbsp;$</button>
       </div>
       <div class="basket">
@@ -553,7 +553,6 @@ function logoutAdmin(){
   allTally = null;
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
-  $('boxModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
 function renderAuth(){
@@ -1594,7 +1593,8 @@ async function printTakings(){
 /* ---------------- boxes — open a sealed box into single packs ---------------- *
    The box → pack list lives on the site (/api/boxes) so every till shares it.
    Opening a box sends ONE inventory adjustment: box −1 and pack +N together, so
-   Squarespace can never end up with one half done. Admin only. */
+   Squarespace can never end up with one half done. Anyone can open a box;
+   adding or removing boxes from the list needs the Admin login. */
 let boxes = [];
 function boxesUrl(){
   let u='/api/boxes';
@@ -1629,6 +1629,7 @@ function renderBoxes(){
       :'<tr><td colspan="6" class="muted">No boxes yet — add one below.</td></tr>');
 }
 async function addBox(){
+  if(!requireAdmin()) return;             // anyone can open a box; changing the list is admin
   const box=$('bxBox').value.trim(), pack=$('bxPack').value.trim(), packs=Math.round(Number($('bxQty').value)||0);
   if(!box||!pack||packs<1){ toast('Scan the box, scan a pack, and enter packs per box'); return; }
   if(normSku(box)===normSku(pack)){ toast('Box and pack barcodes are the same'); return; }
@@ -1639,6 +1640,7 @@ async function addBox(){
 }
 async function delBox(i){
   const b=boxes[i]; if(!b) return;
+  if(!requireAdmin()) return;
   if(!confirm('Remove '+((catItem(b.box)&&catItem(b.box).name)||b.box)+' from the box list?')) return;
   try{ await saveBoxes(boxes.filter((_,j)=>j!==i)); }catch(e){ alert('Could not save: '+e.message); }
 }
@@ -1683,7 +1685,6 @@ function openAdmin(){
   loadAdmin();
 }
 function openBoxes(){
-  if(!requireAdmin()) return;
   $('boxModal').classList.add('show');
   renderBoxes(); loadBoxes();
 }

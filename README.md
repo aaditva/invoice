@@ -366,7 +366,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 
 ## Open box (box → single packs)
 
-Admin → **Boxes**. Each row links a sealed box barcode to its single pack barcode and the number of
+**📦 Open box** (till screen, anyone can use it). Adding or removing boxes needs the Admin login. Each row links a sealed box barcode to its single pack barcode and the number of
 packs inside. **Open 1** sends one Squarespace adjustment: box −1 and pack +N together (all or nothing).
 The list is stored on the site (`/api/boxes`, Netlify Blobs), so every till shares it. Until the first edit
 it starts from a built-in list of the boxes in the product feed (see `netlify/functions/boxes.mjs`).
