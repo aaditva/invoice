@@ -11,9 +11,9 @@
  *  the sheet (a day you didn't open), it skips it. Nothing else is touched.
  * ------------------------------------------------------------------ */
 
-const SITE_URL     = 'https://YOUR-SITE.netlify.app'; // the till's site
+const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
-const STORE        = 'all';       // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
+const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
 const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes into
