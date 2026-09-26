@@ -9,6 +9,11 @@
  *  the column headed TOTAL_HEADER ("Games") in row 1, looks down DATE_COLUMN
  *  for today's date and writes the total on that row. If the date isn't in
  *  the sheet (a day you didn't open), it skips it. Nothing else is touched.
+ *
+ *  Expenses (Admin → 💸 Expenses on the till) go the same way into the column
+ *  headed EXPENSES_HEADER, on the row for the date the expense was for. Each
+ *  run also refreshes the last EXPENSE_LOOKBACK days, so an expense entered
+ *  later against an earlier date still lands next to that date.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
@@ -17,6 +22,8 @@ const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-m
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
 const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes into
+const EXPENSES_HEADER  = 'Expenses'; // row-1 heading of the expenses column; '' to turn off
+const EXPENSE_LOOKBACK = 14;         // days back to re-check for late-entered expenses
 const TIME_ZONE    = 'Australia/Melbourne';
 
 function setup() {
@@ -34,29 +41,52 @@ function updateDailyTotal() {
     writeTotal(new Date(now.getTime() - 3600 * 1000));
   }
   writeTotal(now);
+  if (EXPENSES_HEADER) writeExpenses(now);
 }
 
 function writeTotal(when) {
   const day = Utilities.formatDate(when, TIME_ZONE, 'yyyy-MM-dd');
-  const url = SITE_URL.replace(/\/$/, '') + '/api/sales?from=' + day + '&to=' + day +
+  const data = fetchApi('sales', day, day);
+  writeCell(day, TOTAL_HEADER, Number((data.totals || {}).total) || 0);
+}
+
+// One request covers the look-back window; days with nothing spent get 0 so a
+// deleted expense clears from the sheet too.
+function writeExpenses(now) {
+  const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');
+  const from = Utilities.formatDate(new Date(now.getTime() - EXPENSE_LOOKBACK * 86400000), TIME_ZONE, 'yyyy-MM-dd');
+  const data = fetchApi('expenses', from, to);
+  const byDay = {};
+  (data.days || []).forEach(r => { byDay[r.day] = (byDay[r.day] || 0) + (Number(r.total) || 0); });
+  for (let t = new Date(from + 'T12:00:00Z').getTime(); ; t += 86400000) {
+    const day = new Date(t).toISOString().slice(0, 10);
+    if (day > to) break;
+    writeCell(day, EXPENSES_HEADER, Math.round((byDay[day] || 0) * 100) / 100);
+  }
+}
+
+function fetchApi(what, from, to) {
+  const url = SITE_URL.replace(/\/$/, '') + '/api/' + what + '?from=' + from + '&to=' + to +
     (STORE && STORE !== 'all' ? '&store=' + encodeURIComponent(STORE) : '');
   const res = UrlFetchApp.fetch(url, {
     headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {},
     muteHttpExceptions: true,
   });
   if (res.getResponseCode() !== 200) {
-    throw new Error('Sales fetch failed (' + res.getResponseCode() + '): ' + res.getContentText());
+    throw new Error(what + ' fetch failed (' + res.getResponseCode() + '): ' + res.getContentText());
   }
-  const total = Number((JSON.parse(res.getContentText()).totals || {}).total) || 0;
+  return JSON.parse(res.getContentText());
+}
 
+function writeCell(day, header, value) {
   const tab = SHEET_NAME.replace('{year}', day.slice(0, 4));
   const sheet = SpreadsheetApp.getActive().getSheetByName(tab);
   if (!sheet) { console.log('No tab called "' + tab + '", skipped ' + day); return; }
   const dateCol = colNum(DATE_COLUMN);
   const heads = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
     .map(h => String(h).trim().toLowerCase());
-  const totalCol = heads.indexOf(TOTAL_HEADER.toLowerCase()) + 1;
-  if (!totalCol) throw new Error('No "' + TOTAL_HEADER + '" heading in row 1 of tab "' + tab + '".');
+  const totalCol = heads.indexOf(header.toLowerCase()) + 1;
+  if (!totalCol) throw new Error('No "' + header + '" heading in row 1 of tab "' + tab + '".');
   const last = sheet.getLastRow();
   const dates = last ? sheet.getRange(1, dateCol, last, 1).getValues() : [];
 
@@ -69,7 +99,7 @@ function writeTotal(when) {
     if (key === day) { row = i + 1; break; }
   }
   if (!row) { console.log('No row for ' + day + ' in tab "' + tab + '", skipped'); return; }
-  sheet.getRange(row, totalCol).setValue(total);
+  sheet.getRange(row, totalCol).setValue(value);
 }
 
 function normDay(s) {

@@ -161,6 +161,15 @@
   #btnLogin.in{background:var(--ok);color:#fff}
   .boxadd{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:8px;align-items:end}
   @media (max-width:640px){ .boxadd{grid-template-columns:1fr 1fr} }
+  /* Expenses pad — tap notes and coins, they add up */
+  .cashpad{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+  .cashpad button{padding:16px 6px;font-size:18px;font-weight:700;position:relative}
+  .cashpad button.note{background:#e6f4ea;color:#0b5d24;border-radius:8px}
+  .cashpad button.coin{background:#fff4d6;color:#7a5200;border-radius:999px;aspect-ratio:1/1;padding:0}
+  .cashpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
+    background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
+  #btnExpenses{display:none}
+  #btnExpenses.on{display:inline-flex}
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
   .receipt{display:none}
@@ -200,6 +209,7 @@
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
+    <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
     <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
     <span class="spacer"></span>
     <div class="today" id="todayBox" title="Click for full day takings"></div>
@@ -346,7 +356,41 @@
         <button class="ghost" id="adPrint">Print sales summary</button>
         <button class="ghost" id="adExport">Export range CSV</button>
       </div>
-      <button class="ghost" id="adBoxes">📦 Open box…</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="ghost" id="adBoxes">📦 Open box…</button>
+        <button class="ghost" id="adExpenses">💸 Expenses…</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EXPENSES MODAL — tap notes/coins to add up an expense (admin only) -->
+<div class="modal" id="expModal">
+  <div class="sheet wide">
+    <header><span class="store">Expenses</span><span class="spacer"></span><button class="ghost" id="closeExp">Close</button></header>
+    <div class="body">
+      <div class="grid2">
+        <div class="field"><label for="exDate">Date of the expense</label><input type="date" id="exDate" /></div>
+        <div class="field"><label for="exStore">Store</label><select id="exStore"></select></div>
+      </div>
+      <div class="field"><label for="exNote">What for (optional)</label><input id="exNote" placeholder="e.g. milk, cleaner, postage" /></div>
+      <div class="card" style="text-align:center">
+        <div class="clbl">This expense</div>
+        <div class="bignum" id="exTotal">$0.00</div>
+        <div class="csub" id="exBreak">Tap the notes and coins below</div>
+      </div>
+      <div class="cashpad" id="exPad"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="ghost" id="exUndo">⟲ Undo</button>
+        <button class="ghost" id="exClear">Clear</button>
+        <span class="spacer" style="flex:1"></span>
+        <button class="primary" id="exDone">Done ⏎</button>
+      </div>
+      <div class="muted" id="exStatus"></div>
+      <div class="field">
+        <label id="exListLbl">Expenses that day</label>
+        <div class="scroller"><table class="dtable" id="exList"></table></div>
+      </div>
     </div>
   </div>
 </div>
@@ -570,12 +614,14 @@ function logoutAdmin(){
   allTally = null;
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
+  $('expModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
 function renderAuth(){
   const b=$('btnLogin'), on=isAdmin();
   b.textContent = on ? 'Log out' : '🔒 Login';
   b.classList.toggle('in', on);
+  $('btnExpenses').classList.toggle('on', on);
   renderToday();
   if(on) refreshToday();
 }
@@ -1714,6 +1760,87 @@ function openAdmin(){
   $('adminModal').classList.add('show');
   loadAdmin();
 }
+/* ---------------- expenses — cash paid out ----------------
+   Tap notes and coins; they add up until Done (or Enter). The total is saved
+   to the site under the expense's own date, and the Google Sheet script pulls
+   each day's total into the sheet's Expenses column every hour. */
+const CASH = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
+let exTaps = [];
+function expensesUrl(params){
+  let u='/api/expenses';
+  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  const q=new URLSearchParams(params||{}).toString();
+  return q ? u+'?'+q : u;
+}
+function cashLabel(v){ return v>=1 ? '$'+v : Math.round(v*100)+'c'; }
+function openExpenses(){
+  if(!requireAdmin()) return;
+  $('exStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
+  if(currentStore) $('exStore').value=currentStore.id;
+  if(!$('exDate').value) $('exDate').value=todayKey();
+  exTaps=[]; $('exNote').value=''; $('exStatus').textContent='';
+  renderExpPad();
+  $('expModal').classList.add('show');
+  loadExpenses();
+}
+function renderExpPad(){
+  const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
+  $('exPad').innerHTML=CASH.map(v=>'<button class="'+(v>=5?'note':'coin')+'" data-v="'+v+'">'+cashLabel(v)+
+    (counts[v]?'<span class="n">×'+counts[v]+'</span>':'')+'</button>').join('');
+  const total=round2(exTaps.reduce((a,v)=>a+v,0));
+  $('exTotal').textContent=money(total);
+  $('exBreak').textContent=exTaps.length
+    ? CASH.filter(v=>counts[v]).map(v=>counts[v]+' × '+cashLabel(v)).join(' + ')
+    : 'Tap the notes and coins below';
+}
+async function saveExpense(){
+  const amount=round2(exTaps.reduce((a,v)=>a+v,0));
+  if(!(amount>0)){ toast('Tap some notes or coins first'); return; }
+  const day=$('exDate').value, store=$('exStore').value;
+  if(!day){ toast('Pick a date'); return; }
+  const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
+  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  $('exDone').disabled=true; $('exStatus').textContent='Saving…';
+  try{
+    const res=await fetch(expensesUrl(), {method:'POST', headers:h,
+      body:JSON.stringify({day, store, amount, counts, note:$('exNote').value})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    exTaps=[]; $('exNote').value=''; renderExpPad();
+    $('exStatus').textContent='';
+    toast('Expense saved: '+money(amount));
+    loadExpenses();
+  }catch(e){ $('exStatus').textContent='Could not save: '+e.message; }
+  finally{ $('exDone').disabled=false; }
+}
+async function loadExpenses(){
+  const day=$('exDate').value, store=$('exStore').value;
+  if(!day) return;
+  $('exListLbl').textContent='Expenses on '+day+' — '+storeLabel(store);
+  try{
+    const res=await fetch(expensesUrl({from:day, to:day, store}), {headers:shareHeaders(false)});
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    const rows=d.entries||[];
+    $('exList').innerHTML=rows.length
+      ? '<tr><th>Time</th><th>What for</th><th class="num">Amount</th><th></th></tr>'+
+        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'—')+
+          '</td><td class="num">'+money(e.amount)+'</td><td class="num"><button class="ghost" data-del="'+esc(e.id)+'">✕</button></td></tr>').join('')+
+        '<tfoot><tr><td></td><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
+      : '<tr><td class="muted">No expenses recorded for this day.</td></tr>';
+  }catch(e){ $('exList').innerHTML='<tr><td class="muted">Could not load: '+esc(e.message)+'</td></tr>'; }
+}
+async function deleteExpense(id){
+  if(!confirm('Delete this expense?')) return;
+  const h=shareHeaders(false); h['x-admin-pin']=ADMIN_PIN;
+  try{
+    const res=await fetch(expensesUrl({day:$('exDate').value, store:$('exStore').value, id}), {method:'DELETE', headers:h});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    loadExpenses();
+  }catch(e){ alert('Could not delete: '+e.message); }
+}
+
 function openBoxes(){
   $('boxModal').classList.add('show');
   $('bxScan').value=''; $('bxStatus').textContent='';
@@ -2055,6 +2182,25 @@ function bind(){
   $('bxQty').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addBox(); } });
   $('btnOpenBox').onclick=openBoxes;
   $('adBoxes').onclick=openBoxes;
+  $('btnExpenses').onclick=openExpenses;
+  $('adExpenses').onclick=openExpenses;
+  $('closeExp').onclick=()=>{ $('expModal').classList.remove('show'); focusScan(); };
+  $('exPad').addEventListener('click', e=>{
+    const b=e.target.closest('[data-v]'); if(!b) return;
+    exTaps.push(Number(b.dataset.v)); renderExpPad();
+  });
+  $('exUndo').onclick=()=>{ exTaps.pop(); renderExpPad(); };
+  $('exClear').onclick=()=>{ exTaps=[]; renderExpPad(); };
+  $('exDone').onclick=saveExpense;
+  $('exDate').addEventListener('change', loadExpenses);
+  $('exStore').addEventListener('change', loadExpenses);
+  $('exList').addEventListener('click', e=>{ const d=e.target.closest('[data-del]'); if(d) deleteExpense(d.dataset.del); });
+  // Enter finishes the expense (unless typing in the date picker)
+  document.addEventListener('keydown', e=>{
+    if(!$('expModal').classList.contains('show')) return;
+    if(e.key==='Enter' && e.target.id!=='exDate'){ e.preventDefault(); saveExpense(); }
+    else if(e.key==='Backspace' && e.target.tagName!=='INPUT'){ e.preventDefault(); exTaps.pop(); renderExpPad(); }
+  });
   $('closeBoxes').onclick=()=>{ $('boxModal').classList.remove('show'); focusScan(); };
   $('bxTable').addEventListener('click', e=>{
     const o=e.target.closest('[data-open]'); if(o) return openBox(Number(o.dataset.open));

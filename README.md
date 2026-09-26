@@ -304,6 +304,14 @@ The script finds today's date in column A of that year's tab and writes the tota
 Games column on that row. If the date isn't in the sheet, the day is skipped. The total leaves out voided sales and matches
 the Admin tab's figure.
 
+**Expenses.** Once logged in as Admin, a **💸 Expenses** button appears in the header (and in
+Admin). Pick the date and store, tap the notes and coins that went out — they add up — then
+press **Done** or **Enter**. Each expense is saved on the site (`/api/expenses`). The same hourly
+script writes each day's expenses total into the **Expenses** column, on the row for the date
+the expense was for (it re-checks the last 14 days, so a late entry still lands on the right
+row). Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
+script into Apps Script again.
+
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
 Turn this on and **every finalised sale lowers the matching Squarespace stock**, so the quantity
