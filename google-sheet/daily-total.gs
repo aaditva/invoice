@@ -5,17 +5,18 @@
  *  Fill in the settings below, then run setup() once (Run ▶, allow access).
  *  From then on it runs every hour on its own and keeps today's row current.
  *
- *  How it writes: it looks down DATE_COLUMN for today's date. If it finds it,
- *  it writes the total into TOTAL_COLUMN on that row. If not, it adds a new
- *  row at the bottom with the date and the total. Nothing else is touched.
+ *  How it writes: it opens the tab named after the year (e.g. "2026"), finds
+ *  the column headed TOTAL_HEADER ("Games") in row 1, looks down DATE_COLUMN
+ *  for today's date and writes the total on that row. If the date isn't in
+ *  the sheet (a day you didn't open), it skips it. Nothing else is touched.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://YOUR-SITE.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
 const STORE        = 'all';       // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
-const SHEET_NAME   = 'Sheet1';    // the tab to write into
+const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
-const TOTAL_COLUMN = 'B';         // column the day's total goes into
+const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes into
 const TIME_ZONE    = 'Australia/Melbourne';
 
 function setup() {
@@ -48,23 +49,26 @@ function writeTotal(when) {
   }
   const total = Number((JSON.parse(res.getContentText()).totals || {}).total) || 0;
 
-  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('No tab called "' + SHEET_NAME + '".');
-  const dateCol = colNum(DATE_COLUMN), totalCol = colNum(TOTAL_COLUMN);
+  const tab = SHEET_NAME.replace('{year}', day.slice(0, 4));
+  const sheet = SpreadsheetApp.getActive().getSheetByName(tab);
+  if (!sheet) { console.log('No tab called "' + tab + '", skipped ' + day); return; }
+  const dateCol = colNum(DATE_COLUMN);
+  const heads = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+    .map(h => String(h).trim().toLowerCase());
+  const totalCol = heads.indexOf(TOTAL_HEADER.toLowerCase()) + 1;
+  if (!totalCol) throw new Error('No "' + TOTAL_HEADER + '" heading in row 1 of tab "' + tab + '".');
   const last = sheet.getLastRow();
   const dates = last ? sheet.getRange(1, dateCol, last, 1).getValues() : [];
 
-  // Matches real date cells and text like 2026-09-26 or 26/09/2026.
+  // Matches real date cells and text like 2026-09-26, 26/09/2026 or
+  // "Saturday, 26 September 2026".
   let row = 0;
   for (let i = 0; i < dates.length; i++) {
     const v = dates[i][0];
     const key = v instanceof Date ? Utilities.formatDate(v, TIME_ZONE, 'yyyy-MM-dd') : normDay(String(v));
     if (key === day) { row = i + 1; break; }
   }
-  if (!row) {
-    row = last + 1;
-    sheet.getRange(row, dateCol).setValue(Utilities.parseDate(day, TIME_ZONE, 'yyyy-MM-dd'));
-  }
+  if (!row) { console.log('No row for ' + day + ' in tab "' + tab + '", skipped'); return; }
   sheet.getRange(row, totalCol).setValue(total);
 }
 
@@ -74,6 +78,12 @@ function normDay(s) {
   if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // Australian dd/mm/yyyy
   if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  m = s.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);  // "Saturday, 26 September 2026"
+  if (m) {
+    const mo = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+      .indexOf(m[2].slice(0, 3).toLowerCase()) + 1;
+    if (mo) return m[3] + '-' + String(mo).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  }
   return '';
 }
 

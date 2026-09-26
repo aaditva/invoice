@@ -291,17 +291,17 @@ fixed internal id, so history follows the rename.
 > store they might not belong to.
 
 ### Daily total into a Google Sheet (hourly)
-`google-sheet/daily-total.gs` writes each day's total sales into one column of a sheet you
-already have. It runs every hour, so the figure is at most an hour behind.
+`google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
+existing sheet (one tab per year, dates down column A). It runs every hour, so the figure is at most an hour behind.
 
 1. Open the sheet → **Extensions → Apps Script**, replace `Code.gs` with the file's contents.
 2. Fill in the settings at the top: your site URL, `SALES_TOKEN` (if you set one), the store
-   (`all` or one store id), the tab name, the date column and the total column.
+   (`all` or one store id). The tab (`{year}`), date column (`A`) and heading (`Games`) are preset.
 3. Pick **setup** in the function list → **Run ▶** → allow access. Setup writes today's total
    straight away and creates the hourly trigger.
 
-The script finds today's date in the date column and writes the total on that row. If today
-isn't there yet, it adds a row at the bottom. The total leaves out voided sales and matches
+The script finds today's date in column A of that year's tab and writes the total in the
+Games column on that row. If the date isn't in the sheet, the day is skipped. The total leaves out voided sales and matches
 the Admin tab's figure.
 
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
