@@ -353,3 +353,20 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
 | `api/catalog.js` | Vercel catalogue proxy (alt to Netlify). |
 | `README.md` | This guide. |
+
+---
+
+## Admin login & sales totals
+
+- **🔒 Admin login** (header) asks for the Admin password once; the device then stays logged in
+  until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
+  totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
+- The password is `ADMIN_PIN` in `index.html`. Optionally set the same value as the Netlify env var
+  **ADMIN_PIN** so the server also refuses box-list edits without it.
+
+## Open box (box → single packs)
+
+**📦 Open box** (till screen, anyone can use it). Adding or removing boxes needs the Admin login. Each row links a sealed box barcode to its single pack barcode and the number of
+packs inside. **Open 1** sends one Squarespace adjustment: box −1 and pack +N together (all or nothing).
+The list is stored on the site (`/api/boxes`, Netlify Blobs), so every till shares it. Until the first edit
+it starts from a built-in list of the boxes in the product feed (see `netlify/functions/boxes.mjs`).
