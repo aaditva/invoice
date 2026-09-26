@@ -34,14 +34,15 @@
   .today b{color:var(--ink)}
   /* Keep the header on ONE line: nothing wraps, buttons stay compact, and the
      totals strip gives way (clips) before anything drops to a second row. */
-  header{flex-wrap:nowrap;gap:8px;padding:10px 14px;white-space:nowrap;min-width:0}
+  header{flex-wrap:nowrap;gap:10px;padding:12px 18px;white-space:nowrap;min-width:0}
   header > *{flex-shrink:0}
-  header button{padding:7px 11px;font-size:13px}
-  header .store{font-size:15px}
-  header .pill{padding:5px 9px}
-  header .today{flex-shrink:1;min-width:0;overflow:hidden;gap:12px}
+  header button{padding:10px 14px;font-size:15px}
+  header .today{flex-shrink:1;min-width:0;overflow:hidden;gap:14px;font-size:14px}
   header .today span{white-space:nowrap}
-  @media (max-width:1180px){ #catWhen,#hStore{display:none} }
+  header .pill{font-size:13.5px}
+  @media (max-width:1400px){ #catWhen{display:none} }
+  @media (max-width:1250px){ #hStore{display:none} }
+  @media (max-width:1150px){ header .pill{display:none} }
 
   main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:16px;padding:16px;overflow:hidden}
   @media (max-width:900px){ main{grid-template-columns:1fr} }
@@ -355,15 +356,21 @@
   <div class="sheet wide">
     <header><span class="store">📦 Open box</span><span class="spacer"></span><button class="ghost" id="closeBoxes">Close</button></header>
     <div class="body">
-        <div class="hint" style="margin:0 0 10px"><b>Open</b> takes 1 box off stock and adds its packs to the single pack's stock, in Squarespace and on every till. The list is kept on the site, so every device shares it.</div>
-        <div class="scroller"><table class="dtable" id="bxTable"></table></div>
-        <div class="boxadd" style="margin-top:10px">
+        <div class="field"><label for="bxScan">Scan a box to open it</label>
+          <input id="bxScan" autocomplete="off" placeholder="Scan box barcode…" style="font-size:18px;padding:14px" />
+          <div class="hint">Scanning opens it straight away: box stock −1, single packs +N (Squarespace and every till).</div>
+        </div>
+        <div class="muted" id="bxStatus"></div>
+        <div class="field"><label>Add a new box — scan the box, then one pack, then type packs per box</label></div>
+        <div class="boxadd">
           <div class="field"><label for="bxBox">Box barcode</label><input id="bxBox" autocomplete="off" placeholder="scan the box" /></div>
           <div class="field"><label for="bxPack">Single pack barcode</label><input id="bxPack" autocomplete="off" placeholder="scan one pack" /></div>
           <div class="field"><label for="bxQty">Packs per box</label><input id="bxQty" inputmode="numeric" placeholder="36" /></div>
           <button class="primary" id="bxAdd">Add / update</button>
         </div>
-        <div class="muted" id="bxStatus" style="margin-top:6px"></div>
+        <div class="field"><label>Boxes in the list</label>
+          <div class="scroller"><table class="dtable" id="bxTable"></table></div>
+        </div>
     </div>
   </div>
 </div>
@@ -999,8 +1006,6 @@ function renderToday(){
     '<span>Today: <b>'+t.count+'</b> sales</span>'+
     '<span>This store '+m(t.total)+'</span>'+
     '<span>All stores '+(on && !allTally ? '<b>…</b>' : m(allTally ? allTally.total : 0))+'</span>'+
-    '<span>Cash '+m(t.cash)+'</span>'+
-    '<span>Card '+m(t.card)+'</span>'+
     (t.local ? '<span class="muted">this device only</span>' : '');
 }
 // Does this locally-stored sale belong to the store that's open? Sales rung up
@@ -1645,7 +1650,7 @@ async function addBox(){
   if(normSku(box)===normSku(pack)){ toast('Box and pack barcodes are the same'); return; }
   const list=boxes.filter(b=>normSku(b.box)!==normSku(box));
   list.push({box, pack, packs, name:(catItem(box)&&catItem(box).name)||''});
-  try{ await saveBoxes(list); $('bxBox').value=''; $('bxPack').value=''; $('bxQty').value=''; }
+  try{ await saveBoxes(list); $('bxBox').value=''; $('bxPack').value=''; $('bxQty').value=''; $('bxScan').focus(); }
   catch(e){ alert('Could not save: '+e.message); }
 }
 async function delBox(i){
@@ -1654,12 +1659,12 @@ async function delBox(i){
   if(!confirm('Remove '+((catItem(b.box)&&catItem(b.box).name)||b.box)+' from the box list?')) return;
   try{ await saveBoxes(boxes.filter((_,j)=>j!==i)); }catch(e){ alert('Could not save: '+e.message); }
 }
-async function openBox(i){
+async function openBox(i, scanned){
   const b=boxes[i]; if(!b) return;
   const bp=catItem(b.box), pp=catItem(b.pack);
   if(!bp||!pp){ alert('Both the box and the single pack must be in the product catalog. Sync catalog and try again.'); return; }
   const bs=stockOf(b.box);
-  if(!confirm('Open 1 × '+bp.name+'?\n\nBox stock −1'+(bs!==null?' ('+bs+' → '+(bs-1)+')':'')+'\n'+pp.name+' +'+b.packs)) return;
+  if(!scanned && !confirm('Open 1 × '+bp.name+'?\n\nBox stock −1'+(bs!==null?' ('+bs+' → '+(bs-1)+')':'')+'\n'+pp.name+' +'+b.packs)) return;
   const url=inventoryUrl();
   if(!url){ alert('Live stock is off (Settings → Inventory update URL).'); return; }
   const idemKey='openbox|'+b.box+'|'+new Date().toISOString();
@@ -1674,7 +1679,22 @@ async function openBox(i){
     reconcileStock(d.inventory);
     renderBoxes();
     toast('Opened 1 box → +'+b.packs+' packs');
-  }catch(e){ alert('Could not open the box — nothing was changed.\n'+e.message); }
+    $('bxStatus').innerHTML='<span style="color:var(--ok)">✓ Opened 1 × '+esc(bp.name)+' → +'+b.packs+' × '+esc(pp.name)+'</span>';
+  }catch(e){
+    if(scanned) $('bxStatus').innerHTML='<span class="warn">Could not open — nothing was changed. '+esc(e.message)+'</span>';
+    else alert('Could not open the box — nothing was changed.\n'+e.message);
+  }
+}
+// Scan a box barcode → open it. Unknown barcode → start adding it instead.
+async function scanBox(){
+  const code=$('bxScan').value.trim(); $('bxScan').value='';
+  if(!code) return;
+  if(!boxes.length) await loadBoxes();      // scanned before the list arrived
+  const i=boxes.findIndex(b=>normSku(b.box)===normSku(code));
+  if(i>=0){ $('bxStatus').textContent='Opening…'; await openBox(i, true); $('bxScan').focus(); return; }
+  const p=catItem(code);
+  $('bxStatus').innerHTML='<span class="warn">'+esc(p?p.name:code)+' isn\'t in the box list yet — scan one single pack below and enter packs per box to add it.</span>';
+  $('bxBox').value=code; $('bxPack').focus();
 }
 
 /* ---------------- admin — any store, any day ---------------- *
@@ -1696,7 +1716,9 @@ function openAdmin(){
 }
 function openBoxes(){
   $('boxModal').classList.add('show');
+  $('bxScan').value=''; $('bxStatus').textContent='';
   renderBoxes(); loadBoxes();
+  setTimeout(()=>$('bxScan').focus(), 50);
 }
 function renderAdminStores(){
   const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})));
@@ -2027,6 +2049,10 @@ function bind(){
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else if(requireAdmin()) toast('Logged in'); };
   $('bxAdd').onclick=addBox;
+  $('bxScan').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); scanBox(); } });
+  $('bxBox').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxPack').focus(); } });
+  $('bxPack').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxQty').focus(); } });
+  $('bxQty').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addBox(); } });
   $('btnOpenBox').onclick=openBoxes;
   $('adBoxes').onclick=openBoxes;
   $('closeBoxes').onclick=()=>{ $('boxModal').classList.remove('show'); focusScan(); };
