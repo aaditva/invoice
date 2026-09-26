@@ -205,6 +205,7 @@
           <span class="flash" id="flash"></span>
         </div>
         <button class="ghost" id="btnFind">Search</button>
+        <button class="ghost" id="btnOpenBox" title="Open a sealed box into single packs (admin)">📦 Open box</button>
         <button class="ghost" id="btnMisc" title="Add a custom-priced line">+ Misc&nbsp;$</button>
       </div>
       <div class="basket">
@@ -334,7 +335,16 @@
         <button class="ghost" id="adPrint">Print sales summary</button>
         <button class="ghost" id="adExport">Export range CSV</button>
       </div>
-      <fieldset><legend>Boxes — open a box into single packs</legend>
+      <button class="ghost" id="adBoxes">📦 Open box…</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPEN BOX MODAL — box -1, single packs +N (admin only) -->
+<div class="modal" id="boxModal">
+  <div class="sheet wide">
+    <header><span class="store">📦 Open box</span><span class="spacer"></span><button class="ghost" id="closeBoxes">Close</button></header>
+    <div class="body">
         <div class="hint" style="margin:0 0 10px"><b>Open</b> takes 1 box off stock and adds its packs to the single pack's stock, in Squarespace and on every till. The list is kept on the site, so every device shares it.</div>
         <div class="scroller"><table class="dtable" id="bxTable"></table></div>
         <div class="boxadd" style="margin-top:10px">
@@ -344,7 +354,6 @@
           <button class="primary" id="bxAdd">Add / update</button>
         </div>
         <div class="muted" id="bxStatus" style="margin-top:6px"></div>
-      </fieldset>
     </div>
   </div>
 </div>
@@ -544,6 +553,7 @@ function logoutAdmin(){
   allTally = null;
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
+  $('boxModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
 function renderAuth(){
@@ -1671,7 +1681,11 @@ function openAdmin(){
   renderAdminStores(); markAdminPreset();
   $('adminModal').classList.add('show');
   loadAdmin();
-  loadBoxes();
+}
+function openBoxes(){
+  if(!requireAdmin()) return;
+  $('boxModal').classList.add('show');
+  renderBoxes(); loadBoxes();
 }
 function renderAdminStores(){
   const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})));
@@ -2002,6 +2016,9 @@ function bind(){
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else if(requireAdmin()) toast('Logged in'); };
   $('bxAdd').onclick=addBox;
+  $('btnOpenBox').onclick=openBoxes;
+  $('adBoxes').onclick=openBoxes;
+  $('closeBoxes').onclick=()=>{ $('boxModal').classList.remove('show'); focusScan(); };
   $('bxTable').addEventListener('click', e=>{
     const o=e.target.closest('[data-open]'); if(o) return openBox(Number(o.dataset.open));
     const d=e.target.closest('[data-del]'); if(d) delBox(Number(d.dataset.del));
