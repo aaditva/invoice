@@ -309,7 +309,7 @@ Admin). Pick the date and store, tap the notes and coins that went out — they 
 press **Done** or **Enter**. Each expense is saved on the site (`/api/expenses`). The same hourly
 script writes each day's expenses total into the **Expenses** column, on the row for the date
 the expense was for (it re-checks the last 14 days, so a late entry still lands on the right
-row). Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
+row). Days with no till expenses are left alone, so figures typed in by hand stay. Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
 script into Apps Script again.
 
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
