@@ -170,6 +170,11 @@
     background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
   #btnExpenses{display:none}
   #btnExpenses.on{display:inline-flex}
+  .addpad{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .addpad button{padding:18px 6px;font-size:20px;font-weight:700;position:relative;background:#e6f4ea;color:#0b5d24;border-radius:8px}
+  .addpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
+    background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
+  @media (max-width:480px){ .addpad{grid-template-columns:repeat(3,1fr)} }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
   .receipt{display:none}
@@ -209,6 +214,7 @@
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
+    <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
     <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
     <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
     <span class="spacer"></span>
@@ -359,6 +365,42 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="ghost" id="adBoxes">📦 Open box…</button>
         <button class="ghost" id="adExpenses">💸 Expenses…</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MONEY ADDED MODAL — anyone can record money put into the till -->
+<div class="modal" id="addModal">
+  <div class="sheet wide">
+    <header><span class="store">Money Added</span><span class="spacer"></span><button class="ghost" id="closeAdd">Close</button></header>
+    <div class="body">
+      <div class="grid2">
+        <div class="field"><label for="maDate">Date</label><input type="date" id="maDate" /></div>
+        <div class="field"><label for="maStore">Store</label><select id="maStore"></select></div>
+      </div>
+      <div class="field"><label for="maNote">Note (optional)</label><input id="maNote" placeholder="e.g. who / what for" /></div>
+      <div class="card" style="text-align:center">
+        <div class="clbl">Money added</div>
+        <div class="bignum" id="maTotal">$0.00</div>
+        <div class="csub" id="maBreak">Tap an amount, or type one under Other</div>
+      </div>
+      <div class="addpad" id="maPad"></div>
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:140px;margin:0"><label for="maOther">Other amount</label>
+          <input type="number" id="maOther" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 35" /></div>
+        <button class="ghost" id="maOtherAdd">+ Add</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="ghost" id="maUndo">⟲ Undo</button>
+        <button class="ghost" id="maClear">Clear</button>
+        <span class="spacer" style="flex:1"></span>
+        <button class="primary" id="maDone">Done ⏎</button>
+      </div>
+      <div class="muted" id="maStatus"></div>
+      <div class="field">
+        <label id="maListLbl">Money added that day</label>
+        <div class="scroller"><table class="dtable" id="maList"></table></div>
       </div>
     </div>
   </div>
@@ -1841,6 +1883,90 @@ async function deleteExpense(id){
   }catch(e){ alert('Could not delete: '+e.message); }
 }
 
+/* ---------------- money added — cash put into the till (anyone) ----------------
+   Tap $2/$4/$10/$20/$50 or type any amount under Other; they add up until
+   Done (or Enter). Saved under the chosen date and store; the Google Sheet
+   script pulls each day's total into the sheet's Money Added column. */
+const ADD_AMTS = [2,4,10,20,50];
+let maTaps = [];
+function moneyAddedUrl(params){
+  let u='/api/money-added';
+  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  const q=new URLSearchParams(params||{}).toString();
+  return q ? u+'?'+q : u;
+}
+function openMoneyAdded(){
+  $('maStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
+  if(currentStore) $('maStore').value=currentStore.id;
+  if(!$('maDate').value) $('maDate').value=todayKey();
+  maTaps=[]; $('maNote').value=''; $('maOther').value=''; $('maStatus').textContent='';
+  renderAddPad();
+  $('addModal').classList.add('show');
+  loadMoneyAdded();
+}
+function renderAddPad(){
+  const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
+  $('maPad').innerHTML=ADD_AMTS.map(v=>'<button data-v="'+v+'">$'+v+
+    (counts[v]?'<span class="n">×'+counts[v]+'</span>':'')+'</button>').join('');
+  $('maTotal').textContent=money(round2(maTaps.reduce((a,v)=>a+v,0)));
+  const keys=[...new Set(maTaps)];
+  $('maBreak').textContent=maTaps.length
+    ? keys.map(v=>counts[v]+' × '+money(v)).join(' + ')
+    : 'Tap an amount, or type one under Other';
+}
+function addOther(){
+  const v=round2(Number($('maOther').value));
+  if(!(v>0)) return false;
+  maTaps.push(v); $('maOther').value=''; renderAddPad();
+  return true;
+}
+async function saveMoneyAdded(){
+  addOther(); // a typed amount not yet added counts too
+  const amount=round2(maTaps.reduce((a,v)=>a+v,0));
+  if(!(amount>0)){ toast('Tap or type an amount first'); return; }
+  const day=$('maDate').value, store=$('maStore').value;
+  if(!day){ toast('Pick a date'); return; }
+  const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
+  $('maDone').disabled=true; $('maStatus').textContent='Saving…';
+  try{
+    const res=await fetch(moneyAddedUrl(), {method:'POST', headers:shareHeaders(true),
+      body:JSON.stringify({day, store, amount, counts, note:$('maNote').value})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    maTaps=[]; $('maNote').value=''; renderAddPad();
+    $('maStatus').textContent='';
+    toast('Money added saved: '+money(amount));
+    loadMoneyAdded();
+  }catch(e){ $('maStatus').textContent='Could not save: '+e.message; }
+  finally{ $('maDone').disabled=false; }
+}
+async function loadMoneyAdded(){
+  const day=$('maDate').value, store=$('maStore').value;
+  if(!day) return;
+  $('maListLbl').textContent='Money added on '+day+' — '+storeLabel(store);
+  try{
+    const res=await fetch(moneyAddedUrl({from:day, to:day, store}), {headers:shareHeaders(false)});
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    const rows=d.entries||[];
+    $('maList').innerHTML=rows.length
+      ? '<tr><th>Time</th><th>Note</th><th class="num">Amount</th><th></th></tr>'+
+        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'—')+
+          '</td><td class="num">'+money(e.amount)+'</td><td class="num"><button class="ghost" data-del="'+esc(e.id)+'">✕</button></td></tr>').join('')+
+        '<tfoot><tr><td></td><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
+      : '<tr><td class="muted">No money added recorded for this day.</td></tr>';
+  }catch(e){ $('maList').innerHTML='<tr><td class="muted">Could not load: '+esc(e.message)+'</td></tr>'; }
+}
+async function deleteMoneyAdded(id){
+  if(!confirm('Delete this entry?')) return;
+  try{
+    const res=await fetch(moneyAddedUrl({day:$('maDate').value, store:$('maStore').value, id}), {method:'DELETE', headers:shareHeaders(false)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    loadMoneyAdded();
+  }catch(e){ alert('Could not delete: '+e.message); }
+}
+
 function openBoxes(){
   $('boxModal').classList.add('show');
   $('bxScan').value=''; $('bxStatus').textContent='';
@@ -2183,6 +2309,25 @@ function bind(){
   $('btnOpenBox').onclick=openBoxes;
   $('adBoxes').onclick=openBoxes;
   $('btnExpenses').onclick=openExpenses;
+  $('btnMoneyAdded').onclick=openMoneyAdded;
+  $('closeAdd').onclick=()=>{ $('addModal').classList.remove('show'); focusScan(); };
+  $('maPad').addEventListener('click', e=>{
+    const b=e.target.closest('[data-v]'); if(!b) return;
+    maTaps.push(Number(b.dataset.v)); renderAddPad();
+  });
+  $('maOtherAdd').onclick=()=>{ if(!addOther()) toast('Type an amount first'); };
+  $('maUndo').onclick=()=>{ maTaps.pop(); renderAddPad(); };
+  $('maClear').onclick=()=>{ maTaps=[]; renderAddPad(); };
+  $('maDone').onclick=saveMoneyAdded;
+  $('maDate').addEventListener('change', loadMoneyAdded);
+  $('maStore').addEventListener('change', loadMoneyAdded);
+  $('maList').addEventListener('click', e=>{ const d=e.target.closest('[data-del]'); if(d) deleteMoneyAdded(d.dataset.del); });
+  document.addEventListener('keydown', e=>{
+    if(!$('addModal').classList.contains('show')) return;
+    if(e.key==='Enter' && e.target.id==='maOther'){ e.preventDefault(); if(!addOther()) saveMoneyAdded(); }
+    else if(e.key==='Enter' && e.target.id!=='maDate'){ e.preventDefault(); saveMoneyAdded(); }
+    else if(e.key==='Backspace' && e.target.tagName!=='INPUT'){ e.preventDefault(); maTaps.pop(); renderAddPad(); }
+  });
   $('adExpenses').onclick=openExpenses;
   $('closeExp').onclick=()=>{ $('expModal').classList.remove('show'); focusScan(); };
   $('exPad').addEventListener('click', e=>{

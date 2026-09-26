@@ -14,6 +14,9 @@
  *  headed EXPENSES_HEADER, on the row for the date the expense was for. Each
  *  run also refreshes the last EXPENSE_LOOKBACK days, so an expense entered
  *  later against an earlier date still lands next to that date.
+ *
+ *  Money added (💰 Money Added on the till) works exactly the same, into the
+ *  column headed MONEY_ADDED_HEADER.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
@@ -23,7 +26,8 @@ const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 
 const DATE_COLUMN  = 'A';         // column holding the dates
 const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes into
 const EXPENSES_HEADER  = 'Expenses'; // row-1 heading of the expenses column; '' to turn off
-const EXPENSE_LOOKBACK = 14;         // days back to re-check for late-entered expenses
+const EXPENSE_LOOKBACK = 14;         // days back to re-check for late-entered expenses / money added
+const MONEY_ADDED_HEADER = 'Money Added'; // row-1 heading of the money-added column; '' to turn off
 const TIME_ZONE    = 'Australia/Melbourne';
 
 function setup() {
@@ -44,7 +48,10 @@ function updateDailyTotal() {
   // Expenses are extra: if that part fails (e.g. the site hasn't got
   // /api/expenses yet) log it and carry on, rather than failing the run.
   if (EXPENSES_HEADER) {
-    try { writeExpenses(now); } catch (e) { console.log('Expenses skipped: ' + e.message); }
+    try { writeByDay('expenses', EXPENSES_HEADER, now); } catch (e) { console.log('Expenses skipped: ' + e.message); }
+  }
+  if (MONEY_ADDED_HEADER) {
+    try { writeByDay('money-added', MONEY_ADDED_HEADER, now); } catch (e) { console.log('Money added skipped: ' + e.message); }
   }
 }
 
@@ -54,18 +61,18 @@ function writeTotal(when) {
   writeCell(day, TOTAL_HEADER, Number((data.totals || {}).total) || 0);
 }
 
-// One request covers the look-back window. Only days with expenses recorded on
+// One request covers the look-back window. Only days with entries recorded on
 // the till are written, so anything typed into the sheet by hand for other
-// days is left alone. (Deleting a day's last till expense therefore leaves the
+// days is left alone. (Deleting a day's last till entry therefore leaves the
 // old figure in the sheet — clear that cell by hand.)
-function writeExpenses(now) {
+function writeByDay(what, header, now) {
   const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');
   const from = Utilities.formatDate(new Date(now.getTime() - EXPENSE_LOOKBACK * 86400000), TIME_ZONE, 'yyyy-MM-dd');
-  const data = fetchApi('expenses', from, to);
+  const data = fetchApi(what, from, to);
   const byDay = {};
   (data.days || []).forEach(r => { byDay[r.day] = (byDay[r.day] || 0) + (Number(r.total) || 0); });
   Object.keys(byDay).sort().forEach(day => {
-    writeCell(day, EXPENSES_HEADER, Math.round(byDay[day] * 100) / 100);
+    writeCell(day, header, Math.round(byDay[day] * 100) / 100);
   });
 }
 

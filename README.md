@@ -312,6 +312,13 @@ the expense was for (it re-checks the last 14 days, so a late entry still lands 
 row). Days with no till expenses are left alone, so figures typed in by hand stay. Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
 script into Apps Script again.
 
+**Money Added.** A **💰 Money Added** button in the header is open to everyone (no login).
+Pick the date and store, tap **$2 / $4 / $10 / $20 / $50** (they add up) or type any amount
+under **Other**, then press **Done** or **Enter**. Entries are saved on the site
+(`/api/money-added`) and the same hourly script writes each day's total into the sheet's
+**Money Added** column (same 14-day look-back as expenses). Paste the updated script into
+Apps Script again.
+
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
 Turn this on and **every finalised sale lowers the matching Squarespace stock**, so the quantity
