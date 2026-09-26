@@ -379,7 +379,6 @@
         <div class="field"><label for="maDate">Date</label><input type="date" id="maDate" /></div>
         <div class="field"><label for="maStore">Store</label><select id="maStore"></select></div>
       </div>
-      <div class="field"><label for="maNote">Note (optional)</label><input id="maNote" placeholder="e.g. who / what for" /></div>
       <div class="card" style="text-align:center">
         <div class="clbl">Money added</div>
         <div class="bignum" id="maTotal">$0.00</div>
@@ -1899,7 +1898,7 @@ function openMoneyAdded(){
   $('maStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
   if(currentStore) $('maStore').value=currentStore.id;
   if(!$('maDate').value) $('maDate').value=todayKey();
-  maTaps=[]; $('maNote').value=''; $('maOther').value=''; $('maStatus').textContent='';
+  maTaps=[]; $('maOther').value=''; $('maStatus').textContent='';
   renderAddPad();
   $('addModal').classList.add('show');
   loadMoneyAdded();
@@ -1930,10 +1929,10 @@ async function saveMoneyAdded(){
   $('maDone').disabled=true; $('maStatus').textContent='Saving…';
   try{
     const res=await fetch(moneyAddedUrl(), {method:'POST', headers:shareHeaders(true),
-      body:JSON.stringify({day, store, amount, counts, note:$('maNote').value})});
+      body:JSON.stringify({day, store, amount, counts})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
-    maTaps=[]; $('maNote').value=''; renderAddPad();
+    maTaps=[]; renderAddPad();
     $('maStatus').textContent='';
     toast('Money added saved: '+money(amount));
     loadMoneyAdded();
@@ -1950,10 +1949,10 @@ async function loadMoneyAdded(){
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     const rows=d.entries||[];
     $('maList').innerHTML=rows.length
-      ? '<tr><th>Time</th><th>Note</th><th class="num">Amount</th><th></th></tr>'+
-        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'—')+
+      ? '<tr><th>Time</th><th class="num">Amount</th><th></th></tr>'+
+        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+
           '</td><td class="num">'+money(e.amount)+'</td><td class="num"><button class="ghost" data-del="'+esc(e.id)+'">✕</button></td></tr>').join('')+
-        '<tfoot><tr><td></td><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
+        '<tfoot><tr><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
       : '<tr><td class="muted">No money added recorded for this day.</td></tr>';
   }catch(e){ $('maList').innerHTML='<tr><td class="muted">Could not load: '+esc(e.message)+'</td></tr>'; }
 }
