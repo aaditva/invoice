@@ -32,6 +32,16 @@
   .dot.ok{background:var(--ok)} .dot.bad{background:var(--danger)}
   .today{display:flex;gap:16px;font-size:12.5px;color:var(--muted)}
   .today b{color:var(--ink)}
+  /* Keep the header on ONE line: nothing wraps, buttons stay compact, and the
+     totals strip gives way (clips) before anything drops to a second row. */
+  header{flex-wrap:nowrap;gap:8px;padding:10px 14px;white-space:nowrap;min-width:0}
+  header > *{flex-shrink:0}
+  header button{padding:7px 11px;font-size:13px}
+  header .store{font-size:15px}
+  header .pill{padding:5px 9px}
+  header .today{flex-shrink:1;min-width:0;overflow:hidden;gap:12px}
+  header .today span{white-space:nowrap}
+  @media (max-width:1180px){ #catWhen,#hStore{display:none} }
 
   main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:16px;padding:16px;overflow:hidden}
   @media (max-width:900px){ main{grid-template-columns:1fr} }
@@ -184,15 +194,15 @@
       <span id="hStoreName">—</span><span class="swap">⇄</span>
     </button>
     <span class="pill"><span class="dot" id="catDot"></span><b id="catCount">0</b>&nbsp;products <span id="catWhen" class="muted"></span></span>
-    <button class="ghost" id="btnSync">Sync catalog</button>
-    <button class="ghost" id="btnReprint">⟲ Reprint last</button>
+    <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
+    <button class="ghost" id="btnReprint">⟲ Reprint</button>
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
-    <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Admin login</button>
+    <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
     <span class="spacer"></span>
     <div class="today" id="todayBox" title="Click for full day takings"></div>
-    <button class="ghost" id="btnSettings">⚙︎ Settings</button>
+    <button class="ghost" id="btnSettings" title="Settings">⚙︎</button>
   </header>
 
   <main>
@@ -557,7 +567,7 @@ function logoutAdmin(){
 }
 function renderAuth(){
   const b=$('btnLogin'), on=isAdmin();
-  b.textContent = on ? 'Log out' : '🔒 Admin login';
+  b.textContent = on ? 'Log out' : '🔒 Login';
   b.classList.toggle('in', on);
   renderToday();
   if(on) refreshToday();
