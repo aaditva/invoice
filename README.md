@@ -319,6 +319,29 @@ under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 **Money Added** column (same 14-day look-back as expenses). Paste the updated script into
 Apps Script again.
 
+**Cost prices & profit (private).** The same script also keeps two extra tabs in that sheet —
+they're created for you:
+
+- **Products** — every product with barcode, name, sell price and live stock, refreshed hourly.
+  Type your **cost price** into the **Cost** column; it's kept (matched by barcode) on every
+  refresh. Margin $, Margin % and stock value (at cost and at retail) are worked out by formulas.
+- **Profit** — one row per trading day: takings, cost of goods sold, gross profit, margin %, and
+  how many items sold had **no cost entered yet** (so you know the figure is incomplete).
+  To the right: **revenue & profit by brand** and **by month**, with a pie chart of revenue by
+  brand, a pie chart of profit by brand and a bar chart of profit per month — all update on
+  their own.
+- **Brand** column on Products — guessed from the name (Pokémon Japanese vs English kept
+  separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…; else *Other*). Type over any guess and it
+  sticks; history re-labels too. Add your own rules in `BRAND_RULES` at the top of the brands
+  section.
+- **Sales lines** — one row per item sold (date, brand, qty, revenue, cost, profit); the brand and
+  month tables read from it. Brand and monthly figures start from the day you install this
+  (plus the 14 days before), since that's when item-level logging begins.
+
+Cost prices live **only in your Google Sheet** — they're never sent to the till, printed on a
+receipt or shown on the website. Enter cost and price the same way (both incl. GST). Paste the
+updated script into Apps Script again and run **setup** once.
+
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
 Turn this on and **every finalised sale lowers the matching Squarespace stock**, so the quantity
