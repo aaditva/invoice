@@ -17,6 +17,14 @@
  *
  *  Money added (💰 Money Added on the till) works exactly the same, into the
  *  column headed MONEY_ADDED_HEADER.
+ *
+ *  Cost prices & profit (private — never sent to the till or customers):
+ *  each run also refreshes a PRODUCTS_TAB tab with every product, its sell
+ *  price and live stock from the site. Type your cost price into the Cost
+ *  column; it is kept (matched by barcode) every time the list refreshes.
+ *  Margin and stock value are sheet formulas, so they update as you type.
+ *  A PROFIT_TAB tab gets one row per day: takings, cost of goods sold,
+ *  gross profit, and how many items sold had no cost entered yet.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
@@ -29,6 +37,8 @@ const EXPENSES_HEADER  = 'Expenses'; // row-1 heading of the expenses column; ''
 const EXPENSE_LOOKBACK = 14;         // days back to re-check for late-entered expenses / money added
 const MONEY_ADDED_HEADER = 'Money Added'; // row-1 heading of the money-added column; '' to turn off
 const TIME_ZONE    = 'Australia/Melbourne';
+const PRODUCTS_TAB = 'Products';  // tab listing products, stock and YOUR cost price; '' to turn off
+const PROFIT_TAB   = 'Profit';    // tab with daily takings / cost / profit; '' to turn off
 
 function setup() {
   ScriptApp.getProjectTriggers()
@@ -52,6 +62,126 @@ function updateDailyTotal() {
   }
   if (MONEY_ADDED_HEADER) {
     try { writeByDay('money-added', MONEY_ADDED_HEADER, now); } catch (e) { console.log('Money added skipped: ' + e.message); }
+  }
+  if (PRODUCTS_TAB) {
+    try { updateProducts(); } catch (e) { console.log('Products skipped: ' + e.message); }
+  }
+  if (PROFIT_TAB && PRODUCTS_TAB) {
+    try { updateProfit(now); } catch (e) { console.log('Profit skipped: ' + e.message); }
+  }
+}
+
+/* ---------------- products, cost price & profit ---------------- */
+
+const PRODUCT_HEADS = ['Barcode', 'Name', 'Price', 'Cost', 'Stock',
+  'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)'];
+
+function tabNamed(name) {
+  const ss = SpreadsheetApp.getActive();
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
+
+// Cost prices you've typed, keyed by barcode.
+function readCosts() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
+  const costs = {};
+  if (!sheet || sheet.getLastRow() < 2) return costs;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues().forEach(r => {
+    const sku = String(r[0]).trim();
+    if (sku && r[3] !== '' && r[3] !== null && isFinite(Number(r[3]))) costs[sku] = Number(r[3]);
+  });
+  return costs;
+}
+
+// Rewrites the Products tab from the live catalog, keeping every Cost you've
+// entered. Products that disappear from the catalog but have a cost stay at
+// the bottom (stock blank) so you don't lose what you typed.
+function updateProducts() {
+  const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/catalog', { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('catalog fetch failed (' + res.getResponseCode() + ')');
+  const items = JSON.parse(res.getContentText()).items || [];
+  const costs = readCosts();
+  const seen = {};
+  const rows = [];
+  items.forEach(it => {
+    const sku = String(it.sku).trim();
+    if (!sku || seen[sku]) return;
+    seen[sku] = true;
+    rows.push([sku, it.name, Number(it.price) || 0, sku in costs ? costs[sku] : '',
+      it.stock === null || it.stock === undefined ? '' : Number(it.stock)]);
+  });
+  Object.keys(costs).forEach(sku => { if (!seen[sku]) rows.push([sku, '(no longer in catalog)', '', costs[sku], '']); });
+
+  const sheet = tabNamed(PRODUCTS_TAB);
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, PRODUCT_HEADS.length).setValues([PRODUCT_HEADS]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  if (!rows.length) return;
+  const n = rows.length;
+  sheet.getRange(2, 1, n, 1).setNumberFormat('@'); // keep long barcodes as text
+  sheet.getRange(2, 1, n, 5).setValues(rows);
+  const f = [];
+  for (let r = 2; r < n + 2; r++) {
+    f.push([
+      '=IF(OR(C' + r + '="",D' + r + '=""),"",C' + r + '-D' + r + ')',
+      '=IF(OR(C' + r + '="",D' + r + '="",C' + r + '=0),"",(C' + r + '-D' + r + ')/C' + r + ')',
+      '=IF(OR(D' + r + '="",E' + r + '=""),"",D' + r + '*E' + r + ')',
+      '=IF(OR(C' + r + '="",E' + r + '=""),"",C' + r + '*E' + r + ')',
+    ]);
+  }
+  sheet.getRange(2, 6, n, 4).setFormulas(f);
+  sheet.getRange(2, 3, n, 2).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 6, n, 1).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 7, n, 1).setNumberFormat('0.0%');
+  sheet.getRange(2, 8, n, 2).setNumberFormat('$#,##0.00');
+}
+
+// One row per day in the Profit tab for the last EXPENSE_LOOKBACK days
+// (so a cost typed in later fixes recent days too). Days you've never
+// traded are left out; existing rows for a day are overwritten in place.
+function updateProfit(now) {
+  const costs = readCosts();
+  const sheet = tabNamed(PROFIT_TAB);
+  const heads = ['Date', 'Takings', 'Cost of goods', 'Gross profit', 'Margin %', 'Items without cost'];
+  sheet.getRange(1, 1, 1, heads.length).setValues([heads]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  const rowOf = {};
+  const last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, 1).getValues().forEach((v, i) => {
+    const key = v[0] instanceof Date ? Utilities.formatDate(v[0], TIME_ZONE, 'yyyy-MM-dd') : normDay(String(v[0]));
+    if (key) rowOf[key] = i + 2;
+  });
+
+  for (let d = EXPENSE_LOOKBACK; d >= 0; d--) {
+    const day = Utilities.formatDate(new Date(now.getTime() - d * 86400000), TIME_ZONE, 'yyyy-MM-dd');
+    const url = SITE_URL.replace(/\/$/, '') + '/api/sales?day=' + day +
+      (STORE && STORE !== 'all' ? '&store=' + encodeURIComponent(STORE) : '');
+    const res = UrlFetchApp.fetch(url, { headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {}, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('sales fetch failed (' + res.getResponseCode() + ')');
+    const sales = (JSON.parse(res.getContentText()).sales || []).filter(s => s && !s.voided);
+    if (!sales.length) continue;
+    let takings = 0, cogs = 0, missing = 0;
+    sales.forEach(s => {
+      takings += Number(s.total) || 0;
+      (s.items || []).forEach(it => {
+        const q = Number(it.qty) || 0;
+        const sku = String(it.sku || '').trim();
+        if (sku in costs) cogs += costs[sku] * q; else missing += q;
+      });
+    });
+    takings = Math.round(takings * 100) / 100;
+    cogs = Math.round(cogs * 100) / 100;
+    let row = rowOf[day];
+    if (!row) { row = sheet.getLastRow() + 1; rowOf[day] = row; }
+    sheet.getRange(row, 1).setNumberFormat('@').setValue(day);
+    sheet.getRange(row, 2, 1, 5).setValues([[takings, cogs, Math.round((takings - cogs) * 100) / 100,
+      takings ? (takings - cogs) / takings : '', missing]]);
+  }
+  if (sheet.getLastRow() > 1) {
+    const n = sheet.getLastRow() - 1;
+    sheet.getRange(2, 2, n, 3).setNumberFormat('$#,##0.00');
+    sheet.getRange(2, 5, n, 1).setNumberFormat('0.0%');
+    sheet.getRange(2, 1, n, heads.length).sort(1);
   }
 }
 

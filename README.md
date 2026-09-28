@@ -319,6 +319,19 @@ under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 **Money Added** column (same 14-day look-back as expenses). Paste the updated script into
 Apps Script again.
 
+**Cost prices & profit (private).** The same script also keeps two extra tabs in that sheet —
+they're created for you:
+
+- **Products** — every product with barcode, name, sell price and live stock, refreshed hourly.
+  Type your **cost price** into the **Cost** column; it's kept (matched by barcode) on every
+  refresh. Margin $, Margin % and stock value (at cost and at retail) are worked out by formulas.
+- **Profit** — one row per trading day: takings, cost of goods sold, gross profit, margin %, and
+  how many items sold had **no cost entered yet** (so you know the figure is incomplete).
+
+Cost prices live **only in your Google Sheet** — they're never sent to the till, printed on a
+receipt or shown on the website. Enter cost and price the same way (both incl. GST). Paste the
+updated script into Apps Script again and run **setup** once.
+
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
 Turn this on and **every finalised sale lowers the matching Squarespace stock**, so the quantity
