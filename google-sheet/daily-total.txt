@@ -461,6 +461,7 @@ const INVOICE_COSTS = [
   [["tom and jerry"], [], 17.40], // Kakawow Phantom Tom and Jerry pack — $16.90 + $0.50 (26.08.2026)
   [["road to", "world cup", "mega"], [], 70.30], // Panini Select Road to World Cup Mega Box — $69.80 + $0.50 (17.09.2026)
   [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
+  [["chrome", "uefa", "value"], [], 41.85], // Topps Chrome UEFA Club Competitions 25/26 Value Box — $41.35 + $0.50 (27.06.2026)
 ];
 
 /* ---- Japanese products (different rules from the Banter Toys items) ----
