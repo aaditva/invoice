@@ -3,7 +3,7 @@
  * ------------------------------------------------------------------ *
  *  Paste into the sheet: Extensions → Apps Script → replace Code.gs → Save.
  *  Fill in the settings below, then run setup() once (Run ▶, allow access).
- *  From then on it runs every hour on its own and keeps today's row current.
+ *  From then on it runs on its own.
  *
  *  How it writes: it opens the tab named after the year (e.g. "2026"), finds
  *  the column headed TOTAL_HEADER ("Games") in row 1, looks down DATE_COLUMN
@@ -18,24 +18,26 @@
  *  Money added (💰 Money Added on the till) works exactly the same, into the
  *  column headed MONEY_ADDED_HEADER.
  *
- *  Cost prices & profit (private — never sent to the till or customers):
- *  each run also refreshes a PRODUCTS_TAB tab with every product, its sell
- *  price and live stock from the site. Type your cost price into the Cost
- *  column; it is kept (matched by barcode) every time the list refreshes.
- *  Margin and stock value are sheet formulas, so they update as you type.
- *  A PROFIT_TAB tab gets one row per day: takings, cost of goods sold,
- *  gross profit, and how many items sold had no cost entered yet.
+ *  Products tab — every product with its sell price and live stock, checked
+ *  against the site every PRODUCTS_EVERY_MINUTES minutes and every time the
+ *  sheet is opened (or 🧾 Till → Refresh products now). A product just added
+ *  on Squarespace shows up at the TOP of the list with its Cost cell in red,
+ *  ready for you to type the cost. Only Name, Price and Stock are ever
+ *  rewritten, so the Cost and Brand you type are never touched. Margin and
+ *  stock value are formulas and update the moment you type.
  *
- *  Brands: the Products tab has a Brand column, guessed from the product
- *  name (Pokémon Japanese and English are kept apart — see BRAND_RULES).
- *  Overwrite any guess and your label is kept. Every item sold is logged in
- *  a LINES_TAB tab, and the Profit tab shows revenue & profit by brand and by
- *  month, with two pie charts (revenue / profit by brand) and a monthly
- *  profit bar chart that update on their own.
+ *  Profit tab — one row per trading day (newest first): takings, cost of
+ *  goods sold, gross profit, margin and how many items sold had no cost yet,
+ *  with a summary box for today / this week / this month / last 30 days.
+ *
+ *  Charts live on the website now (Admin → 📊 Insights): the sheet sends the
+ *  cost prices and brands to the site each refresh, and straight away when
+ *  you edit a Cost or Brand cell.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
+const ADMIN_PIN    = 'lotto2rema'; // the till's Admin password (ADMIN_PIN in index.html / Netlify)
 const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
@@ -46,13 +48,48 @@ const MONEY_ADDED_HEADER = 'Money Added'; // row-1 heading of the money-added co
 const TIME_ZONE    = 'Australia/Melbourne';
 const PRODUCTS_TAB = 'Products';  // tab listing products, stock and YOUR cost price; '' to turn off
 const PROFIT_TAB   = 'Profit';    // tab with daily takings / cost / profit; '' to turn off
+const PRODUCTS_EVERY_MINUTES = 5; // how often new products are pulled in: 1, 5, 10, 15 or 30
 
 function setup() {
+  const ss = SpreadsheetApp.getActive();
+  const mine = ['updateDailyTotal', 'refreshProducts', 'openRefresh', 'onSheetEdit'];
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'updateDailyTotal')
+    .filter(t => mine.indexOf(t.getHandlerFunction()) >= 0)
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('updateDailyTotal').timeBased().everyHours(1).create();
+  if (PRODUCTS_TAB) {
+    ScriptApp.newTrigger('refreshProducts').timeBased().everyMinutes(PRODUCTS_EVERY_MINUTES).create();
+    ScriptApp.newTrigger('openRefresh').forSpreadsheet(ss).onOpen().create();
+    ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(ss).onEdit().create();
+  }
+  removeOldCharts();
+  refreshProducts();
   updateDailyTotal();
+}
+
+// Menu in the sheet's toolbar. (Runs by itself whenever the sheet opens.)
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('🧾 Till')
+    .addItem('Refresh products now', 'refreshProducts')
+    .addItem('Refresh sales & profit now', 'updateDailyTotal')
+    .addItem('Send costs to the website now', 'pushCosts')
+    .addToUi();
+}
+
+// Opening the sheet pulls in anything new from Squarespace straight away.
+function openRefresh() { refreshProducts(); }
+
+// Typing a cost or brand on the Products tab sends it to the website at once,
+// so Admin → Insights has the new profit figures without waiting.
+function onSheetEdit(e) {
+  if (!e || !e.range || !PRODUCTS_TAB) return;
+  if (e.range.getSheet().getName() !== PRODUCTS_TAB || e.range.getRow() < 2) return;
+  const c1 = e.range.getColumn(), c2 = e.range.getLastColumn();
+  if (c2 < 3 || c1 > 5) return; // only Brand (C), Price (D), Cost (E)
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return;
+  try { pushCosts(); } catch (err) { console.log('Push costs failed: ' + err.message); }
+  finally { lock.releaseLock(); }
 }
 
 function updateDailyTotal() {
@@ -70,23 +107,35 @@ function updateDailyTotal() {
   if (MONEY_ADDED_HEADER) {
     try { writeByDay('money-added', MONEY_ADDED_HEADER, now); } catch (e) { console.log('Money added skipped: ' + e.message); }
   }
-  if (PRODUCTS_TAB) {
-    try { updateProducts(); fillInvoiceCosts(); } catch (e) { console.log('Products skipped: ' + e.message); }
-  }
   if (PROFIT_TAB && PRODUCTS_TAB) {
     try { updateProfit(now); } catch (e) { console.log('Profit skipped: ' + e.message); }
   }
 }
 
-/* ---------------- products, cost price, brands & profit ---------------- */
+// Products refresh on its own (short) timer, so a new product is in the
+// sheet within a few minutes of going up on Squarespace.
+function refreshProducts() {
+  if (!PRODUCTS_TAB) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return; // another refresh is already running
+  try {
+    updateProducts();
+    fillInvoiceCosts();
+    try { pushCosts(); } catch (e) { console.log('Push costs failed: ' + e.message); }
+  } finally { lock.releaseLock(); }
+}
+
+/* ---------------- products, cost price & brands ---------------- */
 
 const PRODUCT_HEADS = ['Barcode', 'Name', 'Brand', 'Price', 'Cost', 'Stock',
-  'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)'];
-const LINES_TAB = 'Sales lines'; // one row per item sold; feeds the brand & monthly charts
+  'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)', 'Added'];
+const STYLE_VERSION = '2'; // bump to re-apply the tab styling
+const HEAD_BG = '#1a73e8', HEAD_INK = '#ffffff', INK = '#202124';
 
 // Brand guessed from the product name when the Brand cell is empty. First
 // match wins, so put the more specific rules first. Anything you type in the
-// Brand column yourself is kept and beats these guesses.
+// Brand column yourself is kept and beats these guesses. (index.html has the
+// same list, for products the sheet hasn't sent yet — keep the two in step.)
 const BRAND_RULES = [
   ['Pokémon (Japanese)', /pok[eé]mon/i, /japan|\bjp\b|\bjpn\b/i],
   ['Pokémon (English)',  /pok[eé]mon/i],
@@ -114,13 +163,23 @@ function tabNamed(name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
+// Last row with something in column A (array formulas elsewhere don't count).
+function lastDataRow(sheet) {
+  const colA = sheet.getRange('A:A').getValues();
+  let last = colA.length;
+  while (last > 0 && String(colA[last - 1][0]).trim() === '') last--;
+  return last;
+}
+
 // What you've typed in the Products tab, keyed by barcode: { cost, brand }.
 // Columns are found by heading, so tabs made by the older script still work.
 function readProducts() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
   const out = {};
-  if (!sheet || sheet.getLastRow() < 2) return out;
-  const vals = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  if (!sheet) return out;
+  const last = lastDataRow(sheet);
+  if (last < 2) return out;
+  const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
   const heads = vals[0].map(h => String(h).trim().toLowerCase());
   const cSku = heads.indexOf('barcode'), cName = heads.indexOf('name'),
     cCost = heads.indexOf('cost'), cBrand = heads.indexOf('brand');
@@ -137,52 +196,165 @@ function readProducts() {
   return out;
 }
 
-// Rewrites the Products tab from the live catalog, keeping every Cost and
-// Brand you've entered. Products that disappear from the catalog but have a
-// cost or brand stay at the bottom (stock blank) so nothing you typed is lost.
+// Brings the Products tab in line with the live catalog WITHOUT rewriting the
+// whole tab: existing rows get their Name, Price and Stock updated in place
+// (Cost and Brand are never written, so typing while it runs is safe), and
+// new products are added at the top. Products that disappear from the
+// catalog stay, marked "(no longer in catalog)", so nothing you typed is lost.
 function updateProducts() {
   const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/catalog', { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error('catalog fetch failed (' + res.getResponseCode() + ')');
   const items = JSON.parse(res.getContentText()).items || [];
-  const known = readProducts();
-  const seen = {};
-  const rows = [];
+  if (!items.length) throw new Error('catalog came back empty — not touching the Products tab');
+
+  const sheet = tabNamed(PRODUCTS_TAB);
+  styleProducts(sheet);
+  const last = lastDataRow(sheet);
+  const vals = last > 1 ? sheet.getRange(2, 1, last - 1, 6).getValues() : [];
+  const rowOf = {};
+  vals.forEach((r, i) => { const s = String(r[0]).trim(); if (s && !(s in rowOf)) rowOf[s] = i; });
+
+  const seen = {}, fresh = [];
   items.forEach(it => {
     const sku = String(it.sku).trim();
     if (!sku || seen[sku]) return;
     seen[sku] = true;
-    const k = known[sku] || {};
-    rows.push([sku, it.name, k.brand || guessBrand(it.name), Number(it.price) || 0,
-      k.cost === null || k.cost === undefined ? '' : k.cost,
-      it.stock === null || it.stock === undefined ? '' : Number(it.stock)]);
+    const price = Number(it.price) || 0;
+    const stock = it.stock === null || it.stock === undefined ? '' : Number(it.stock);
+    if (sku in rowOf) {
+      const r = vals[rowOf[sku]];
+      r[1] = it.name; r[3] = price; r[5] = stock;
+    } else {
+      const cost = invoiceCostFor(it.name);
+      fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
+    }
   });
-  Object.keys(known).forEach(sku => {
-    const k = known[sku];
-    if (!seen[sku] && (k.cost !== null || k.brand)) rows.push([sku, '(no longer in catalog)', k.brand, '', k.cost === null ? '' : k.cost, '']);
+  vals.forEach(r => {
+    const s = String(r[0]).trim();
+    if (!s || seen[s]) return;
+    r[5] = '';
+    if (String(r[1]).indexOf('(no longer in catalog)') !== 0) r[1] = '(no longer in catalog) ' + r[1];
   });
 
-  const sheet = tabNamed(PRODUCTS_TAB);
-  sheet.clearContents();
-  sheet.getRange(1, 1, 1, PRODUCT_HEADS.length).setValues([PRODUCT_HEADS]).setFontWeight('bold');
-  sheet.setFrozenRows(1);
-  if (!rows.length) return;
-  const n = rows.length;
-  sheet.getRange(2, 1, n, 1).setNumberFormat('@'); // keep long barcodes as text
-  sheet.getRange(2, 1, n, 6).setValues(rows);
-  const f = [];
-  for (let r = 2; r < n + 2; r++) {
-    f.push([
-      '=IF(OR(D' + r + '="",E' + r + '=""),"",D' + r + '-E' + r + ')',
-      '=IF(OR(D' + r + '="",E' + r + '="",D' + r + '=0),"",(D' + r + '-E' + r + ')/D' + r + ')',
-      '=IF(OR(E' + r + '="",F' + r + '=""),"",E' + r + '*F' + r + ')',
-      '=IF(OR(D' + r + '="",F' + r + '=""),"",D' + r + '*F' + r + ')',
-    ]);
+  // Existing rows first (before inserting shifts them): three narrow columns.
+  const n = vals.length;
+  if (n) {
+    sheet.getRange(2, 2, n, 1).setValues(vals.map(r => [r[1]]));
+    sheet.getRange(2, 4, n, 1).setValues(vals.map(r => [r[3]]));
+    sheet.getRange(2, 6, n, 1).setValues(vals.map(r => [r[5]]));
   }
-  sheet.getRange(2, 7, n, 4).setFormulas(f);
-  sheet.getRange(2, 4, n, 2).setNumberFormat('$#,##0.00');
-  sheet.getRange(2, 7, n, 1).setNumberFormat('$#,##0.00');
-  sheet.getRange(2, 8, n, 1).setNumberFormat('0.0%');
-  sheet.getRange(2, 9, n, 2).setNumberFormat('$#,##0.00');
+  if (fresh.length) {
+    const k = fresh.length;
+    sheet.insertRowsBefore(2, k);
+    const rows = sheet.getRange(2, 1, k, PRODUCT_HEADS.length);
+    // Rows inserted under the header copy its look — put them back to plain.
+    rows.setFontWeight('normal').setFontColor(INK).setBackground(null).setWrap(false);
+    sheet.getRange(2, 1, k, 3).setHorizontalAlignment('left');
+    sheet.getRange(2, 4, k, 8).setHorizontalAlignment('right');
+    sheet.setRowHeights(2, k, 21);
+    sheet.getRange(2, 1, k, 1).setNumberFormat('@'); // keep long barcodes as text
+    sheet.getRange(2, 11, k, 1).setNumberFormat('@');
+    sheet.getRange(2, 1, k, 6).setValues(fresh);
+    // The first fill of an empty tab isn't "new", so it gets no Added date.
+    const added = n ? Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd') : '';
+    sheet.getRange(2, 11, k, 1).setValues(fresh.map(() => [added]));
+    console.log('New products: ' + k);
+  }
+  productFormats(sheet);
+}
+
+// Number formats on whole columns, so new rows pick them up too.
+function productFormats(sheet) {
+  const max = sheet.getMaxRows();
+  if (max < 2) return;
+  sheet.getRange(2, 4, max - 1, 2).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 6, max - 1, 1).setNumberFormat('0');
+  sheet.getRange(2, 7, max - 1, 1).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 8, max - 1, 1).setNumberFormat('0.0%');
+  sheet.getRange(2, 9, max - 1, 2).setNumberFormat('$#,##0.00');
+}
+
+// One-off look & layout for the Products tab: coloured header, margin
+// formulas that fill the whole column, red Cost cells where a cost is still
+// missing, margin colours, filter buttons, frozen header and name column.
+function styleProducts(sheet) {
+  const props = PropertiesService.getDocumentProperties();
+  if (props.getProperty('productsStyle') === STYLE_VERSION && String(sheet.getRange('G1').getFormula())) return;
+
+  const w = PRODUCT_HEADS.length;
+  if (sheet.getMaxColumns() < w) sheet.insertColumnsAfter(sheet.getMaxColumns(), w - sheet.getMaxColumns());
+  // The old script put a formula on every row of G:J — the column-wide
+  // formulas below need those cells empty.
+  const last = lastDataRow(sheet);
+  if (last > 1) sheet.getRange(2, 7, last - 1, 4).clearContent();
+  sheet.getRange(1, 1, 1, 6).setValues([PRODUCT_HEADS.slice(0, 6)]);
+  sheet.getRange(1, 11).setValue(PRODUCT_HEADS[10]);
+  sheet.getRange(1, 7, 1, 4).setFormulas([[
+    '={"Margin $";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(E2:E=""),"",D2:D-E2:E))}',
+    '={"Margin %";ARRAYFORMULA(IFERROR(IF((A2:A="")+(D2:D="")+(E2:E="")+(D2:D=0),"",(D2:D-E2:E)/D2:D),""))}',
+    '={"Stock value (cost)";ARRAYFORMULA(IF((A2:A="")+(E2:E="")+(F2:F=""),"",E2:E*F2:F))}',
+    '={"Stock value (retail)";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(F2:F=""),"",D2:D*F2:F))}',
+  ]]);
+
+  const head = sheet.getRange(1, 1, 1, w);
+  head.setBackground(HEAD_BG).setFontColor(HEAD_INK).setFontWeight('bold')
+    .setVerticalAlignment('middle').setWrap(true);
+  sheet.getRange(1, 5).setBackground('#f9ab00').setFontColor('#202124')
+    .setNote('Type your cost price here (incl GST, same as Price). It is kept every refresh. Red = still needs a cost.');
+  sheet.setRowHeight(1, 36);
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(2);
+  [130, 340, 160, 90, 90, 70, 90, 85, 120, 125, 95].forEach((px, i) => sheet.setColumnWidth(i + 1, px));
+  sheet.getRange(1, 4, sheet.getMaxRows(), 8).setHorizontalAlignment('right');
+  sheet.getRange(1, 1, 1, w).setHorizontalAlignment('center');
+
+  sheet.getBandings().forEach(b => b.remove());
+  sheet.getRange(1, 1, sheet.getMaxRows(), w)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.BLUE, true, false)
+    .setHeaderRowColor(HEAD_BG).setFirstRowColor('#ffffff').setSecondRowColor('#f1f6fe');
+
+  const all = r => sheet.getRange(r + '2:' + r + sheet.getMaxRows());
+  const rules = [
+    // Cost still to type: red. Filled in: soft yellow, so the typing column stands out.
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($A2<>"",$E2="")')
+      .setBackground('#fad2cf').setRanges([all('E')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$E2<>""')
+      .setBackground('#fef7e0').setRanges([all('E')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2<0)')
+      .setFontColor('#c5221f').setBold(true).setRanges([all('G'), all('H')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2<0.15)')
+      .setFontColor('#b06000').setRanges([all('G'), all('H')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2>=0.15)')
+      .setFontColor('#137333').setRanges([all('G'), all('H')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($F2<>"",$F2<=0)')
+      .setFontColor('#c5221f').setRanges([all('F')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=LEFT($B2,22)="(no longer in catalog)"')
+      .setFontColor('#9aa0a6').setItalic(true).setRanges([all('A'), all('B'), all('C')]).build(),
+  ];
+  sheet.setConditionalFormatRules(rules);
+
+  if (!sheet.getFilter()) sheet.getRange(1, 1, sheet.getMaxRows(), w).createFilter();
+  productFormats(sheet);
+  props.setProperty('productsStyle', STYLE_VERSION);
+}
+
+// Sends every product's cost and brand to the site (Admin → Insights reads it).
+function pushCosts() {
+  const prods = readProducts();
+  const items = Object.keys(prods).map(sku => ({ sku, cost: prods[sku].cost, brand: prods[sku].brand, name: prods[sku].name }));
+  if (!items.length) return;
+  const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/costs', {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ items }),
+    headers: authHeaders(), muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode() + ': ' + res.getContentText());
+}
+
+function authHeaders() {
+  const h = {};
+  if (SALES_TOKEN) h['x-sales-token'] = SALES_TOKEN;
+  if (ADMIN_PIN) h['x-admin-pin'] = ADMIN_PIN;
+  return h;
 }
 
 /* ---------------- cost prices from supplier invoices ---------------- */
@@ -280,8 +452,9 @@ function invoiceCostFor(name) {
 // Run once from the editor (or it runs after each Products refresh).
 function fillInvoiceCosts() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
-  if (!sheet || sheet.getLastRow() < 2) return;
-  const vals = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  const last = sheet ? lastDataRow(sheet) : 0;
+  if (last < 2) return;
+  const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
   const heads = vals[0].map(h => String(h).trim().toLowerCase());
   const cName = heads.indexOf('name'), cCost = heads.indexOf('cost');
   if (cName < 0 || cCost < 0) return;
@@ -296,32 +469,24 @@ function fillInvoiceCosts() {
   console.log('Invoice costs filled: ' + filled);
 }
 
-const LINE_HEADS = ['Date', 'Month', 'Invoice', 'Barcode', 'Name', 'Brand', 'Qty', 'Revenue', 'Cost', 'Profit'];
-
-// For the last EXPENSE_LOOKBACK days: one row per day in the Profit tab and
-// one row per item sold in the Sales lines tab. Older days are kept as they
-// are, but every run re-applies the Brand from Products (so re-labelling a
-// product fixes its history) and fills in costs you've added since.
+// For the last EXPENSE_LOOKBACK days: one row per day in the Profit tab.
+// Older days are kept as they are. Newest day at the top.
 function updateProfit(now) {
   const prods = readProducts();
   const costOf = sku => prods[sku] && prods[sku].cost !== null ? prods[sku].cost : null;
-  const brandOf = (sku, name) => (prods[sku] && prods[sku].brand) || (sku ? guessBrand(name) : 'Misc');
 
+  removeOldCharts();
   const sheet = tabNamed(PROFIT_TAB);
   const heads = ['Date', 'Takings', 'Cost of goods', 'Gross profit', 'Margin %', 'Items without cost'];
-  sheet.getRange(1, 1, 1, heads.length).setValues([heads]).setFontWeight('bold');
-  sheet.setFrozenRows(1);
-  // Column A only: the summary tables to the right can run further down.
-  const colA = sheet.getRange('A:A').getValues();
-  let last = colA.length;
-  while (last > 0 && colA[last - 1][0] === '') last--;
+  sheet.getRange(1, 1, 1, heads.length).setValues([heads]);
+  const last0 = lastDataRow(sheet);
+  let last = last0;
   const rowOf = {};
   if (last > 1) sheet.getRange(2, 1, last - 1, 1).getValues().forEach((v, i) => {
     const key = v[0] instanceof Date ? Utilities.formatDate(v[0], TIME_ZONE, 'yyyy-MM-dd') : normDay(String(v[0]));
     if (key) rowOf[key] = i + 2;
   });
 
-  const newLines = {}; // day -> rows
   for (let d = EXPENSE_LOOKBACK; d >= 0; d--) {
     const day = Utilities.formatDate(new Date(now.getTime() - d * 86400000), TIME_ZONE, 'yyyy-MM-dd');
     const url = SITE_URL.replace(/\/$/, '') + '/api/sales?day=' + day +
@@ -329,22 +494,14 @@ function updateProfit(now) {
     const res = UrlFetchApp.fetch(url, { headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {}, muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error('sales fetch failed (' + res.getResponseCode() + ')');
     const sales = (JSON.parse(res.getContentText()).sales || []).filter(s => s && !s.voided);
-    newLines[day] = [];
     if (!sales.length) continue;
     let takings = 0, cogs = 0, missing = 0;
     sales.forEach(s => {
       takings += Number(s.total) || 0;
-      const items = s.items || [];
-      const gross = items.reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-      const share = gross ? (Number(s.total) || 0) / gross : 1; // spreads any discount across the lines
-      items.forEach(it => {
+      (s.items || []).forEach(it => {
         const q = Number(it.qty) || 0;
-        const sku = String(it.sku || '').trim();
-        const c = costOf(sku);
+        const c = costOf(String(it.sku || '').trim());
         if (c !== null) cogs += c * q; else missing += q;
-        const rev = Math.round((Number(it.price) || 0) * q * share * 100) / 100;
-        newLines[day].push([day, day.slice(0, 7), s.no || '', sku, it.name || '', brandOf(sku, it.name), q, rev,
-          c === null ? '' : Math.round(c * q * 100) / 100, '']);
       });
     });
     takings = Math.round(takings * 100) / 100;
@@ -357,79 +514,86 @@ function updateProfit(now) {
   }
   if (last > 1) {
     const n = last - 1;
-    sheet.getRange(2, 2, n, 3).setNumberFormat('$#,##0.00');
-    sheet.getRange(2, 5, n, 1).setNumberFormat('0.0%');
-    sheet.getRange(2, 1, n, heads.length).sort(1);
+    sheet.getRange(2, 1, n, heads.length).sort({ column: 1, ascending: false });
   }
-
-  writeLines(newLines, prods, brandOf);
-  buildCharts(sheet);
+  styleProfit(sheet);
 }
 
-function writeLines(newLines, prods, brandOf) {
-  const lines = tabNamed(LINES_TAB);
-  let rows = [];
-  if (lines.getLastRow() > 1) {
-    rows = lines.getRange(2, 1, lines.getLastRow() - 1, LINE_HEADS.length).getValues()
-      .map(r => { if (r[0] instanceof Date) r[0] = Utilities.formatDate(r[0], TIME_ZONE, 'yyyy-MM-dd'); r[0] = String(r[0]); return r; })
-      .filter(r => r[0] && !(r[0] in newLines));
+// The graphs and brand/month tables the older script made — gone. The charts
+// are on the website now (Admin → 📊 Insights).
+function removeOldCharts() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = PROFIT_TAB && ss.getSheetByName(PROFIT_TAB);
+  if (sheet) {
+    sheet.getCharts().forEach(c => sheet.removeChart(c));
+    if (String(sheet.getRange('H1').getValue()) === 'By brand (all time)') {
+      sheet.getRange('H:N').clear();
+    }
   }
-  Object.keys(newLines).forEach(d => { rows = rows.concat(newLines[d]); });
-  rows.forEach(r => {
-    const sku = String(r[3]).trim();
-    r[1] = String(r[0]).slice(0, 7);
-    r[5] = brandOf(sku, r[4]);
-    if (r[8] === '' && prods[sku] && prods[sku].cost !== null) r[8] = Math.round(prods[sku].cost * Number(r[6]) * 100) / 100;
-    r[9] = r[8] === '' ? '' : Math.round((Number(r[7]) - Number(r[8])) * 100) / 100;
-  });
-  rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  lines.clearContents();
-  lines.getRange(1, 1, 1, LINE_HEADS.length).setValues([LINE_HEADS]).setFontWeight('bold');
-  lines.setFrozenRows(1);
-  if (!rows.length) return;
-  lines.getRange(2, 1, rows.length, 4).setNumberFormat('@');
-  lines.getRange(2, 1, rows.length, LINE_HEADS.length).setValues(rows);
-  lines.getRange(2, 8, rows.length, 3).setNumberFormat('$#,##0.00');
+  const lines = ss.getSheetByName('Sales lines');
+  if (lines && ss.getSheets().length > 1) ss.deleteSheet(lines);
 }
 
-// Summary tables (live formulas over Sales lines) and charts, placed to the
-// right of the daily table on the Profit tab. Charts are made once; after
-// that they just follow the formulas, so they update on their own.
-function buildCharts(sheet) {
-  const L = "'" + LINES_TAB + "'!";
-  sheet.getRange('H1').setValue('By brand (all time)').setFontWeight('bold');
-  sheet.getRange('H2').setFormula('=QUERY(' + L + 'A:J,"select F, sum(H), sum(J) where F is not null and F <> \'\' ' +
-    'group by F order by sum(H) desc label F \'Brand\', sum(H) \'Revenue\', sum(J) \'Profit\'",1)');
-  sheet.getRange('L1').setValue('By month').setFontWeight('bold');
-  sheet.getRange('L2').setFormula('=QUERY(' + L + 'A:J,"select B, sum(H), sum(J) where B is not null and B <> \'\' ' +
-    'group by B order by B label B \'Month\', sum(H) \'Revenue\', sum(J) \'Profit\'",1)');
-  sheet.getRange('I3:J40').setNumberFormat('$#,##0.00');
-  sheet.getRange('M3:N200').setNumberFormat('$#,##0.00');
-  if (sheet.getCharts().length) return;
+// Look & layout for the Profit tab, plus a summary box on the right that
+// answers "how are we doing" without scrolling: today, this week, this month,
+// last 30 days, this year and all time.
+function styleProfit(sheet) {
+  const max = sheet.getMaxRows();
+  sheet.getRange(2, 2, max - 1, 3).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 5, max - 1, 1).setNumberFormat('0.0%');
+  sheet.getRange(2, 6, max - 1, 1).setNumberFormat('0');
 
-  sheet.insertChart(sheet.newChart().asPieChart()
-    .addRange(sheet.getRange('H2:I40'))
-    .setNumHeaders(1)
-    .setOption('title', 'Revenue by brand')
-    .setOption('pieHole', 0.4)
-    .setPosition(1, 16, 0, 0).setOption('width', 480).setOption('height', 320)
-    .build());
-  sheet.insertChart(sheet.newChart().asPieChart()
-    .addRange(sheet.getRange('H2:H40'))
-    .addRange(sheet.getRange('J2:J40'))
-    .setNumHeaders(1)
-    .setOption('title', 'Profit by brand')
-    .setOption('pieHole', 0.4)
-    .setPosition(18, 16, 0, 0).setOption('width', 480).setOption('height', 320)
-    .build());
-  sheet.insertChart(sheet.newChart().asColumnChart()
-    .addRange(sheet.getRange('L2:L200'))
-    .addRange(sheet.getRange('N2:N200'))
-    .setNumHeaders(1)
-    .setOption('title', 'Profit by month')
-    .setOption('legend', { position: 'none' })
-    .setPosition(35, 16, 0, 0).setOption('width', 480).setOption('height', 320)
-    .build());
+  const props = PropertiesService.getDocumentProperties();
+  if (props.getProperty('profitStyle') === STYLE_VERSION) return;
+
+  if (sheet.getMaxColumns() < 13) sheet.insertColumnsAfter(sheet.getMaxColumns(), 13 - sheet.getMaxColumns());
+  sheet.getRange(1, 1, 1, 6).setBackground(HEAD_BG).setFontColor(HEAD_INK).setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  sheet.setRowHeight(1, 36);
+  sheet.setFrozenRows(1);
+  [110, 110, 120, 120, 90, 110, 24, 130, 120, 120, 120, 90].forEach((px, i) => sheet.setColumnWidth(i + 1, px));
+  sheet.getRange(2, 1, max - 1, 1).setHorizontalAlignment('left').setFontWeight('bold');
+
+  sheet.getBandings().forEach(b => b.remove());
+  sheet.getRange(1, 1, max, 6).applyRowBanding(SpreadsheetApp.BandingTheme.BLUE, true, false)
+    .setHeaderRowColor(HEAD_BG).setFirstRowColor('#ffffff').setSecondRowColor('#f1f6fe');
+
+  const col = r => sheet.getRange(r + '2:' + r + max);
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0)
+      .setFontColor('#c5221f').setBold(true).setRanges([col('D'), col('E')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0)
+      .setFontColor('#137333').setRanges([col('D')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0)
+      .setBackground('#fad2cf').setRanges([col('F')]).build(),
+  ]);
+  sheet.getRange('F1').setNote('Items sold that have no cost on the Products tab yet — their cost is missing from Cost of goods, so profit reads high until you fill them in.');
+
+  // Summary box (H1:L8). Dates in column A are text (yyyy-mm-dd), so the
+  // FILTERs compare them as text, which sorts the same as the dates do.
+  const iso = x => 'TEXT(' + x + ',"yyyy-mm-dd")';
+  const periods = [
+    ['Today', 'TODAY()', 'TODAY()'],
+    ['This week', 'TODAY()-WEEKDAY(TODAY(),3)', 'TODAY()'],
+    ['This month', 'EOMONTH(TODAY(),-1)+1', 'TODAY()'],
+    ['Last 30 days', 'TODAY()-29', 'TODAY()'],
+    ['This year', 'DATE(YEAR(TODAY()),1,1)', 'TODAY()'],
+    ['All time', 'DATE(2000,1,1)', 'TODAY()'],
+  ];
+  sheet.getRange('H1:L1').setValues([['Summary', 'Takings', 'Cost of goods', 'Gross profit', 'Margin']])
+    .setBackground('#188038').setFontColor('#ffffff').setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  const sum = (c, p) => '=IFERROR(SUM(FILTER($' + c + '$2:$' + c + ',$A$2:$A>=' + iso(p[1]) + ',$A$2:$A<=' + iso(p[2]) + ')),0)';
+  sheet.getRange(2, 8, periods.length, 5).setFormulas(periods.map((p, i) => [
+    '="' + p[0] + '"', sum('B', p), sum('C', p), sum('D', p), '=IF(I' + (i + 2) + '=0,"",K' + (i + 2) + '/I' + (i + 2) + ')',
+  ]));
+  const box = sheet.getRange(2, 8, periods.length, 5);
+  box.setBackground('#e6f4ea').setBorder(true, true, true, true, true, true, '#ceead6', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(2, 8, periods.length, 1).setFontWeight('bold').setHorizontalAlignment('left');
+  sheet.getRange(2, 9, periods.length, 3).setNumberFormat('$#,##0.00');
+  sheet.getRange(2, 12, periods.length, 1).setNumberFormat('0.0%');
+  sheet.getRange('H9').setValue('Charts: till website → Admin → 📊 Insights').setFontColor('#5f6368').setFontStyle('italic');
+  props.setProperty('profitStyle', STYLE_VERSION);
 }
 
 function writeTotal(when) {
