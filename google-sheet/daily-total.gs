@@ -132,9 +132,9 @@ const PRODUCT_HEADS = ['Barcode', 'Name', 'Brand', 'Price', 'Cost', 'Stock',
 const STYLE_VERSION = '2'; // bump to re-apply the tab styling
 const HEAD_BG = '#1a73e8', HEAD_INK = '#ffffff', INK = '#202124';
 
-// Brand guessed from the product name when the Brand cell is empty. First
-// match wins, so put the more specific rules first. Anything you type in the
-// Brand column yourself is kept and beats these guesses. (index.html has the
+// Brand guessed from the product name when the Brand cell is empty or
+// "Other". First match wins, so put the more specific rules first. Anything
+// else you type in the Brand column yourself is kept and beats these guesses. (index.html has the
 // same list, for products the sheet hasn't sent yet — keep the two in step.)
 const BRAND_RULES = [
   ['Pokémon (Japanese)', /pok[eé]mon/i, /japan|\bjp\b|\bjpn\b/i],
@@ -148,6 +148,19 @@ const BRAND_RULES = [
   ['Weiss Schwarz',      /wei(ss|ß)\s*schwarz/i],
   ['Flesh and Blood',    /flesh\s*(and|&)\s*blood/i],
   ['Star Wars',          /star\s*wars/i],
+  // Sport — checked after the card games, so "Pokémon World Championships" stays Pokémon.
+  ['AFL',                /\bafl\b|footy|teamcoach|aussie rules/i],
+  ['NRL',                /\bnrl\b|rugby league|state of origin/i],
+  ['Rugby',              /rugby|wallabies/i],
+  ['NFL',                /\bnfl\b|american football|optic football|donruss.*football|football.*(donruss|mosaic|prizm)/i],
+  ['Soccer',             /soccer|premier league|champions league|uefa|fifa|world cup|adrenalyn|match attax|a-?league|matildas|socceroos|la liga|serie a|bundesliga|\bepl\b/i],
+  ['Basketball',         /\bnba\b|\bnbl\b|\bwnba\b|basketball|hoops/i],
+  ['F1',                 /\bf1\b|formula\s*(1|one)|turbo attax/i],
+  ['Cricket',            /cricket|\bbbl\b|\bipl\b/i],
+  ['Tennis',             /tennis/i],
+  ['Baseball',           /\bmlb\b|baseball/i],
+  ['Wrestling & UFC',    /\bwwe\b|\baew\b|wrestl|\bufc\b/i],
+  ['Harry Potter',       /harry\s*potter/i],
 ];
 
 function guessBrand(name) {
@@ -214,7 +227,7 @@ function updateProducts() {
   const rowOf = {};
   vals.forEach((r, i) => { const s = String(r[0]).trim(); if (s && !(s in rowOf)) rowOf[s] = i; });
 
-  const seen = {}, fresh = [];
+  const seen = {}, fresh = [], reBrand = [];
   items.forEach(it => {
     const sku = String(it.sku).trim();
     if (!sku || seen[sku]) return;
@@ -224,6 +237,13 @@ function updateProducts() {
     if (sku in rowOf) {
       const r = vals[rowOf[sku]];
       r[1] = it.name; r[3] = price; r[5] = stock;
+      // A blank or "Other" brand gets another guess, so new brand rules reach
+      // products already in the tab. A brand you've typed is never changed.
+      const b = String(r[2]).trim();
+      if (!b || b === 'Other') {
+        const g = guessBrand(it.name);
+        if (g !== b) reBrand.push([rowOf[sku] + 2, g]);
+      }
     } else {
       const cost = invoiceCostFor(it.name);
       fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
@@ -242,6 +262,9 @@ function updateProducts() {
     sheet.getRange(2, 2, n, 1).setValues(vals.map(r => [r[1]]));
     sheet.getRange(2, 4, n, 1).setValues(vals.map(r => [r[3]]));
     sheet.getRange(2, 6, n, 1).setValues(vals.map(r => [r[5]]));
+    // Brand is only written cell by cell, and only where it was blank or "Other".
+    reBrand.forEach(([row, brand]) => sheet.getRange(row, 3).setValue(brand));
+    if (reBrand.length) console.log('Brands re-guessed: ' + reBrand.length);
   }
   if (fresh.length) {
     const k = fresh.length;

@@ -333,9 +333,12 @@ they're created and styled for you (blue header, filter buttons, frozen header):
   profit, margin % and how many items sold had **no cost entered yet** (red when > 0, meaning
   profit reads high). A green **Summary** box on the right shows today, this week, this month,
   last 30 days, this year and all time.
-- **Brand** column on Products — guessed from the name (Pokémon Japanese vs English kept
-  separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…; else *Other*). Type over any guess and it
-  sticks. Add your own rules in `BRAND_RULES` (the script and `index.html` both have the list).
+- **Brand** column on Products — guessed from the name: card games (Pokémon Japanese vs English
+  kept separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…) and sport (AFL, NRL, Rugby, NFL, Soccer,
+  Basketball, F1, Cricket, Tennis, Baseball, Wrestling & UFC), plus Harry Potter; else *Other*.
+  Type over any guess and it sticks. Products left on *Other* (or blank) get re-guessed each
+  refresh, so new rules reach them. Add your own rules in `BRAND_RULES` (the script and
+  `index.html` both have the list).
 - The year tabs (**2025**, **2026**…) are left exactly as they were — the script only fills the
   Games / Expenses / Money Added cells, as before.
 

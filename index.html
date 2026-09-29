@@ -2298,6 +2298,19 @@ const BRAND_RULES = [
   ['Weiss Schwarz',      /wei(ss|ß)\s*schwarz/i],
   ['Flesh and Blood',    /flesh\s*(and|&)\s*blood/i],
   ['Star Wars',          /star\s*wars/i],
+  // Sport — checked after the card games, so "Pokémon World Championships" stays Pokémon.
+  ['AFL',                /\bafl\b|footy|teamcoach|aussie rules/i],
+  ['NRL',                /\bnrl\b|rugby league|state of origin/i],
+  ['Rugby',              /rugby|wallabies/i],
+  ['NFL',                /\bnfl\b|american football|optic football|donruss.*football|football.*(donruss|mosaic|prizm)/i],
+  ['Soccer',             /soccer|premier league|champions league|uefa|fifa|world cup|adrenalyn|match attax|a-?league|matildas|socceroos|la liga|serie a|bundesliga|\bepl\b/i],
+  ['Basketball',         /\bnba\b|\bnbl\b|\bwnba\b|basketball|hoops/i],
+  ['F1',                 /\bf1\b|formula\s*(1|one)|turbo attax/i],
+  ['Cricket',            /cricket|\bbbl\b|\bipl\b/i],
+  ['Tennis',             /tennis/i],
+  ['Baseball',           /\bmlb\b|baseball/i],
+  ['Wrestling & UFC',    /\bwwe\b|\baew\b|wrestl|\bufc\b/i],
+  ['Harry Potter',       /harry\s*potter/i],
 ];
 function guessBrand(name){
   const n=String(name||'');
@@ -2403,7 +2416,7 @@ function computeInsights(){
       const rev=(Number(it.price)||0)*q*share;
       const info=sku && costs ? costs.get(sku) : null;
       const cost=info && info.cost!=null ? Number(info.cost) : null;
-      const brand=!sku ? 'Misc' : ((info && info.brand) || guessBrand(it.name));
+      const brand=!sku ? 'Misc' : ((info && info.brand && info.brand!=='Other') ? info.brand : guessBrand(it.name));
       const profit=cost!=null ? rev-cost*q : null;
       r.items+=q;
       if(profit!=null){ r.revKnown+=rev; r.profit+=profit; bk.profit+=profit; st.profit+=profit; }
