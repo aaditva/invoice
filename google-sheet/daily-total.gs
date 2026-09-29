@@ -514,11 +514,81 @@ function japanCostFor(n) {
   return null;
 }
 
+/* ---- Footy items (AFL Footy Stars / Luminous, NRL League Heroes, AFL Team Coach) ----
+ * Prices are what the supplier invoices / price list show (GST included, same
+ * as the Cost column). Footy Stars, Luminous and NRL League Heroes are free
+ * shipping, so NO $0.50 delivery is added. Team Coach adds $0.10 per pack.
+ * Per-unit costs are worked out from the case / box price:
+ *   Footy Stars: case of 12 boxes $1,611.00 -> box $134.25; blaster case of 12
+ *                $419.88 -> $34.99; vinyl album case of 10 $240.00; binder
+ *                album case of 10 $118.90.
+ *   Luminous:    album case of 10 $220.00.
+ *   NRL League Heroes: box (36 packs) $107.64 -> $2.99 a pack.
+ *   Team Coach:  case of 12 display boxes $1,620.00 (36 packs a box, $3.75 a
+ *                pack) + $0.10 a pack; collector albums $123.20 for 14 = $8.80.
+ * FOOTY_STARS_PACKS is a guess (36 a box) — fix it if your boxes differ. */
+const FOOTY_STARS_CASE_PRICE    = 1611.00; // case of 12 boxes
+const FOOTY_STARS_BOXES         = 12;
+const FOOTY_STARS_PACKS         = 36;      // packs per box (check)
+const FOOTY_STARS_BLASTER_CASE  = 419.88;  // case of 12 blasters
+const FOOTY_STARS_VINYL_CASE    = 240.00;  // case of 10 vinyl albums
+const FOOTY_STARS_BINDER_CASE   = 118.90;  // case of 10 binder albums
+const LUMINOUS_ALBUM_CASE       = 220.00;  // case of 10 albums
+const NRL_HEROES_BOX_PRICE      = 107.64;  // box of 36 packs
+const NRL_HEROES_PACKS          = 36;
+const TC_CASE_PRICE             = 1620.00; // case of 12 display boxes
+const TC_BOXES                  = 12;
+const TC_PACKS                  = 36;      // packs per display box
+const TC_PACK_EXTRA             = 0.10;    // per pack
+const TC_ALBUM_BOX_PRICE        = 123.20;  // box of 14 collector albums
+const TC_ALBUMS                 = 14;
+
+function footyCostFor(n) {
+  const isCase    = /\bcase\b|\bcarton\b/.test(n);
+  const isAlbum   = /\b(albums?|binders?)\b/.test(n);
+  const isBlaster = /\bblasters?\b/.test(n);
+  const isBox     = /\bbox\b|display/.test(n);
+  const isPack    = /\bpacks?\b|booster/.test(n);
+
+  if (/\bfooty ?stars\b/.test(n)) {
+    const box = FOOTY_STARS_CASE_PRICE / FOOTY_STARS_BOXES;
+    if (isAlbum) {
+      const unit = /\bvinyl\b/.test(n) ? FOOTY_STARS_VINYL_CASE / 10
+                 : /\bbinder\b/.test(n) ? FOOTY_STARS_BINDER_CASE / 10 : null;
+      return unit === null ? null : round2(isCase ? unit * 10 : unit);
+    }
+    if (isBlaster) return round2(isCase ? FOOTY_STARS_BLASTER_CASE : FOOTY_STARS_BLASTER_CASE / 12);
+    if (isCase) return round2(FOOTY_STARS_CASE_PRICE);
+    if (isBox) return round2(box);
+    if (isPack) return round2(box / FOOTY_STARS_PACKS);
+    return null;
+  }
+  if (/\bluminous\b/.test(n) && isAlbum) {
+    return round2(isCase ? LUMINOUS_ALBUM_CASE : LUMINOUS_ALBUM_CASE / 10);
+  }
+  if (/\bleague heroes\b/.test(n)) {
+    if (isBox) return round2(NRL_HEROES_BOX_PRICE);
+    if (isPack) return round2(NRL_HEROES_BOX_PRICE / NRL_HEROES_PACKS);
+    return null;
+  }
+  if (/\bteam ?coach\b/.test(n)) {
+    const pack = round2(TC_CASE_PRICE / TC_BOXES / TC_PACKS + TC_PACK_EXTRA);
+    if (isAlbum) return round2(TC_ALBUM_BOX_PRICE / TC_ALBUMS);
+    if (isCase) return round2(pack * TC_PACKS * TC_BOXES);
+    if (isBox) return round2(pack * TC_PACKS);
+    if (isPack) return pack;
+    return null;
+  }
+  return null;
+}
+
 function invoiceCostFor(name) {
   const n = ' ' + String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
   const jp = japanCostFor(n);
   if (jp !== null) return jp;
+  const footy = footyCostFor(n);
+  if (footy !== null) return footy;
   for (const [all, none, cost] of INVOICE_COSTS) {
     if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
   }
