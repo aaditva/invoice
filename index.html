@@ -1394,9 +1394,24 @@ async function flushRestocks(){
   for(const s of load(LS.sales,[])){ if(s.voided && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
 }
 // Void a sale (immediate refund): drops it from takings, puts the stock back, keeps a voided record.
-function voidSale(no){
-  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
-  if(!s){ alert('This invoice was rung up on the other till — void it from that device.'); return; }
+// `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till isn't in this
+// device's own log, so an admin can void it from that site copy: it's adopted locally, then voided as usual.
+function voidSale(no, ref){
+  const sales=load(LS.sales,[]);
+  let s=sales.find(x=>x.no===no && (!ref || (x.day===ref.day && String(x.store||'')===String(ref.store||''))));
+  if(!s){
+    if(!ref){ alert('This invoice was rung up on the other till — void it from that device.'); return; }
+    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to void it from here.'); return; }
+    s=JSON.parse(JSON.stringify(ref));
+    // The site doesn't store the till's stock bookkeeping, so rebuild it: the sale went through
+    // (it's on the site), so its Squarespace decrement is treated as applied and gets put back.
+    s.stockItems=(s.items||[]).filter(i=>i.sku && !/^MISC-/.test(i.sku)).map(i=>{
+      const p=catItem(i.sku);
+      return { variantId:(p&&p.variantId)||null, sku:i.sku, quantity:i.qty };
+    }).filter(x=>x.variantId || x.sku);
+    s.stockAdjusted=true;
+    sales.push(s);
+  }
   if(s.voided) return;
   if(!confirm('Void '+s.no+' ('+money(s.total)+')?\nThis removes it from takings and returns the stock to Squarespace.')) return;
   s.voided=true; s.voidedAt=new Date().toISOString();
@@ -1466,7 +1481,7 @@ async function storeDaySales(day, storeId){
   if(d && Array.isArray(d.sales)){
     const map=new Map(); d.sales.forEach(s=>map.set(String(s.no), s));
     load(LS.sales,[]).filter(s=>s.day===day && !s.synced && mine(s))
-      .forEach(s=>{ if(!map.has(String(s.no))) map.set(String(s.no), s); });
+      .forEach(s=>{ if(!map.has(String(s.no)) || s.voided) map.set(String(s.no), s); });   // a not-yet-sent void wins over the site's older copy
     return {sales:[...map.values()], combined:true};
   }
   return {sales: load(LS.sales,[]).filter(s=>s.day===day && mine(s)), combined:false};
@@ -1754,7 +1769,7 @@ function showInvoiceDetail(no){
   h+='</div></fieldset>';
   $('invDetail').innerHTML=h;
   $('btnReprintOne').onclick=()=>reprintSale(s);
-  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no)){ await loadInvoices(); showInvoiceDetail(s.no); } };
+  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s.no); } };
 }
 
 /* ---------------- day takings ---------------- */
