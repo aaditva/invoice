@@ -264,7 +264,7 @@ Set the prefix and each store's next number in **Settings → Tax & printing**.
 **Admin** in the header (also reachable from the opening screen, before picking a store):
 
 - **All stores**, or one store on its own.
-- **Today / Last 7 days / This month / Last 30 days**, or any From–To you type (up to 62 days).
+- **Today / This week / Last 7 days / This month / Last 30 days / This year**, or any From–To you type.
 - Total takings, cash, card and GST for the period, then a **per-store split** and a
   **day-by-day table** — click any row to open that day's invoices for that store.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
@@ -319,28 +319,46 @@ under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 **Money Added** column (same 14-day look-back as expenses). Paste the updated script into
 Apps Script again.
 
-**Cost prices & profit (private).** The same script also keeps two extra tabs in that sheet —
-they're created for you:
+**Cost prices & profit.** The same script also keeps two extra tabs in that sheet —
+they're created and styled for you (blue header, filter buttons, frozen header):
 
-- **Products** — every product with barcode, name, sell price and live stock, refreshed hourly.
-  Type your **cost price** into the **Cost** column; it's kept (matched by barcode) on every
-  refresh. Margin $, Margin % and stock value (at cost and at retail) are worked out by formulas.
-- **Profit** — one row per trading day: takings, cost of goods sold, gross profit, margin %, and
-  how many items sold had **no cost entered yet** (so you know the figure is incomplete).
-  To the right: **revenue & profit by brand** and **by month**, with a pie chart of revenue by
-  brand, a pie chart of profit by brand and a bar chart of profit per month — all update on
-  their own.
-- **Brand** column on Products — guessed from the name (Pokémon Japanese vs English kept
-  separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…; else *Other*). Type over any guess and it
-  sticks; history re-labels too. Add your own rules in `BRAND_RULES` at the top of the brands
-  section.
-- **Sales lines** — one row per item sold (date, brand, qty, revenue, cost, profit); the brand and
-  month tables read from it. Brand and monthly figures start from the day you install this
-  (plus the 14 days before), since that's when item-level logging begins.
+- **Products** — every product with barcode, name, brand, sell price and live stock. It checks
+  Squarespace **every 5 minutes** (`PRODUCTS_EVERY_MINUTES`), **every time you open the sheet**,
+  and on **🧾 Till → Refresh products now**. A product you've just added on Squarespace appears
+  at the **top** with its **Cost** cell in **red** — type the cost and it turns yellow. Only
+  Name, Price and Stock are ever rewritten, so what you type in **Cost** and **Brand** is never
+  touched, even mid-refresh. Margin $, Margin % (green / orange / red), stock value and the
+  **Added** date fill in by formula the moment you type.
+- **Profit** — one row per trading day, **newest at the top**: takings, cost of goods sold, gross
+  profit, margin % and how many items sold had **no cost entered yet** (red when > 0, meaning
+  profit reads high). A green **Summary** box on the right shows today, this week, this month,
+  last 30 days, this year and all time.
+- **Brand** column on Products — guessed from the name: card games (Pokémon Japanese vs English
+  kept separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…) and sport (AFL, NRL, Rugby, NFL, Soccer,
+  Basketball, F1, Cricket, Tennis, Baseball, Wrestling & UFC), plus Harry Potter; else *Other*.
+  Type over any guess and it sticks. Products left on *Other* (or blank) get re-guessed each
+  refresh, so new rules reach them. Add your own rules in `BRAND_RULES` (the script and
+  `index.html` both have the list).
+- The year tabs (**2025**, **2026**…) are left exactly as they were — the script only fills the
+  Games / Expenses / Money Added cells, as before.
 
-Cost prices live **only in your Google Sheet** — they're never sent to the till, printed on a
-receipt or shown on the website. Enter cost and price the same way (both incl. GST). Paste the
-updated script into Apps Script again and run **setup** once.
+The graphs are **no longer in the sheet** — the new script deletes the old charts, the brand and
+month tables and the *Sales lines* tab. They live on the website instead: **Admin → 📊 Insights**.
+
+**Admin → 📊 Insights.** Revenue & profit over time (by hour for one day, by day, or by month for
+This year), revenue by brand, profit by brand with margin, a by-store split, and the top 10
+products by profit / revenue / qty — for the same store and period buttons as Takings (Today,
+This week, Last 7 days, This month, Last 30 days, This year, or any From–To). To work out profit
+it needs the cost prices, so the sheet script sends the Products tab's costs and brands to the
+site (`/api/costs`) after every refresh and straight away when you edit a Cost or Brand cell.
+Items with no cost are left out of profit, and the page says how many there are.
+
+> Cost prices are now on the site, readable with the Admin password. Set **`ADMIN_PIN`** on
+> Netlify (the same value as `ADMIN_PIN` in `index.html` and in the sheet script) so `/api/costs`
+> refuses anyone without it. The till never shows cost prices at the counter or on a receipt.
+
+After pasting the updated script into Apps Script, run **setup** once — it adds the 5-minute,
+on-open and on-edit triggers.
 
 ## 7. Live stock sync (decrement Squarespace on each sale) — optional
 
@@ -401,6 +419,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/catalog.js` | Netlify catalogue proxy (holds the Squarespace key). |
 | `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs). |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
+| `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
 | `api/catalog.js` | Vercel catalogue proxy (alt to Netlify). |
