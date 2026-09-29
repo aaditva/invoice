@@ -71,7 +71,7 @@ function updateDailyTotal() {
     try { writeByDay('money-added', MONEY_ADDED_HEADER, now); } catch (e) { console.log('Money added skipped: ' + e.message); }
   }
   if (PRODUCTS_TAB) {
-    try { updateProducts(); } catch (e) { console.log('Products skipped: ' + e.message); }
+    try { updateProducts(); fillInvoiceCosts(); } catch (e) { console.log('Products skipped: ' + e.message); }
   }
   if (PROFIT_TAB && PRODUCTS_TAB) {
     try { updateProfit(now); } catch (e) { console.log('Profit skipped: ' + e.message); }
@@ -183,6 +183,117 @@ function updateProducts() {
   sheet.getRange(2, 7, n, 1).setNumberFormat('$#,##0.00');
   sheet.getRange(2, 8, n, 1).setNumberFormat('0.0%');
   sheet.getRange(2, 9, n, 2).setNumberFormat('$#,##0.00');
+}
+
+/* ---------------- cost prices from supplier invoices ---------------- */
+
+// Cost prices from the Banter Toys invoices (Feb–Sep 2026): the invoice unit
+// price (ex GST) plus $0.50 per item to cover delivery — delivery is folded
+// into each item's cost, never counted separately. Booster boxes are 36 x the
+// booster price + $0.50. fillInvoiceCosts() writes these into any EMPTY Cost
+// cell in the Products tab whose name contains every word in the first list
+// and none in the second; a cost you've typed yourself is never overwritten.
+// First match wins, so the more specific rules come first.
+const INVOICE_COSTS = [
+  // [all words, words that must NOT appear, cost incl. $0.50 delivery]  — invoice item
+  [["pitch black", "elite"], [], 59.00], // ME5 Pitch Black Elite Trainer Box — $58.50 + $0.50 (13.07.2026)
+  [["pitch black", "bundle"], [], 29.60], // ME5 Pitch Black Booster Bundle — $29.10 + $0.50 (13.07.2026)
+  [["pitch black", "blister"], [], 15.70], // ME5 Pitch Black Three Booster Blister — $15.20 + $0.50 (13.07.2026)
+  [["pitch black", "booster", "box"], ["bundle", "elite"], 169.70], // ME5 Pitch Black Booster Box (36 x booster) — $4.70 x 36 + $0.50 (13.07.2026)
+  [["pitch black", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.20], // ME5 Pitch Black Booster pack — $4.70 + $0.50 (13.07.2026)
+  [["chaos rising", "elite"], [], 59.00], // ME4 Chaos Rising Elite Trainer Box — $58.50 + $0.50 (15.05.2026)
+  [["chaos rising", "bundle"], [], 29.60], // ME4 Chaos Rising Booster Bundle — $29.10 + $0.50 (15.05.2026)
+  [["chaos rising", "blister"], [], 15.70], // ME4 Chaos Rising Three Booster Blister — $15.20 + $0.50 (15.05.2026)
+  [["chaos rising", "booster", "box"], ["bundle", "elite"], 178.70], // ME4 Chaos Rising Booster Box (36 x booster) — $4.95 x 36 + $0.50 (16.06.2026)
+  [["chaos rising", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.45], // ME4 Chaos Rising Booster pack — $4.95 + $0.50 (16.06.2026)
+  [["perfect order", "elite"], [], 59.00], // ME3 Perfect Order Elite Trainer Box — $58.50 + $0.50 (23.03.2026)
+  [["perfect order", "bundle"], [], 29.60], // ME3 Perfect Order Booster Bundle — $29.10 + $0.50 (23.03.2026)
+  [["perfect order", "blister"], [], 15.70], // ME3 Perfect Order Three Booster Blister — $15.20 + $0.50 (23.03.2026)
+  [["perfect order", "booster", "box"], ["bundle", "elite"], 178.70], // ME3 Perfect Order Booster Box (36 x booster) — $4.95 x 36 + $0.50 (23.03.2026)
+  [["perfect order", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.45], // ME3 Perfect Order Booster pack — $4.95 + $0.50 (23.03.2026)
+  [["ascended heroes", "elite"], [], 59.00], // ME2.5 Ascended Heroes Elite Trainer Box — $58.50 + $0.50 (16.02.2026)
+  [["ascended heroes", "bundle"], [], 32.00], // ME2.5 Ascended Heroes Booster Bundle — $31.50 + $0.50 (17.04.2026)
+  [["ascended heroes", "sticker"], [], 19.20], // ME2.5 Ascended Heroes Tech Sticker Blister — $18.70 + $0.50 (10.02.2026)
+  [["ascended heroes", "poster"], [], 59.00], // ME2.5 Ascended Heroes Premium Poster Collection — $58.50 + $0.50 (14.03.2026)
+  [["ascended heroes", "pin"], [], 29.60], // ME2.5 Ascended Heroes Deluxe Pin Collection — $29.10 + $0.50 (16.02.2026)
+  [["ascended heroes", "tin"], [], 12.20], // ME2.5 Ascended Heroes Mini Tin — $11.70 + $0.50 (16.02.2026)
+  [["ascended heroes", "blister"], [], 12.20], // ME2.5 Ascended Heroes 2pk Blister — $11.70 + $0.50 (16.02.2026)
+  [["30th", "elite"], [], 59.00], // 30th Celebration Elite Trainer Box — $58.50 + $0.50 (10.09.2026)
+  [["30th", "sticker"], [], 18.00], // 30th Celebration Tech Sticker Blister — $17.50 + $0.50 (10.09.2026)
+  [["30th", "binder"], [], 38.30], // 30th Celebration Binder Box — $37.80 + $0.50 (10.09.2026)
+  [["30th", "poster"], [], 18.00], // 30th Celebration Poster Box — $17.50 + $0.50 (10.09.2026)
+  [["30th", "knock out"], [], 12.20], // 30th Celebration Knock Out Collection — $11.70 + $0.50 (10.09.2026)
+  [["30th", " ex ", "box"], [], 27.00], // 30th Celebration ex Box — $26.50 + $0.50 (10.09.2026)
+  [["pokemon", "knock out"], [], 12.20], // Pokemon Knock Out Collection — $11.70 + $0.50 (10.02.2026)
+  [["pokemon", "binder"], ["30th"], 28.40], // Pokemon Premium Red Snap Binder — $27.90 + $0.50 (10.02.2026)
+  [["charizard", "tin"], [], 26.10], // Pokemon Mega Charizard ex Tin — $25.60 + $0.50 (16.02.2026)
+  [["pokemon", "enhanced", "blister"], [], 13.30], // Pokemon Enhanced 2PK Blister — $12.80 + $0.50 (01.04.2026)
+  [["pokemon", "blister"], ["three", "3 booster", "sticker", "enhanced"], 12.20], // Pokemon 2PK Blister 26Q1 — $11.70 + $0.50 (16.02.2026)
+  [["first partner"], [], 18.00], // Pokemon First Partner Illustration Collection — $17.50 + $0.50 (31.07.2026)
+  [["pokemon", "portfolio"], [], 6.90], // Pokemon Mini Portfolio — $6.40 + $0.50 (23.03.2026)
+  [["zygarde"], [], 47.10], // Pokemon Mega Zygarde ex Premium Collection — $46.60 + $0.50 (15.05.2026)
+  [["greninja"], [], 47.10], // Pokemon Mega Greninja ex Premium Collection — $46.60 + $0.50 (26.06.2026)
+  [["lumiose", "tin"], [], 12.20], // Pokemon Lumiose City Mini Tin — $11.70 + $0.50 (01.06.2026)
+  [["moonlight", "tin"], [], 26.10], // Pokemon Mega Moonlight Tin — $25.60 + $0.50 (01.06.2026)
+  [["triple whammy"], [], 18.00], // Pokemon Triple Whammy Collector Tin — $17.50 + $0.50 (16.06.2026)
+  [["world championship"], [], 23.80], // Pokemon 2025 World Championships Deck — $23.30 + $0.50 (16.06.2026)
+  [["pokeball"], [], 6.90], // Pokemon Pokeball Magnetic Card Holder — $6.40 + $0.50 (06.07.2026)
+  [["one touch", " s "], [], 13.50], // Ultra Pro One Touch S (5 count retail pack) — $13.00 + $0.50 (31.07.2026)
+  [["one touch", "black"], [], 10.50], // One Touch 35PT Black Border Magnetic 5PK — $10.00 + $0.50 (06.07.2026)
+  [["one touch", "35"], [], 2.90], // One Touch 35PT Magnetic Closure — $2.40 + $0.50 (06.07.2026)
+  [["chaos origins"], [], 4.75], // YuGiOh Chaos Origins 9 Card Blister — $4.25 + $0.50 (06.07.2026)
+  [["arc v"], [], 39.50], // YuGiOh Legendary Arc-V Decks — $39.00 + $0.50 (31.07.2026)
+  [["magnificent monster"], [], 49.10], // YuGiOh Magnificent Monster Boxset — $48.60 + $0.50 (17.09.2026)
+  [["tennis", "chrome"], [], 15.20], // Topps 2025 Tennis Chrome Hobby pack — $14.70 + $0.50 (24.02.2026)
+  [["premier league", "2026", "starter"], ["adrenalyn"], 20.30], // Topps 2026 Premier League Starter Pack — $19.80 + $0.50 (01.04.2026)
+  [["premier league", "2026"], ["adrenalyn", "album", "starter", "box", "tin"], 3.40], // Topps 2026 Premier League Cards pack — $2.90 + $0.50 (01.04.2026)
+  [["hanger"], [], 13.30], // UEFA Champions League 25/26 ECO Hanger Box — $12.80 + $0.50 (24.02.2026)
+  [["gladiators"], [], 16.80], // UEFA Champions League 25/26 Gladiators Mega Tin — $16.30 + $0.50 (24.02.2026)
+  [["champions league", "starter"], [], 18.00], // UEFA Champions League 25/26 Starter Pack — $17.50 + $0.50 (24.02.2026)
+  [["optic", "fat pack"], [], 21.20], // Panini Donruss Optic Football Fat Pack — $20.70 + $0.50 (01.04.2026)
+  [["wwe"], [], 38.70], // Topps 2025 WWE Universe Hobby Value Box — $38.20 + $0.50 (01.04.2026)
+  [["teenymates"], [], 32.30], // Teenymates 2026 NBA Collector Tin — $31.80 + $0.50 (01.04.2026)
+  [["adrenalyn", "world cup", "classic tin"], [], 30.80], // FIFA World Cup 2026 Adrenalyn Classic Tin — $30.30 + $0.50 (06.07.2026)
+  [["adrenalyn", "world cup", "pocket tin"], [], 20.30], // FIFA World Cup 2026 Adrenalyn Pocket Tin — $19.80 + $0.50 (11.05.2026)
+  [["adrenalyn", "world cup", "starter"], [], 23.20], // FIFA World Cup 2026 Adrenalyn Starter Pack Deluxe — $22.70 + $0.50 (08.04.2026)
+  [["adrenalyn", "world cup"], ["tin", "starter", "album", "box", "binder", "blister"], 3.40], // FIFA World Cup 2026 Adrenalyn booster pack — $2.90 + $0.50 (08.04.2026)
+  [["world cup", "update set"], [], 20.30], // FIFA World Cup 2026 Sticker Update Set — $19.80 + $0.50 (31.07.2026)
+  [["world cup", "1970"], [], 96.50], // FIFA World Cup 1970-2026 Book — $96.00 + $0.50 (31.07.2026)
+  [["world cup", "sticker"], ["album", "update", "book", "box"], 2.90], // FIFA World Cup 2026 Sticker pack — $2.40 + $0.50 (31.07.2026)
+  [["turbo attax", "starter"], [], 9.50], // F1 Turbo Attax 2025 Starter Pack — $9.00 + $0.50 (11.05.2026)
+  [["harry potter", "blaster"], [], 47.10], // Kakawow Harry Potter 25th Blaster — $46.60 + $0.50 (31.07.2026)
+  [["harry potter"], ["blaster"], 20.85], // Kakawow Harry Potter 25th Regular pack — $20.35 + $0.50 (31.07.2026)
+  [["tom and jerry"], [], 17.40], // Kakawow Phantom Tom and Jerry pack — $16.90 + $0.50 (26.08.2026)
+  [["road to", "world cup", "mega"], [], 70.30], // Panini Select Road to World Cup Mega Box — $69.80 + $0.50 (17.09.2026)
+  [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
+];
+
+function invoiceCostFor(name) {
+  const n = ' ' + String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  for (const [all, none, cost] of INVOICE_COSTS) {
+    if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
+  }
+  return null;
+}
+
+// Run once from the editor (or it runs after each Products refresh).
+function fillInvoiceCosts() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const vals = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  const heads = vals[0].map(h => String(h).trim().toLowerCase());
+  const cName = heads.indexOf('name'), cCost = heads.indexOf('cost');
+  if (cName < 0 || cCost < 0) return;
+  let filled = 0;
+  vals.slice(1).forEach((r, i) => {
+    if (r[cCost] !== '' && r[cCost] !== null) return;
+    const cost = invoiceCostFor(r[cName]);
+    if (cost === null) return;
+    sheet.getRange(i + 2, cCost + 1).setValue(cost).setNumberFormat('$#,##0.00');
+    filled++;
+  });
+  console.log('Invoice costs filled: ' + filled);
 }
 
 const LINE_HEADS = ['Date', 'Month', 'Invoice', 'Barcode', 'Name', 'Brand', 'Qty', 'Revenue', 'Cost', 'Profit'];
