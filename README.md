@@ -345,6 +345,7 @@ they're created and styled for you (blue header, filter buttons, frozen header):
   display box, $1,663.20 a case; collector albums $8.80). Footy Stars: $134.25 a box ($1,611 a case of
   12), $34.99 a blaster, vinyl album $24.00, binder album $11.89; Luminous album $22.00; NRL League
   Heroes box $107.64 ($2.99 a pack). Footy Stars packs-per-box is assumed 36 — check it.
+- **Tax Invoice 388075** (Magic Marvel Super Heroes displays, poker chips, One-Touch X holders, One Piece DP-12 / OP-17 / Dash Packs): invoice unit price (ex GST) + **$0.32** each — the $8.00 delivery split over the 25 units ordered (Dash Packs were free, so they cost just the $0.32).
 - **Brand** column on Products — guessed from the name: card games (Pokémon Japanese vs English
   kept separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…) and sport (AFL, NRL, Rugby, NFL, Soccer,
   Basketball, F1, Cricket, Tennis, Baseball, Wrestling & UFC), plus Harry Potter; else *Other*.

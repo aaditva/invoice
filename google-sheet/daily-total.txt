@@ -390,7 +390,8 @@ function authHeaders() {
 // and none in the second; a cost you've typed yourself is never overwritten.
 // First match wins, so the more specific rules come first.
 const INVOICE_COSTS = [
-  // [all words, words that must NOT appear, cost incl. $0.50 delivery]  — invoice item
+  // [all words, words that must NOT appear, cost incl. delivery]  — invoice item
+  [["one touch", " x "], [], 3.57], // Ultra Pro UP16401 35PT UV One-Touch X Magnetic Card Holder — $3.25 + $0.32 (Tax Invoice 388075)
   [["pitch black", "elite"], [], 59.00], // ME5 Pitch Black Elite Trainer Box — $58.50 + $0.50 (13.07.2026)
   [["pitch black", "bundle"], [], 29.60], // ME5 Pitch Black Booster Bundle — $29.10 + $0.50 (13.07.2026)
   [["pitch black", "blister"], [], 15.70], // ME5 Pitch Black Three Booster Blister — $15.20 + $0.50 (13.07.2026)
@@ -461,6 +462,14 @@ const INVOICE_COSTS = [
   [["tom and jerry"], [], 17.40], // Kakawow Phantom Tom and Jerry pack — $16.90 + $0.50 (26.08.2026)
   [["road to", "world cup", "mega"], [], 70.30], // Panini Select Road to World Cup Mega Box — $69.80 + $0.50 (17.09.2026)
   [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
+  // Tax Invoice 388075: invoice unit price (ex GST) + $0.32 each — the $8.00 delivery split over the 25 units on the order
+  [["marvel", "jumpstart"], ["pack"], 164.96], // Magic Marvel Super Heroes Jumpstart Booster Display — $164.64 + $0.32
+  [["marvel", "collector"], ["pack"], 494.24], // Magic Marvel Super Heroes Collector Booster Display — $493.92 + $0.32
+  [["marvel", "play", "booster"], ["jumpstart", "collector", "pack"], 206.12], // Magic Marvel Super Heroes Play Booster Display — $205.80 + $0.32
+  [["poker chip"], [], 19.81], // Bicycle 8 Gram Clay Poker Chip Set 100 Count — $19.49 + $0.32
+  [["dp 12"], [], 109.63], // One Piece Double Pack Display DP-12 — $109.31 + $0.32
+  [["op 17", "dash"], [], 0.32], // One Piece OP-17 Dash Pack (free with the order) — $0.00 + $0.32
+  [["op 17", "booster"], ["dash", "pack", "case"], 127.36], // One Piece OP-17 Booster Display — $127.04 + $0.32
 ];
 
 /* ---- Japanese products (different rules from the Banter Toys items) ----
