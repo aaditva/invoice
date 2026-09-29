@@ -463,9 +463,62 @@ const INVOICE_COSTS = [
   [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
 ];
 
+/* ---- Japanese products (different rules from the Banter Toys items) ----
+ * Cost of one PACK   = box price / packs in the box, + 5% commission + 1.75%
+ *                      card-processing fee (both charged on the goods), then
+ *                      + $0.50 delivery.
+ * Cost of a whole BOX = packs in the box x the cost of one pack.
+ * The 1.75% is worked out from the invoices' "Additional fees" line: it is
+ * 6.75% of the goods in all six orders that have it, i.e. the 5% commission
+ * plus 1.75% card processing. Box prices are the latest invoice (ex fees,
+ * ex shipping); the packs-per-box counts are the standard Japanese boxes, so
+ * fix any that don't match what's actually in your boxes. A Japanese product
+ * only matches if its name says Japan / Japanese / JP / JPN, same as the
+ * Pokémon (Japanese) brand rule. */
+const JP_COMMISSION = 0.05;
+const JP_CARD_FEE  = 0.0175;
+const JP_DELIVERY  = 0.50; // per pack
+const JAPAN_SETS = [
+  // [name in the set, regex on the tidied-up product name, packs per box, latest box price]
+  ['Pokemon 151 sv2a',                /\b151\b|\bsv2a\b/,                          20, 492.07],
+  ['Shiny Treasure ex sv4a',          /shiny treasure|\bsv4a\b/,                   10, 171.35],
+  ['Battle Partners sv9',             /battle partners|\bsv9\b/,                   30,  96.33],
+  ['Vstar Universe s12a',             /vstar universe|\bs12a\b/,                   10, 278.55],
+  ['Shiny Star V s4a',                /shiny star|\bs4a\b/,                        10, 196.83],
+  ['Terastal Fest ex sv8a',           /terastal|\bsv8a\b/,                         10, 174.86],
+  ['Super Electric Breaker sv8',      /super electric|\bsv8\b/,                    30, 298.94],
+  ['White Flare sv11w',               /white flare|\bsv11w\b/,                     20, 199.46],
+  ['Storm Emeralda M6',               /storm emeralda|\bm6\b/,                     30, 134.44],
+  ['One Piece PRB-01 The Best',       /\bprb ?01\b|the best/,                      10, 214.69],
+  ['One Piece OP-16 Decisive Battle', /\bop ?16\b|decisive battle/,                24, 109.84],
+];
+const JP_RANDOM_PACK_PRICE = 1.58; // Random Packs bulk sale, per pack (latest invoice)
+
+function round2(x) { return Math.round(x * 100) / 100; }
+
+// Cost of one pack, and of the box that holds `packs` of them.
+function japanCosts(boxPrice, packs) {
+  const pack = round2(boxPrice / packs * (1 + JP_COMMISSION + JP_CARD_FEE) + JP_DELIVERY);
+  return { pack: pack, box: round2(pack * packs) };
+}
+
+function japanCostFor(n) {
+  if (!/\b(japan|japanese|jp|jpn)\b/.test(n)) return null;
+  const isBox = /\bbox\b|display|carton/.test(n);
+  const isPack = !isBox && /\bpacks?\b|booster|random/.test(n);
+  if (!isBox && !isPack) return null;
+  if (/\brandom\b/.test(n)) return isPack ? japanCosts(JP_RANDOM_PACK_PRICE, 1).pack : null;
+  for (const [, re, packs, boxPrice] of JAPAN_SETS) {
+    if (re.test(n)) { const c = japanCosts(boxPrice, packs); return isBox ? c.box : c.pack; }
+  }
+  return null;
+}
+
 function invoiceCostFor(name) {
   const n = ' ' + String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  const jp = japanCostFor(n);
+  if (jp !== null) return jp;
   for (const [all, none, cost] of INVOICE_COSTS) {
     if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
   }

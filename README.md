@@ -333,6 +333,12 @@ they're created and styled for you (blue header, filter buttons, frozen header):
   profit, margin % and how many items sold had **no cost entered yet** (red when > 0, meaning
   profit reads high). A green **Summary** box on the right shows today, this week, this month,
   last 30 days, this year and all time.
+- **Japanese products** get their cost from a different formula (`JAPAN_SETS` in the script; the
+  working is in `google-sheet/japanese-costs.xlsx`). One **pack** = box price ÷ packs in the box,
+  **+ 5% commission + 1.75% card-processing fee**, then **+ $0.50 delivery**. A whole **box** =
+  packs in the box × the pack cost (e.g. a 20-pack box costs 20 × the pack). The 1.75% is what the
+  invoices' "Additional fees" line works out to (6.75% of the goods in total). Names must say
+  Japan / Japanese / JP / JPN to match. Check the packs-per-box column against your real boxes.
 - **Brand** column on Products — guessed from the name: card games (Pokémon Japanese vs English
   kept separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…) and sport (AFL, NRL, Rugby, NFL, Soccer,
   Basketball, F1, Cricket, Tennis, Baseball, Wrestling & UFC), plus Harry Potter; else *Other*.
