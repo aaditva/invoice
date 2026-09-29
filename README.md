@@ -339,6 +339,12 @@ they're created and styled for you (blue header, filter buttons, frozen header):
   packs in the box × the pack cost (e.g. a 20-pack box costs 20 × the pack). The 1.75% is what the
   invoices' "Additional fees" line works out to (6.75% of the goods in total). Names must say
   Japan / Japanese / JP / JPN to match. Check the packs-per-box column against your real boxes.
+- **Footy items** (`footyCostFor` in the script) use the prices on the supplier invoices / price list
+  (GST included, like the Cost column). **Footy Stars, Luminous and NRL League Heroes get no $0.50
+  delivery** (free shipping). **Team Coach adds $0.10 per pack** ($3.75 → $3.85 a pack, $138.60 a
+  display box, $1,663.20 a case; collector albums $8.80). Footy Stars: $134.25 a box ($1,611 a case of
+  12), $34.99 a blaster, vinyl album $24.00, binder album $11.89; Luminous album $22.00; NRL League
+  Heroes box $107.64 ($2.99 a pack). Footy Stars packs-per-box is assumed 36 — check it.
 - **Brand** column on Products — guessed from the name: card games (Pokémon Japanese vs English
   kept separate, One Piece, Yu-Gi-Oh!, MTG, Lorcana…) and sport (AFL, NRL, Rugby, NFL, Soccer,
   Basketball, F1, Cricket, Tennis, Baseball, Wrestling & UFC), plus Harry Potter; else *Other*.
