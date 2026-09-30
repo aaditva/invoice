@@ -370,12 +370,12 @@ Items with no cost are left out of profit, and the page says how many there are.
 **Games takings from before the till.** The daily **Games** column of the Google Sheet (the 2025 and
 2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
 Insights reaches back before the till. The till rang up some of those days itself (sales made on the
-device before the site kept them were uploaded when it went live), so **each day only adds what
-South Melbourne's till differs from the sheet's Games figure** — till + adjustment = the sheet,
-every month matches the sheet, and nothing is counted twice. The sheet is always right: a day the
-till took *more* than the sheet gets a negative adjustment. The adjustment has no items,
-so it counts as one South Melbourne lump under **Games (before the till)**, with the cost estimated
-at **50%** (`HIST_COST` in `index.html`). A red chip notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
+device before the site kept them were uploaded when it went live), so Insights finds **the first
+day from which South Melbourne's till matches the sheet's Games figure every day** (to the dollar,
+through 19 Sep). Before that day the sheet is used and those till sales are left out; from that day
+only the till counts — so every month matches the sheet and nothing is counted twice. Sheet days
+have no items, so each counts as one South Melbourne lump under **Games (before the till)**, with
+the cost estimated at **50%** (`HIST_COST` in `index.html`). A red chip names that day — accurate profit margins were only tracked from then (the Margin card says “estimated before” it). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
 

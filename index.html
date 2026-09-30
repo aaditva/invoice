@@ -2342,11 +2342,11 @@ function lineCost(s, it, i){
    synced. From 20 Sep the sheet's Games column is written from the till, so
    it adds nothing.
    The till rang up some of these days itself (sales made on the device before
-   the site kept them were uploaded when it went live), so each day adds the
-   difference from the till: till + adjustment = the sheet's figure. The sheet
-   is always right — a day the till took more is brought down to it — so every
-   month matches the sheet. Only the day's total is known — no items, no
-   cash/card split — so the top-up is costed at a conservative 50%.
+   the site kept them were uploaded when it went live), so up to the day the
+   till starts matching the sheet (see tillFrom) the sheet is used and those
+   South Melbourne till sales are left out; from that day, only the till. Only
+   the day's total is known — no items, no cash/card split — so sheet days are
+   costed at a conservative 50%.
    Per month: "day:takings", space-separated. */
 const HIST_UNTIL = '2026-09-20';        // the sheet is never used from here on
 const HIST_COST = 0.5;                  // estimated cost, as a share of takings
@@ -2375,23 +2375,43 @@ const HIST_GAMES = (()=>{
   return m;
 })();
 const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
-// Sheet adjustments inside from..to for this store filter, oldest first: for
-// each sheet day, the sheet's Games figure less what South Melbourne's till
-// took that day. The sheet is always right, so a day the till took MORE comes
-// back negative and brings the day down to the sheet.
-function histDays(from, to, store, sales){
-  const out=[];
-  if(store && store!==DEFAULT_STORE) return out;
-  const till=new Map();
-  (sales||[]).forEach(s=>{
-    const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
-    if(sid===DEFAULT_STORE && HIST_GAMES.has(s.day)) till.set(s.day, (till.get(s.day)||0)+(Number(s.total)||0));
-  });
-  [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to).sort().forEach(k=>{
-    const sheet=HIST_GAMES.get(k), t=round2(till.get(k)||0), rev=round2(sheet-t);
-    if(rev) out.push({day:k, rev, sheet, till:t});
-  });
-  return out;
+// The day the till takes over: the first day from which South Melbourne's till
+// takings match the sheet's Games figure every day (to the dollar) through to
+// the last sheet day. Before it, the sheet is used and the till's South
+// Melbourne sales are left out; from it, only the till counts. Worked out once
+// per page load from the site's per-day totals; if they can't be read, the
+// sheet is used for every day it has.
+let tillFromP=null;
+function tillFrom(){
+  if(!tillFromP) tillFromP=(async ()=>{
+    const last=shiftDay(HIST_UNTIL, -1);
+    const d=await rangeSalesChunked(HIST_FIRST, last, '', false);
+    if(!d || d.error) return HIST_UNTIL;
+    const till=new Map();
+    (d.days||[]).forEach(r=>{
+      const sid=(!r.store || r.store==='unassigned') ? DEFAULT_STORE : r.store;
+      if(sid===DEFAULT_STORE) till.set(r.day, (till.get(r.day)||0)+(Number(r.total)||0));
+    });
+    let from=HIST_UNTIL;
+    for(let k=last; k>=HIST_FIRST; k=shiftDay(k,-1)){
+      const t=till.get(k)||0, s=HIST_GAMES.get(k)||0;
+      if(Math.abs(t-s)>=1) break;            // doesn't match — the sheet is used up to here
+      if(t>0) from=k;                        // earliest matching day the till actually traded
+    }
+    return from;
+  })().catch(()=>{ tillFromP=null; return HIST_UNTIL; });
+  return tillFromP;
+}
+// Is this sale one the sheet stands in for (South Melbourne, before the till took over)?
+function beforeTill(s){
+  const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
+  return !!gx.tillFrom && sid===DEFAULT_STORE && String(s.day)<gx.tillFrom;
+}
+// Sheet days inside from..to for this store filter, oldest first.
+function histDays(from, to, store){
+  if(store && store!==DEFAULT_STORE) return [];
+  const until=gx.tillFrom || HIST_UNTIL;
+  return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to && k<until).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
 }
 
 // Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
@@ -2471,10 +2491,12 @@ async function loadInsights(){
   $('gxStatus').innerHTML='Reading sales and cost prices…';
   adLoading(true);
   try{
-    const [d, c] = await Promise.all([
+    const [d, c, tf] = await Promise.all([
       rangeSalesChunked(adState.from, adState.to, adState.store, true),
-      fetchCosts()
+      fetchCosts(),
+      tillFrom()
     ]);
+    gx.tillFrom=tf;
     if(gx.key!==key) return;                     // the filter moved on while this loaded
     if(!d || d.error){
       gx.sales=null;
@@ -2497,7 +2519,7 @@ async function loadInsights(){
 
 // Everything the charts need, worked out once per render.
 function computeInsights(){
-  const sales=gx.sales||[], costs=gx.costs;
+  const sales=(gx.sales||[]).filter(s=>!beforeTill(s)), costs=gx.costs;   // the sheet covers those days
   const from=adState.from, to=adState.to;
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
@@ -2552,8 +2574,7 @@ function computeInsights(){
   });
   // Games takings from the Google Sheet, for days before the till: one lump per
   // day, costed at HIST_COST. The sheet has no times, so the by-hour chart skips them.
-  const hist=histDays(from, to, adState.store, sales);
-  hist.forEach(h=>{
+  histDays(from, to, adState.store).forEach(h=>{
     const profit=h.rev*(1-HIST_COST);
     r.histDays++; r.histRev+=h.rev;
     r.revenue+=h.rev; r.revKnown+=h.rev; r.profit+=profit;
@@ -2623,8 +2644,8 @@ function renderInsights(anim){
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
   if(r.histDays){
-    chips.push('<span class="gchip bad">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
-      Math.round(HIST_COST*100)+'% of takings)</span>');
+    chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(gx.tillFrom || HIST_UNTIL))+
+      ' — before that, it’s the Google Sheet’s Games takings with profit estimated at '+Math.round((1-HIST_COST)*100)+'%</span>');
   }
   $('gxStatus').innerHTML=chips.join('');
 
@@ -2641,7 +2662,7 @@ function renderInsights(anim){
   let h='<div class="kpis">'+
     kpi(0, 'Revenue', r.revenue, 'money', salesSub, '#1a73e8')+
     kpi(1, 'Gross profit', hasCost?r.profit:0, hasCost?'money':'none', hasCost?('on '+esc(moneySigned(r.revKnown))+' of sales with a cost'):'needs cost prices', '#34a853')+
-    kpi(2, 'Margin', hasCost&&r.revKnown?margin*100:0, hasCost&&r.revKnown?'pct':'none', r.histDays?'estimated before Sep 2026':'gross profit ÷ sales with a cost', '#fbbc04')+
+    kpi(2, 'Margin', hasCost&&r.revKnown?margin*100:0, hasCost&&r.revKnown?'pct':'none', r.histDays?'estimated before '+esc(niceDay(gx.tillFrom || HIST_UNTIL)):'gross profit ÷ sales with a cost', '#fbbc04')+
     kpi(3, 'Items sold', r.items, 'int', r.products.size+' different product'+(r.products.size===1?'':'s'), '#ea4335')+
     kpi(4, 'Average sale', avg, 'money', r.histDays?'per till invoice':'per invoice', '#9334e6')+
     '</div>';
@@ -2691,6 +2712,7 @@ function setNcOpen(on){
 function noCostRows(){
   const prods=new Map(), misc=[];
   (gx.sales||[]).forEach(s=>{
+    if(beforeTill(s)) return;                  // the sheet stands in for these, at 50%
     const items=s.items||[];
     const gross=items.reduce((a,it)=>a+(Number(it.price)||0)*(Number(it.qty)||0), 0);
     const share=gross ? (Number(s.total)||0)/gross : 1;
