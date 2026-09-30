@@ -362,10 +362,18 @@ month tables and the *Sales lines* tab. They live on the website instead: **Admi
 **Admin → 📊 Insights.** Revenue & profit over time (by hour for one day, by day, or by month for
 This year), revenue by brand, profit by brand with margin, a by-store split, and the top 10
 products by profit / revenue / qty — for the same store and period buttons as Takings (Today,
-This week, Last 7 days, This month, Last 30 days, This year, or any From–To). To work out profit
+This week, Last 7 days, This month, Last 30 days, This year, All time, or any From–To). To work out profit
 it needs the cost prices, so the sheet script sends the Products tab's costs and brands to the
 site (`/api/costs`) after every refresh and straight away when you edit a Cost or Brand cell.
 Items with no cost are left out of profit, and the page says how many there are.
+
+**Games takings from before the till.** The daily **Games** column of the Google Sheet (the 2025 and
+2026 tabs, 1 Oct 2025 → 18 Sep 2026) is built into the site, so Insights reaches back before the
+till's first sale (19 Sep 2026). The sheet only has each day's total, so each day counts as one
+South Melbourne lump under **Games (before the till)**, with the cost estimated at **50%** of
+takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included. They show
+in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
+for them. **All time** picks the whole period from the sheet's first day.
 
 **Items sold with no cost.** When anything sold in the chosen store and period has **no cost
 price** (so it's left out of profit), Insights shows a yellow **“N items sold with no cost yet”**

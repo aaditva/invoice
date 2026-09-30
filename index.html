@@ -476,6 +476,7 @@
           <button data-range="month">This month</button>
           <button data-range="30">Last 30 days</button>
           <button data-range="year">This year</button>
+          <button data-range="all">All time</button>
         </div>
       </div>
       <div class="grid2">
@@ -2161,6 +2162,7 @@ function setAdminPreset(kind){
   if(kind==='today'){ adState.from=t; adState.to=t; }
   else if(kind==='week'){ adState.from=shiftDay(t, -((new Date().getDay()+6)%7)); adState.to=t; }   // Monday on
   else if(kind==='year'){ adState.from=t.slice(0,4)+'-01-01'; adState.to=t; }
+  else if(kind==='all'){ adState.from=HIST_FIRST || t; adState.to=t; }        // back to the Google Sheet's first day
   else if(kind==='month'){ const d=new Date(); adState.from=dayOf(new Date(d.getFullYear(),d.getMonth(),1)); adState.to=t; }
   else { const n=parseInt(kind,10)||7; adState.from=shiftDay(t,-(n-1)); adState.to=t; }
   adState.preset=kind;
@@ -2331,6 +2333,46 @@ function lineCost(s, it, i){
   return info && info.cost!=null ? Number(info.cost) : null;
 }
 
+/* ---------------- Games takings from before the till ----------------
+   The daily "Games" column of the Google Sheet (tatts eod balance → 2025 / 2026
+   tabs), South Melbourne, from 1 Oct 2025 up to the day before the till's
+   first sale. Only the day's total is known — no items, no cash/card split —
+   so the cost is a conservative 50% of takings. Days from HIST_UNTIL on come
+   from the till itself, so they're never counted twice.
+   Per month: "day:takings", space-separated. */
+const HIST_UNTIL = '2026-09-19';        // first day with sales on the till
+const HIST_COST = 0.5;                  // estimated cost, as a share of takings
+const HIST_BRAND = 'Games (before the till)';
+const HIST_GAMES_RAW = {
+  '2025-10':'1:945 2:129 3:744 4:287.5 6:467 7:276 8:22 9:211 10:55 11:140.5 13:279 14:605 16:82 17:284 18:82 20:215 21:22 22:468 23:400 24:253 25:306 27:238 28:489.5 29:124 30:282 31:216',
+  '2025-11':'1:96.5 3:28.5 4:23 5:980 6:89 7:71 8:107 10:44 11:619 12:68 13:121 14:1446 15:739.5 17:2597 18:25 19:95 20:207 21:645 22:131 24:195 25:251 26:80 27:430 28:230 29:25',
+  '2025-12':'2:103 4:230 5:851 6:429.5 8:4 9:490 10:20 11:137 12:396 13:178 15:149 16:66 17:76 18:90 19:236.5 20:389.5 22:612 23:670 24:279 26:651 27:48 29:26 30:110 31:437',
+  '2026-01':'1:27 2:180 3:72 5:66 6:12 7:548 8:146 9:57 10:257 12:267 13:71 14:1611 15:895 16:258 17:1232 21:379 22:153 23:45 24:80 27:55 28:135 29:461 31:32',
+  '2026-02':'1:103 2:80 3:158 4:163 5:5.5 6:335 7:11 8:28 9:25 10:60 11:330 12:460 13:198 14:291.5 16:45 18:157 19:62 20:850 21:125 23:230 24:130 25:280 26:30 27:70 28:75',
+  '2026-03':'2:90 3:194.5 4:236 5:46.5 6:46.5 7:256 10:155 11:184 12:166.5 13:322 14:85 16:59 17:97 18:170 19:92 20:1691 21:204.5 23:40 24:18 25:51 27:1058 28:76.5 30:302 31:161',
+  '2026-04':'1:494 2:219 4:459 5:388 6:239 7:613 8:462.5 9:284 10:286 11:454.5 12:201 13:317 14:102 15:366 16:358 17:220 18:368 20:780 21:410 22:95 23:1205 24:699 25:248 27:232 28:224 30:444',
+  '2026-05':'1:594 2:382 4:817 5:479 6:243 7:375 8:164 9:331 11:179 12:522 13:550 14:276 15:940.5 16:354 17:48 18:94 19:313 20:301 21:518 22:1365 23:370.5 24:191 25:251 26:125 27:381 28:1233 29:563 30:433.5',
+  '2026-06':'1:131 2:421 3:642 4:86.5 5:399.5 6:324.5 8:470 9:349 10:173 11:311 12:453 13:260 14:160 15:162.5 16:265 17:299 18:823 19:1169 20:420 22:177.5 23:681 24:195 25:551 26:169 27:117.5 28:168 29:191 30:328',
+  '2026-07':'1:368 2:344.5 3:1085 4:752 6:153 7:194 8:768 9:391 10:324 11:198 12:80 13:52 14:84 15:142 16:522 17:788 18:2067 19:58.5 20:503 21:235 22:258 23:534 24:121 25:92 27:91 28:763.5 29:578 30:261 31:180',
+  '2026-08':'1:399 3:177 4:362 5:119 6:620 7:690 8:739 10:365 11:80 12:150 13:65 14:359 15:517 17:264 18:705 19:690 20:791 21:796 22:185 23:211 24:105 25:1335 26:258 27:508 28:3877 29:107 30:225 31:275',
+  '2026-09':'1:304 2:78 3:395 4:141 5:90 7:284 8:323 9:269 10:497 11:226 12:327 14:61 15:70 16:4868 17:290 18:557.5',
+};
+const HIST_GAMES = (()=>{
+  const m=new Map();
+  Object.keys(HIST_GAMES_RAW).forEach(ym=>HIST_GAMES_RAW[ym].split(' ').forEach(p=>{
+    const [d, v]=p.split(':');
+    const k=ym+'-'+String(d).padStart(2,'0');
+    if(k<HIST_UNTIL && +v) m.set(k, +v);
+  }));
+  return m;
+})();
+const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
+// Sheet days inside from..to for this store filter, oldest first.
+function histDays(from, to, store){
+  if(store && store!==DEFAULT_STORE) return [];
+  return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
+}
+
 // Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
 // products the sheet hasn't sent yet (brand typed in the sheet always wins).
 const BRAND_RULES = [
@@ -2439,6 +2481,7 @@ function computeInsights(){
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
   const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
+    histDays:0, histRev:0,
     brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
   // Time buckets, so quiet days still show as zero.
   if(mode==='day'){ for(let k=from; k<=to; k=shiftDay(k,1)) r.buckets.set(k, {rev:0, profit:0}); }
@@ -2485,6 +2528,26 @@ function computeInsights(){
       p.rev+=rev; p.qty+=q; if(profit!=null){ p.revKnown+=rev; p.profit+=profit; } else p.noCost=true;
       r.products.set(pk, p);
     });
+  });
+  // Games takings from the Google Sheet, for days before the till: one lump per
+  // day, costed at HIST_COST. The sheet has no times, so the by-hour chart skips them.
+  histDays(from, to, adState.store).forEach(h=>{
+    const profit=h.rev*(1-HIST_COST);
+    r.histDays++; r.histRev+=h.rev;
+    r.revenue+=h.rev; r.revKnown+=h.rev; r.profit+=profit;
+    if(mode!=='hour'){
+      const b=mode==='day' ? h.day : h.day.slice(0,7);
+      const bk=r.buckets.get(b) || {rev:0, profit:0};
+      bk.rev+=h.rev; bk.profit+=profit; r.buckets.set(b, bk);
+    }
+    const st=r.stores.get(DEFAULT_STORE) || {rev:0, profit:0, count:0};
+    st.rev+=h.rev; st.profit+=profit; r.stores.set(DEFAULT_STORE, st);
+    const br=r.brands.get(HIST_BRAND) || {name:HIST_BRAND, rev:0, revKnown:0, profit:0, qty:0};
+    br.rev+=h.rev; br.revKnown+=h.rev; br.profit+=profit;
+    r.brands.set(HIST_BRAND, br);
+    const p=r.products.get('hist:games') || {name:'Daily games takings (Google Sheet)', brand:HIST_BRAND, rev:0, revKnown:0, profit:0, qty:0, noCost:false};
+    p.rev+=h.rev; p.revKnown+=h.rev; p.profit+=profit;
+    r.products.set('hist:games', p);
   });
   if(mode==='hour'){
     // Trading hours that had sales, padded out to at least 9am–5pm.
@@ -2537,9 +2600,12 @@ function renderInsights(anim){
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
+  if(r.histDays) chips.push('<span class="gchip ok">Includes '+r.histDays+' day'+(r.histDays===1?'':'s')+' of Games takings from the Google Sheet ('+
+    esc(moneySigned(r.histRev))+', before the till) · cost estimated at '+Math.round(HIST_COST*100)+'%'+
+    (r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
   $('gxStatus').innerHTML=chips.join('');
 
-  if(!r.count){
+  if(!r.count && !r.histDays){
     grid.innerHTML='<div class="gcard" style="--i:0"><div class="gempty"><div style="font-size:38px">📭</div>No sales in this period.</div></div>';
     return;
   }
@@ -2547,13 +2613,14 @@ function renderInsights(anim){
   let i=0; const card=(cls, inner)=>'<div class="gcard '+cls+'" style="--i:'+(i++)+'">'+inner+'</div>';
   const kpi=(k, lbl, val, fmt, sub, color)=>'<div class="kpi" style="--i:'+k+';--k:'+color+'"><div class="kl">'+esc(lbl)+'</div>'+
     '<div class="kv" data-count="'+val+'" data-fmt="'+fmt+'">'+fmtVal(anim?0:val, fmt)+'</div><div class="ks">'+sub+'</div></div>';
-  const avg=r.count ? r.revenue/r.count : 0;
+  const avg=r.count ? (r.revenue-r.histRev)/r.count : 0;     // till invoices only — the sheet has day totals
+  const salesSub=r.count+' sale'+(r.count===1?'':'s')+(r.histDays?' + '+r.histDays+' sheet day'+(r.histDays===1?'':'s'):'');
   let h='<div class="kpis">'+
-    kpi(0, 'Revenue', r.revenue, 'money', r.count+' sale'+(r.count===1?'':'s'), '#1a73e8')+
+    kpi(0, 'Revenue', r.revenue, 'money', salesSub, '#1a73e8')+
     kpi(1, 'Gross profit', hasCost?r.profit:0, hasCost?'money':'none', hasCost?('on '+esc(moneySigned(r.revKnown))+' of sales with a cost'):'needs cost prices', '#34a853')+
     kpi(2, 'Margin', hasCost&&r.revKnown?margin*100:0, hasCost&&r.revKnown?'pct':'none', 'gross profit ÷ sales with a cost', '#fbbc04')+
     kpi(3, 'Items sold', r.items, 'int', r.products.size+' different product'+(r.products.size===1?'':'s'), '#ea4335')+
-    kpi(4, 'Average sale', avg, 'money', 'per invoice', '#9334e6')+
+    kpi(4, 'Average sale', avg, 'money', r.histDays?'per till invoice':'per invoice', '#9334e6')+
     '</div>';
   i=5;
   const unit = r.mode==='hour' ? 'by hour' : (r.mode==='day' ? 'by day' : 'by month');
