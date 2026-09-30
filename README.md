@@ -371,11 +371,11 @@ Items with no cost are left out of profit, and the page says how many there are.
 2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
 Insights reaches back before the till. The till rang up some of those days itself (sales made on the
 device before the site kept them were uploaded when it went live), so **each day only adds what
-South Melbourne's till is short of the sheet's Games figure** — till + top-up = the sheet, every
-month matches the sheet, and nothing is counted twice. A day where the till took *more* than the
-sheet adds nothing and is flagged in a yellow chip (hover it for the days). The top-up has no items,
+South Melbourne's till differs from the sheet's Games figure** — till + adjustment = the sheet,
+every month matches the sheet, and nothing is counted twice. The sheet is always right: a day the
+till took *more* than the sheet gets a negative adjustment. The adjustment has no items,
 so it counts as one South Melbourne lump under **Games (before the till)**, with the cost estimated
-at **50%** (`HIST_COST` in `index.html`). A green chip says how much was topped up, and a red one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
+at **50%** (`HIST_COST` in `index.html`). A red chip notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
 

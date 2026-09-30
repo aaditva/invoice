@@ -2342,9 +2342,10 @@ function lineCost(s, it, i){
    synced. From 20 Sep the sheet's Games column is written from the till, so
    it adds nothing.
    The till rang up some of these days itself (sales made on the device before
-   the site kept them were uploaded when it went live), so each day only adds
-   what the till is SHORT of the sheet: till + top-up = the sheet's figure, and
-   every month matches the sheet. Only the day's total is known — no items, no
+   the site kept them were uploaded when it went live), so each day adds the
+   difference from the till: till + adjustment = the sheet's figure. The sheet
+   is always right — a day the till took more is brought down to it — so every
+   month matches the sheet. Only the day's total is known — no items, no
    cash/card split — so the top-up is costed at a conservative 50%.
    Per month: "day:takings", space-separated. */
 const HIST_UNTIL = '2026-09-20';        // the sheet is never used from here on
@@ -2374,11 +2375,12 @@ const HIST_GAMES = (()=>{
   return m;
 })();
 const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
-// Sheet top-ups inside from..to for this store filter, oldest first: for each
-// sheet day, the sheet's Games figure less what South Melbourne's till took
-// that day. over = days the till took MORE than the sheet (nothing added).
+// Sheet adjustments inside from..to for this store filter, oldest first: for
+// each sheet day, the sheet's Games figure less what South Melbourne's till
+// took that day. The sheet is always right, so a day the till took MORE comes
+// back negative and brings the day down to the sheet.
 function histDays(from, to, store, sales){
-  const out=[]; out.over=[];
+  const out=[];
   if(store && store!==DEFAULT_STORE) return out;
   const till=new Map();
   (sales||[]).forEach(s=>{
@@ -2387,8 +2389,7 @@ function histDays(from, to, store, sales){
   });
   [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to).sort().forEach(k=>{
     const sheet=HIST_GAMES.get(k), t=round2(till.get(k)||0), rev=round2(sheet-t);
-    if(rev>0) out.push({day:k, rev, sheet, till:t});
-    else if(rev<0) out.over.push({day:k, sheet, till:t});
+    if(rev) out.push({day:k, rev, sheet, till:t});
   });
   return out;
 }
@@ -2501,7 +2502,7 @@ function computeInsights(){
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
   const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
-    histDays:0, histRev:0, histOver:[],
+    histDays:0, histRev:0,
     brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
   // Time buckets, so quiet days still show as zero.
   if(mode==='day'){ for(let k=from; k<=to; k=shiftDay(k,1)) r.buckets.set(k, {rev:0, profit:0}); }
@@ -2552,7 +2553,6 @@ function computeInsights(){
   // Games takings from the Google Sheet, for days before the till: one lump per
   // day, costed at HIST_COST. The sheet has no times, so the by-hour chart skips them.
   const hist=histDays(from, to, adState.store, sales);
-  r.histOver=hist.over;
   hist.forEach(h=>{
     const profit=h.rev*(1-HIST_COST);
     r.histDays++; r.histRev+=h.rev;
@@ -2622,12 +2622,7 @@ function renderInsights(anim){
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
-  if(r.histOver && r.histOver.length)
-    chips.push('<span class="gchip" title="'+esc(r.histOver.map(o=>niceDay(o.day)+': till '+moneySigned(o.till)+', sheet '+moneySigned(o.sheet)).join('\n'))+'">'+
-      r.histOver.length+' day'+(r.histOver.length===1?'':'s')+' where the till took more than the Google Sheet’s Games figure — hover for details</span>');
   if(r.histDays){
-    chips.push('<span class="gchip ok">Includes '+esc(moneySigned(r.histRev))+' of Games takings from the Google Sheet over '+r.histDays+' day'+(r.histDays===1?'':'s')+
-      ' — what the till didn’t ring up, so each day matches the sheet'+(r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
       Math.round(HIST_COST*100)+'% of takings)</span>');
   }
