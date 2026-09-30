@@ -7,9 +7,22 @@
  *  can work out profit. The till never reads this — cost prices are not
  *  shown at the counter or printed anywhere.
  *
+ *  Costs can also be typed on the website (Admin → 🏷️ No cost) for things
+ *  sold with no cost yet. Those are kept apart from the sheet's list (so the
+ *  sheet's next push can't wipe them):
+ *    - products, by barcode — used until the sheet has a cost of its own.
+ *      The sheet script copies them into its Cost column, then clears them here.
+ *    - Miscellaneous lines, by "<invoice no>#<line>" — these have no barcode,
+ *      so each one sold gets its own cost. They stay here.
+ *
  *  Routes (all on /api/costs):
- *    GET  /api/costs     → { updated, count, items:{ <barcode>:{ cost, brand, name } } }
- *    POST /api/costs     body = { items:[{ sku, cost, brand, name }] } — replaces the list
+ *    GET  /api/costs     → { updated, count, items:{ <barcode>:{ cost, brand, name, src? } },
+ *                            manual:{ <barcode>:{ cost, name, at } }, misc:{ <no#line>:{ cost, at } } }
+ *                          items already has the website's costs filled in (src:'site').
+ *    POST /api/costs     body = { items:[{ sku, cost, brand, name }] } — replaces the sheet's list
+ *    POST /api/costs     body = { set:[{ sku, cost, name } | { misc, cost }] } — website edits;
+ *                          cost '' or null removes the entry
+ *    POST /api/costs     body = { clear:[<barcode>, …] } — the sheet has these now
  *
  *  Env vars:
  *    SALES_TOKEN   optional; if set, every request needs a matching x-sales-token
@@ -21,7 +34,9 @@
 import { getStore } from '@netlify/blobs';
 
 const KEY = 'costs';
+const MANUAL = 'manual';
 const MAX = 20000;
+const MISC_RE = /^[^#]{1,80}#\d{1,4}$/;
 
 export default async (req) => {
   const headers = {
@@ -42,12 +57,22 @@ export default async (req) => {
   try {
     if (req.method === 'GET') {
       const saved = await st.get(KEY, { type: 'json' }).catch(() => null);
-      const items = saved && saved.items && typeof saved.items === 'object' ? saved.items : {};
-      return json({ updated: (saved && saved.updated) || null, count: Object.keys(items).length, items }, 200, headers);
+      const items = { ...(saved && saved.items && typeof saved.items === 'object' ? saved.items : {}) };
+      const man = await readManual(st);
+      // A website cost fills in until the sheet has one of its own.
+      const byNorm = new Map(Object.keys(items).map(k => [norm(k), k]));
+      for (const [sku, m] of Object.entries(man.items)) {
+        const k = byNorm.get(sku);
+        if (k === undefined) items[sku] = { cost: m.cost, brand: '', name: m.name || '', src: 'site' };
+        else if (items[k].cost === null || items[k].cost === undefined) items[k] = { ...items[k], cost: m.cost, src: 'site' };
+      }
+      return json({ updated: (saved && saved.updated) || null, count: Object.keys(items).length, items,
+        manual: man.items, misc: man.misc }, 200, headers);
     }
     if (req.method === 'POST') {
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
+      if (body && (Array.isArray(body.set) || Array.isArray(body.clear))) return await editManual(st, body, headers);
       if (!body || !Array.isArray(body.items)) return json({ error: 'Body must be { items:[{ sku, cost, brand }] }.' }, 400, headers);
       const items = {};
       for (const r of body.items.slice(0, MAX)) {
@@ -71,6 +96,43 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/costs' };
+
+async function readManual(st) {
+  const v = await st.get(MANUAL, { type: 'json' }).catch(() => null);
+  return {
+    items: v && v.items && typeof v.items === 'object' ? v.items : {},
+    misc: v && v.misc && typeof v.misc === 'object' ? v.misc : {},
+  };
+}
+
+async function editManual(st, body, headers) {
+  const man = await readManual(st);
+  const at = new Date().toISOString();
+  let changed = 0;
+  for (const r of (body.set || []).slice(0, 500)) {
+    if (!r || typeof r !== 'object') continue;
+    const c = r.cost === '' || r.cost === null || r.cost === undefined ? null : Number(r.cost);
+    if (c !== null && !(isFinite(c) && c >= 0 && c < 1e6)) return json({ error: 'Cost must be a number, 0 or more.' }, 400, headers);
+    const cost = c === null ? null : Math.round(c * 100) / 100;
+    if (r.misc !== undefined) {
+      const k = String(r.misc).trim();
+      if (!MISC_RE.test(k)) return json({ error: 'Bad misc line id.' }, 400, headers);
+      if (cost === null) delete man.misc[k]; else man.misc[k] = { cost, at };
+    } else {
+      const k = norm(r.sku);
+      if (!k || k.length > 64) return json({ error: 'Bad barcode.' }, 400, headers);
+      if (cost === null) delete man.items[k];
+      else man.items[k] = { cost, name: String(r.name || '').trim().slice(0, 200), at };
+    }
+    changed++;
+  }
+  for (const sku of (body.clear || []).slice(0, MAX)) { if (man.items[norm(sku)]) { delete man.items[norm(sku)]; changed++; } }
+  await st.setJSON(MANUAL, { ...man, updated: at });
+  return json({ ok: true, changed, manual: man.items, misc: man.misc }, 200, headers);
+}
+
+// Barcodes are matched the way the till matches them: trimmed, upper-case, no spaces.
+function norm(v) { return String(v == null ? '' : v).trim().toUpperCase().replace(/\s+/g, ''); }
 
 function json(obj, status, headers) {
   return new Response(JSON.stringify(obj), { status, headers });

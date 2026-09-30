@@ -274,6 +274,12 @@
   .gx .hb .val{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .gx .hb .val small{color:var(--g-ink2);margin-left:6px}
   .gx table.gt{width:100%;border-collapse:collapse;font-size:13.5px}
+  .gx input.nc{width:96px;text-align:right;padding:6px 8px;font-variant-numeric:tabular-nums}
+  .gx .ncst{display:inline-block;min-width:62px;font-size:12px;color:var(--g-ink2);text-align:left;padding-left:6px}
+  .gx .ncst.ok{color:#0d652d} .gx .ncst.bad{color:#a50e0e}
+  .gx .ncwrap{overflow-x:auto}
+  .gx button.gchip{border:0;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600}
+  .gx button.gchip:hover{background:#fdeeb8}
   .gx table.gt th{font-size:12px;font-weight:600;color:var(--g-ink2);text-align:left;padding:8px 10px;border-bottom:1px solid var(--g-line);
     background:#fff;position:static;text-transform:none;letter-spacing:0}
   .gx table.gt td{padding:9px 10px;border-bottom:1px solid #f1f3f4;font-variant-numeric:tabular-nums}
@@ -499,6 +505,16 @@
         <div style="display:flex;gap:10px;align-items:center">
           <div class="gstatus" id="gxStatus" style="flex:1"></div>
           <button class="ghost" id="gxRefresh">⟳ Refresh</button>
+        </div>
+        <!-- NO COST — opened from the yellow "sold with no cost" chip above: type the missing costs in -->
+        <div id="ncPanel" style="display:none;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div class="gstatus" id="ncStatus" style="flex:1"></div>
+            <label class="muted" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap">
+              <input type="checkbox" id="ncShowAll" style="width:auto;margin:0" /> Show ones already costed here</label>
+            <button class="ghost" id="ncClose">Done</button>
+          </div>
+          <div class="ggrid" id="ncGrid"></div>
         </div>
         <div class="ggrid" id="gxGrid"></div>
       </div>
@@ -867,13 +883,20 @@ function storeById(id){
            phone:String(ov.phone||'').trim() };
 }
 function allStores(){ return STORE_DEFS.map(d=>storeById(d.id)); }
-// Label for any store id, including ones the server knows but we don't define
-// (e.g. 'unassigned' — sales rung up before the store selector existed).
+// Label for any store id, including ones the server knows but we don't define.
+// Sales from before the store selector existed have no store; they're South Melbourne's.
+const DEFAULT_STORE = 'south-melbourne';
 function storeLabel(id){
-  const s = id ? storeById(id) : null;
-  if(s) return s.name;
-  if(!id || id==='unassigned') return 'Unassigned';
-  return id;
+  if(!id || id==='unassigned') id = DEFAULT_STORE;
+  const s = storeById(id);
+  return s ? s.name : id;
+}
+// One-time: this device's own copies of sales from before the store selector
+// get filed under South Melbourne, the same as the site does with its copies.
+function adoptStorelessSales(){
+  const sales=load(LS.sales,[]); let n=0;
+  sales.forEach(s=>{ if(s && (!s.store || s.store==='unassigned')){ s.store=DEFAULT_STORE; s.storeName=storeLabel(DEFAULT_STORE); n++; } });
+  if(n) save(LS.sales, sales);
 }
 // Invoice numbers count per store, so each location's run stays in sequence.
 function counterKey(){ return currentStore ? (LS.counter+':'+currentStore.id) : LS.counter; }
@@ -1231,8 +1254,8 @@ function renderToday(){
     '<span>All stores '+(on && !allTally ? '<b>…</b>' : m(allTally ? allTally.total : 0))+'</span>'+
     (t.local ? '<span class="muted">this device only</span>' : '');
 }
-// Does this locally-stored sale belong to the store that's open? Sales rung up
-// before the store selector existed have no store and are filed as Unassigned.
+// Does this locally-stored sale belong to the store that's open? (Sales from before
+// the store selector are filed under South Melbourne by adoptStorelessSales.)
 function sameStore(s){ return !!currentStore && String((s&&s.store)||'') === currentStore.id; }
 function localTally(day){
   const t = aggregate(load(LS.sales,[]).filter(s=>s.day===day && sameStore(s)));
@@ -2228,7 +2251,7 @@ function readAdminRange(){
 function reloadAdmin(lazy){
   readAdminRange();
   if(adTab==='insights'){
-    if(lazy && gx.key===adKey() && gx.sales) renderInsights(false); else loadInsights();
+    if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
   }else if(!lazy || adState.key!==adKey()) loadAdmin();
 }
 function setAdminTab(tab){
@@ -2236,10 +2259,10 @@ function setAdminTab(tab){
   $('adTabs').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.tab===tab));
   $('adTakings').style.display = tab==='takings' ? 'flex' : 'none';
   $('adInsights').style.display = tab==='insights' ? 'flex' : 'none';
-  $('adminSheet').classList.toggle('xl', tab==='insights');
+  $('adminSheet').classList.toggle('xl', tab!=='takings');
   moveAdminInk();
   // The sheet widens as Insights opens; wait for it so the charts fit.
-  if(tab==='insights') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
+  if(tab!=='takings') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
 }
 function moveAdminInk(){
   const b=$('adTabs').querySelector('button.sel'), ink=$('adInk');
@@ -2297,7 +2320,16 @@ function addAgg(a, b){
    from the Google Sheet's Products tab, which the sheet script sends to
    /api/costs. Profit only counts items that have a cost, and says how many
    don't, so a half-filled sheet never passes off as a real margin. */
-let gx = { key:'', sales:null, costs:null, costsErr:'', costsAt:null, sort:'profit' };
+let gx = { key:'', sales:null, costs:null, costsErr:'', costsAt:null, misc:{}, sort:'profit' };
+// A Miscellaneous line has no barcode, so its cost is kept per line sold: "<invoice no>#<line>".
+function isMiscLine(it){ return !it || !String(it.sku||'').trim() || /^MISC-/i.test(String(it.sku)); }
+function miscKey(s, i){ return String(s.no)+'#'+i; }
+// Cost each for one line of a sale, or null if nobody's entered one yet.
+function lineCost(s, it, i){
+  if(isMiscLine(it)){ const m=gx.misc[miscKey(s,i)]; return m && m.cost!=null ? Number(m.cost) : null; }
+  const info=gx.costs ? gx.costs.get(normSku(it.sku)) : null;
+  return info && info.cost!=null ? Number(info.cost) : null;
+}
 
 // Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
 // products the sheet hasn't sent yet (brand typed in the sheet always wins).
@@ -2362,6 +2394,12 @@ async function fetchCosts(){
   }catch(e){ return {error:'Could not reach the site.'}; }
 }
 
+// Insights, and the no-cost list opened from its yellow chip.
+function renderGx(anim){
+  renderInsights(anim);
+  if(!ncOpen()) return;
+  if($('gxNoCostBtn')) renderNoCost(); else setNcOpen(false);   // nothing without a cost in this period
+}
 async function loadInsights(){
   readAdminRange();
   const key=adKey();
@@ -2382,13 +2420,15 @@ async function loadInsights(){
       return;
     }
     gx.sales=(d.sales||[]).filter(s=>s && !s.voided);
-    gx.costs=null; gx.costsErr=''; gx.costsAt=null;
+    gx.costs=null; gx.costsErr=''; gx.costsAt=null; gx.misc={};
     if(c && !c.error){
       gx.costs=new Map();
       Object.keys(c.items||{}).forEach(k=>gx.costs.set(normSku(k), c.items[k]));
       gx.costsAt=c.updated;
+      gx.misc=c.misc||{};
     }else gx.costsErr=(c && c.error) || 'unavailable';
-    renderInsights(true);
+    ncSaved.clear();
+    renderGx(true);
   }finally{ adLoading(false); }
 }
 
@@ -2421,16 +2461,17 @@ function computeInsights(){
     if(!r.buckets.has(b)) r.buckets.set(b, {rev:0, profit:0});
     const bk=r.buckets.get(b);
     bk.rev+=total;
-    const st=r.stores.get(s.store||'unassigned') || {rev:0, profit:0, count:0};
-    st.rev+=total; st.count++; r.stores.set(s.store||'unassigned', st);
+    const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
+    const st=r.stores.get(sid) || {rev:0, profit:0, count:0};
+    st.rev+=total; st.count++; r.stores.set(sid, st);
     const items=s.items||[];
     const gross=items.reduce((a,it)=>a+(Number(it.price)||0)*(Number(it.qty)||0), 0);
     const share=gross ? total/gross : 1;              // spreads a discount across the lines
-    items.forEach(it=>{
+    items.forEach((it, idx)=>{
       const q=Number(it.qty)||0, sku=normSku(it.sku);
       const rev=(Number(it.price)||0)*q*share;
       const info=sku && costs ? costs.get(sku) : null;
-      const cost=info && info.cost!=null ? Number(info.cost) : null;
+      const cost=costs ? lineCost(s, it, idx) : null;
       const brand=!sku ? 'Misc' : ((info && info.brand && info.brand!=='Other') ? info.brand : guessBrand(it.name));
       const profit=cost!=null ? rev-cost*q : null;
       r.items+=q;
@@ -2493,7 +2534,8 @@ function renderInsights(anim){
   if(!hasCost) chips.push('<span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+') — profit can’t be worked out. Re-run setup in the Google Sheet script.</span>');
   else{
     if(gx.costsAt) chips.push('<span class="gchip ok">Cost prices from the Google Sheet · updated '+esc(agoText(gx.costsAt))+'</span>');
-    if(r.missing) chips.push('<span class="gchip">'+r.missing+' item'+(r.missing===1?'':'s')+' sold with no cost yet — left out of profit</span>');
+    if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
+      ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
   $('gxStatus').innerHTML=chips.join('');
 
@@ -2539,6 +2581,126 @@ function renderInsights(anim){
   if($('gxStores')) storeBars($('gxStores'), r, hasCost, anim);
   topProducts($('gxTop'), r, hasCost, anim);
   if(anim) countUp(grid); else grid.querySelectorAll('[data-count]').forEach(el=>{ el.textContent=fmtVal(+el.dataset.count, el.dataset.fmt); });
+}
+/* ---------------- No cost — things sold with no cost price ----------------
+   Anything sold in the period that has no cost is left out of profit. The
+   yellow chip on Insights opens this list so the cost can be typed straight in:
+   - products, one row each (by barcode) — the cost goes to the site, and the
+     Google Sheet copies it into the Products tab's Cost column on its next refresh;
+   - Miscellaneous lines, one row per sale, by the date and time it was sold,
+     since there's no barcode to say what it was. Their cost stays on the site. */
+const ncSaved = new Set();     // rows costed since this list loaded — kept on screen until Refresh
+function ncOpen(){ return $('ncPanel').style.display!=='none'; }
+function setNcOpen(on){
+  $('ncPanel').style.display = on ? 'flex' : 'none';
+  if(on) renderNoCost();
+  else if(ncSaved.size){ ncSaved.clear(); renderInsights(false); }   // profit has moved — redraw it
+  else{ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('hide ▲','show ▼'); }
+  if(on){ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('show ▼','hide ▲'); }
+}
+function noCostRows(){
+  const prods=new Map(), misc=[];
+  (gx.sales||[]).forEach(s=>{
+    const items=s.items||[];
+    const gross=items.reduce((a,it)=>a+(Number(it.price)||0)*(Number(it.qty)||0), 0);
+    const share=gross ? (Number(s.total)||0)/gross : 1;
+    items.forEach((it, i)=>{
+      const q=Number(it.qty)||0, rev=(Number(it.price)||0)*q*share;
+      if(isMiscLine(it)){
+        const k=miscKey(s, i), m=gx.misc[k];
+        misc.push({k, s, it, q, rev, cost:m && m.cost!=null ? Number(m.cost) : null});
+        return;
+      }
+      const sku=normSku(it.sku), info=gx.costs.get(sku);
+      const fromSite=!!(info && info.src==='site');
+      if(info && info.cost!=null && !fromSite) return;     // the sheet has a cost — not this list's business
+      const p=prods.get(sku) || {k:sku, sku:String(it.sku).trim(), name:(info && info.name) || it.name || sku,
+        qty:0, rev:0, last:'', cost:fromSite ? Number(info.cost) : null};
+      p.qty+=q; p.rev+=rev; if(String(s.ts)>p.last) p.last=String(s.ts);
+      prods.set(sku, p);
+    });
+  });
+  return {prods:[...prods.values()].sort((a,b)=>b.rev-a.rev), misc:misc.sort((a,b)=>String(b.s.ts).localeCompare(String(a.s.ts)))};
+}
+function whenSold(ts, day){
+  const d=new Date(ts);
+  if(isNaN(d)) return niceDay(day);
+  return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' · '+
+    d.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'});
+}
+function ncInput(kind, k, cost){
+  const st=ncSaved.has(kind+':'+k) ? '<span class="ncst ok">✓ Saved</span>' : '<span class="ncst"></span>';
+  return '<input class="nc" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Cost each" data-kind="'+kind+
+    '" data-k="'+esc(k)+'" value="'+(cost!=null ? Number(cost).toFixed(2) : '')+'" />'+st;
+}
+function renderNoCost(){
+  const grid=$('ncGrid'); grid.classList.remove('dim');
+  if(!gx.sales) return;
+  if(!gx.costs){ setNcOpen(false); return; }
+  const all=$('ncShowAll').checked;
+  const keep=(kind, r)=>r.cost==null || all || ncSaved.has(kind+':'+r.k);
+  const {prods, misc}=noCostRows();
+  const P=prods.filter(r=>keep('p', r)), M=misc.filter(r=>keep('m', r));
+  renderNcStatus(prods, misc);
+
+  let i=0; const card=inner=>'<div class="gcard" style="--i:'+(i++)+'">'+inner+'</div>';
+  let h=card('<div class="gtitle">Products with no cost</div>'+
+    '<div class="gsub">Type the cost each (GST included, like the sheet’s Cost column) — it’s saved as you leave the box or press Enter. '+
+    'The Google Sheet copies it into the Products tab on its next refresh; after that, change it there.</div>'+
+    (P.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Last sold</th><th class="num">Cost each</th></tr></thead><tbody>'+
+      P.map(r=>'<tr><td><div>'+esc(r.name)+'</div><div class="muted">'+esc(r.sku)+'</div></td>'+
+        '<td class="num">'+r.qty+'</td><td class="num">'+moneySigned(r.rev)+'</td>'+
+        '<td>'+esc(whenSold(r.last, ''))+'</td><td class="num" style="white-space:nowrap">'+ncInput('p', r.k, r.cost)+'</td></tr>').join('')+
+      '</tbody></table></div>'
+      : '<div class="gempty">No products without a cost in this period.</div>'));
+  h+=card('<div class="gtitle">Miscellaneous sales</div>'+
+    '<div class="gsub">Custom-priced “+ Misc $” lines have no barcode, so each one is listed by when it was sold. Type what it cost you.</div>'+
+    (M.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th>Sold</th>'+(adState.store?'':'<th>Store</th>')+
+      '<th>Invoice</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Cost each</th></tr></thead><tbody>'+
+      M.map(r=>'<tr><td>'+esc(r.it.name || 'Miscellaneous')+'</td><td>'+esc(whenSold(r.s.ts, r.s.day))+(r.s.servedBy?'<div class="muted">'+esc(r.s.servedBy)+'</div>':'')+'</td>'+
+        (adState.store?'':'<td>'+esc(storeLabel(r.s.store))+'</td>')+
+        '<td>'+esc(r.s.no)+'</td><td class="num">'+r.q+'</td><td class="num">'+moneySigned(r.rev)+'</td>'+
+        '<td class="num" style="white-space:nowrap">'+ncInput('m', r.k, r.cost)+'</td></tr>').join('')+
+      '</tbody></table></div>'
+      : '<div class="gempty">No miscellaneous sales without a cost in this period.</div>'));
+  grid.innerHTML=h;
+}
+function renderNcStatus(prods, misc){
+  if(!prods){ const r=noCostRows(); prods=r.prods; misc=r.misc; }
+  const missP=prods.filter(r=>r.cost==null), missM=misc.filter(r=>r.cost==null);
+  const missRev=missP.reduce((a,r)=>a+r.rev, 0)+missM.reduce((a,r)=>a+r.rev, 0);
+  const chips=[];
+  if(missP.length || missM.length){
+    chips.push('<span>'+missP.length+' product'+(missP.length===1?'':'s')+' and '+missM.length+
+      ' misc sale'+(missM.length===1?'':'s')+' still to cost · '+esc(moneySigned(missRev))+' of sales left out of profit</span>');
+  }else chips.push('<span class="gchip ok">All costed — press Done to update the profit figures</span>');
+  $('ncStatus').innerHTML=chips.join('');
+}
+async function saveNoCost(input){
+  const kind=input.dataset.kind, k=input.dataset.k;
+  const st=input.nextElementSibling;
+  const raw=input.value.trim();
+  const cost=raw==='' ? null : round2(parseFloat(raw));
+  if(cost!==null && !(cost>=0)){ st.className='ncst bad'; st.textContent='Not a number'; return; }
+  let row;
+  if(kind==='m') row={misc:k, cost};
+  else{ const r=noCostRows().prods.find(x=>x.k===k); row={sku:r ? r.sku : k, name:r ? r.name : '', cost}; }
+  st.className='ncst'; st.textContent='Saving…';
+  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  try{
+    const res=await fetch(costsUrl(), {method:'POST', headers:h, body:JSON.stringify({set:[row]})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+    gx.misc=d.misc || gx.misc;
+    if(kind==='p'){
+      const info=gx.costs.get(k) || {brand:'', name:row.name};
+      gx.costs.set(k, Object.assign({}, info, {cost, src:cost===null ? undefined : 'site'}));
+    }
+    if(cost===null) ncSaved.delete(kind+':'+k); else ncSaved.add(kind+':'+k);
+    st.className='ncst ok'; st.textContent=cost===null ? '✓ Cleared' : '✓ Saved';
+    if(cost!==null) input.value=cost.toFixed(2);
+    renderNcStatus();            // the counts move with each save; the rows stay put so typing carries on
+  }catch(e){ st.className='ncst bad'; st.textContent='Not saved — '+e.message; }
 }
 function fmtVal(v, fmt){
   if(fmt==='none') return '—';
@@ -2954,6 +3116,7 @@ function anyModalOpen(){ return document.querySelector('.modal.show'); }
 
 /* ---------------- wire up ---------------- */
 function bind(){
+  adoptStorelessSales();
   rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
 
   // scan input — a barcode scanner "types" the code then sends Enter, so this
@@ -3073,6 +3236,13 @@ function bind(){
   $('adTo').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); reloadAdmin(false); });
   $('adRefresh').onclick=()=>reloadAdmin(false);
   $('gxRefresh').onclick=()=>reloadAdmin(false);
+  // The yellow "sold with no cost" chip opens the list to type them in.
+  $('gxStatus').addEventListener('click', e=>{ if(e.target.closest('#gxNoCostBtn')) setNcOpen(!ncOpen()); });
+  $('ncClose').onclick=()=>setNcOpen(false);
+  $('ncShowAll').onchange=()=>renderNoCost();
+  // A cost is saved as soon as it's typed (Enter or moving off the box). Blank = remove it.
+  $('ncGrid').addEventListener('change', e=>{ const i=e.target.closest('input.nc'); if(i) saveNoCost(i); });
+  $('ncGrid').addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.matches('input.nc')){ e.preventDefault(); e.target.blur(); } });
   $('adTabs').addEventListener('click', e=>{
     const b=e.target.closest('[data-tab]'); if(b && b.dataset.tab!==adTab) setAdminTab(b.dataset.tab);
   });
