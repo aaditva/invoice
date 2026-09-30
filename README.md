@@ -368,13 +368,14 @@ site (`/api/costs`) after every refresh and straight away when you edit a Cost o
 Items with no cost are left out of profit, and the page says how many there are.
 
 **Games takings from before the till.** The daily **Games** column of the Google Sheet (the 2025 and
-2026 tabs, from 1 Oct 2025) is built into the site as a one-off copy — it never syncs — so Insights
-reaches back before the till. It's only used for days **before the till's first South Melbourne
-sale** in the period you're viewing (and never from 19 Sep 2026 on), so no day is counted twice:
-sales the till rang up before the site kept them were uploaded when it went live, and those win.
-The sheet only has each day's total, so each day counts as one
-South Melbourne lump under **Games (before the till)**, with the cost estimated at **50%** of
-takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included, and a red one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
+2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
+Insights reaches back before the till. The till rang up some of those days itself (sales made on the
+device before the site kept them were uploaded when it went live), so **each day only adds what
+South Melbourne's till is short of the sheet's Games figure** — till + top-up = the sheet, every
+month matches the sheet, and nothing is counted twice. A day where the till took *more* than the
+sheet adds nothing and is flagged in a yellow chip (hover it for the days). The top-up has no items,
+so it counts as one South Melbourne lump under **Games (before the till)**, with the cost estimated
+at **50%** (`HIST_COST` in `index.html`). A green chip says how much was topped up, and a red one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
 

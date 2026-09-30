@@ -2338,12 +2338,16 @@ function lineCost(s, it, i){
 
 /* ---------------- Games takings from before the till ----------------
    The daily "Games" column of the Google Sheet (tatts eod balance → 2025 / 2026
-   tabs), South Melbourne, from 1 Oct 2025 — a one-off copy, never synced.
-   Only the day's total is known — no items, no cash/card split — so the cost
-   is a conservative 50% of takings. It's only used for days before the till's
-   first sale (see histDays), so nothing is counted twice.
+   tabs), South Melbourne, 1 Oct 2025 → 19 Sep 2026 — a one-off copy, never
+   synced. From 20 Sep the sheet's Games column is written from the till, so
+   it adds nothing.
+   The till rang up some of these days itself (sales made on the device before
+   the site kept them were uploaded when it went live), so each day only adds
+   what the till is SHORT of the sheet: till + top-up = the sheet's figure, and
+   every month matches the sheet. Only the day's total is known — no items, no
+   cash/card split — so the top-up is costed at a conservative 50%.
    Per month: "day:takings", space-separated. */
-const HIST_UNTIL = '2026-09-19';        // the sheet is never used from here on, whatever the till has
+const HIST_UNTIL = '2026-09-20';        // the sheet is never used from here on
 const HIST_COST = 0.5;                  // estimated cost, as a share of takings
 const HIST_BRAND = 'Games (before the till)';
 const HIST_GAMES_RAW = {
@@ -2358,7 +2362,7 @@ const HIST_GAMES_RAW = {
   '2026-06':'1:131 2:421 3:642 4:86.5 5:399.5 6:324.5 8:470 9:349 10:173 11:311 12:453 13:260 14:160 15:162.5 16:265 17:299 18:823 19:1169 20:420 22:177.5 23:681 24:195 25:551 26:169 27:117.5 28:168 29:191 30:328',
   '2026-07':'1:368 2:344.5 3:1085 4:752 6:153 7:194 8:768 9:391 10:324 11:198 12:80 13:52 14:84 15:142 16:522 17:788 18:2067 19:58.5 20:503 21:235 22:258 23:534 24:121 25:92 27:91 28:763.5 29:578 30:261 31:180',
   '2026-08':'1:399 3:177 4:362 5:119 6:620 7:690 8:739 10:365 11:80 12:150 13:65 14:359 15:517 17:264 18:705 19:690 20:791 21:796 22:185 23:211 24:105 25:1335 26:258 27:508 28:3877 29:107 30:225 31:275',
-  '2026-09':'1:304 2:78 3:395 4:141 5:90 7:284 8:323 9:269 10:497 11:226 12:327 14:61 15:70 16:4868 17:290 18:557.5',
+  '2026-09':'1:304 2:78 3:395 4:141 5:90 7:284 8:323 9:269 10:497 11:226 12:327 14:61 15:70 16:4868 17:290 18:557.5 19:114',
 };
 const HIST_GAMES = (()=>{
   const m=new Map();
@@ -2370,18 +2374,23 @@ const HIST_GAMES = (()=>{
   return m;
 })();
 const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
-// Sheet days inside from..to for this store filter, oldest first. The till was
-// ringing up sales on the device before the site kept them, and those were
-// uploaded when it went live — so the sheet stops the day before the first
-// South Melbourne till sale in the loaded sales, and never overlaps the till.
+// Sheet top-ups inside from..to for this store filter, oldest first: for each
+// sheet day, the sheet's Games figure less what South Melbourne's till took
+// that day. over = days the till took MORE than the sheet (nothing added).
 function histDays(from, to, store, sales){
-  if(store && store!==DEFAULT_STORE) return [];
-  let until=HIST_UNTIL;
+  const out=[]; out.over=[];
+  if(store && store!==DEFAULT_STORE) return out;
+  const till=new Map();
   (sales||[]).forEach(s=>{
     const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
-    if(sid===DEFAULT_STORE && s.day && String(s.day)<until) until=String(s.day);
+    if(sid===DEFAULT_STORE && HIST_GAMES.has(s.day)) till.set(s.day, (till.get(s.day)||0)+(Number(s.total)||0));
   });
-  return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to && k<until).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
+  [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to).sort().forEach(k=>{
+    const sheet=HIST_GAMES.get(k), t=round2(till.get(k)||0), rev=round2(sheet-t);
+    if(rev>0) out.push({day:k, rev, sheet, till:t});
+    else if(rev<0) out.over.push({day:k, sheet, till:t});
+  });
+  return out;
 }
 
 // Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
@@ -2492,7 +2501,7 @@ function computeInsights(){
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
   const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
-    histDays:0, histRev:0,
+    histDays:0, histRev:0, histOver:[],
     brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
   // Time buckets, so quiet days still show as zero.
   if(mode==='day'){ for(let k=from; k<=to; k=shiftDay(k,1)) r.buckets.set(k, {rev:0, profit:0}); }
@@ -2542,7 +2551,9 @@ function computeInsights(){
   });
   // Games takings from the Google Sheet, for days before the till: one lump per
   // day, costed at HIST_COST. The sheet has no times, so the by-hour chart skips them.
-  histDays(from, to, adState.store, sales).forEach(h=>{
+  const hist=histDays(from, to, adState.store, sales);
+  r.histOver=hist.over;
+  hist.forEach(h=>{
     const profit=h.rev*(1-HIST_COST);
     r.histDays++; r.histRev+=h.rev;
     r.revenue+=h.rev; r.revKnown+=h.rev; r.profit+=profit;
@@ -2611,9 +2622,12 @@ function renderInsights(anim){
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
+  if(r.histOver && r.histOver.length)
+    chips.push('<span class="gchip" title="'+esc(r.histOver.map(o=>niceDay(o.day)+': till '+moneySigned(o.till)+', sheet '+moneySigned(o.sheet)).join('\n'))+'">'+
+      r.histOver.length+' day'+(r.histOver.length===1?'':'s')+' where the till took more than the Google Sheet’s Games figure — hover for details</span>');
   if(r.histDays){
-    chips.push('<span class="gchip ok">Includes '+r.histDays+' day'+(r.histDays===1?'':'s')+' of Games takings from the Google Sheet ('+
-      esc(moneySigned(r.histRev))+', before the till)'+(r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
+    chips.push('<span class="gchip ok">Includes '+esc(moneySigned(r.histRev))+' of Games takings from the Google Sheet over '+r.histDays+' day'+(r.histDays===1?'':'s')+
+      ' — what the till didn’t ring up, so each day matches the sheet'+(r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
       Math.round(HIST_COST*100)+'% of takings)</span>');
   }
