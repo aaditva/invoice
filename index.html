@@ -2338,12 +2338,12 @@ function lineCost(s, it, i){
 
 /* ---------------- Games takings from before the till ----------------
    The daily "Games" column of the Google Sheet (tatts eod balance → 2025 / 2026
-   tabs), South Melbourne, from 1 Oct 2025 up to the day before the till's
-   first sale. Only the day's total is known — no items, no cash/card split —
-   so the cost is a conservative 50% of takings. Days from HIST_UNTIL on come
-   from the till itself, so they're never counted twice.
+   tabs), South Melbourne, from 1 Oct 2025 — a one-off copy, never synced.
+   Only the day's total is known — no items, no cash/card split — so the cost
+   is a conservative 50% of takings. It's only used for days before the till's
+   first sale (see histDays), so nothing is counted twice.
    Per month: "day:takings", space-separated. */
-const HIST_UNTIL = '2026-09-19';        // first day with sales on the till
+const HIST_UNTIL = '2026-09-19';        // the sheet is never used from here on, whatever the till has
 const HIST_COST = 0.5;                  // estimated cost, as a share of takings
 const HIST_BRAND = 'Games (before the till)';
 const HIST_GAMES_RAW = {
@@ -2370,10 +2370,18 @@ const HIST_GAMES = (()=>{
   return m;
 })();
 const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
-// Sheet days inside from..to for this store filter, oldest first.
-function histDays(from, to, store){
+// Sheet days inside from..to for this store filter, oldest first. The till was
+// ringing up sales on the device before the site kept them, and those were
+// uploaded when it went live — so the sheet stops the day before the first
+// South Melbourne till sale in the loaded sales, and never overlaps the till.
+function histDays(from, to, store, sales){
   if(store && store!==DEFAULT_STORE) return [];
-  return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
+  let until=HIST_UNTIL;
+  (sales||[]).forEach(s=>{
+    const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
+    if(sid===DEFAULT_STORE && s.day && String(s.day)<until) until=String(s.day);
+  });
+  return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to && k<until).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
 }
 
 // Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
@@ -2534,7 +2542,7 @@ function computeInsights(){
   });
   // Games takings from the Google Sheet, for days before the till: one lump per
   // day, costed at HIST_COST. The sheet has no times, so the by-hour chart skips them.
-  histDays(from, to, adState.store).forEach(h=>{
+  histDays(from, to, adState.store, sales).forEach(h=>{
     const profit=h.rev*(1-HIST_COST);
     r.histDays++; r.histRev+=h.rev;
     r.revenue+=h.rev; r.revKnown+=h.rev; r.profit+=profit;
