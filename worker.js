@@ -90,9 +90,12 @@ function flatten(products) {
       if (!sku) continue; // no SKU = nothing to scan
       const attrs = v.attributes ? Object.values(v.attributes).filter(Boolean).join(' / ') : '';
       const name = attrs ? `${pname} (${attrs})` : pname;
-      const bp = v.pricing && v.pricing.basePrice;
-      const price = bp ? Number(bp.value) || 0 : 0;
-      const currency = (bp && bp.currency) || 'AUD';
+      const pr = v.pricing || {};
+      const bp = pr.basePrice;
+      const sp = pr.onSale && pr.salePrice && Number(pr.salePrice.value) > 0 ? pr.salePrice : null;
+      const shown = sp || bp;                       // on sale on the website → charge the sale price
+      const price = shown ? Number(shown.value) || 0 : 0;
+      const currency = (shown && shown.currency) || 'AUD';
       const stock = v.stock && v.stock.unlimited ? null : (v.stock ? (v.stock.quantity ?? null) : null);
       items.push({ sku, name, price, currency, stock });
     }
