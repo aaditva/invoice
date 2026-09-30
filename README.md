@@ -370,9 +370,10 @@ Items with no cost are left out of profit, and the page says how many there are.
 **Games takings from before the till.** The daily **Games** column of the Google Sheet (the 2025 and
 2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
 Insights reaches back before the till. The till rang up some of those days itself (sales made on the
-device before the site kept them were uploaded when it went live), so Insights finds **the first
-day from which South Melbourne's till matches the sheet's Games figure every day** (to the dollar,
-through 19 Sep). Before that day the sheet is used and those till sales are left out; from that day
+device before the site kept them were uploaded when it went live). The switch-over is fixed at
+**4 Sep 2026** (`TILL_FROM`) — the first day from which South Melbourne's till matches the sheet's
+Games figure every day (the till was in use from 8 Aug, but a few days up to 3 Sep differ, and the
+sheet is always right). Before it the sheet is used and those till sales are left out; from it
 only the till counts — so every month matches the sheet and nothing is counted twice. Sheet days
 have no items, so each counts as one South Melbourne lump under **Games (before the till)**, with
 the cost estimated at **50%** (`HIST_COST` in `index.html`). A red chip names that day — accurate profit margins were only tracked from then (the Margin card says “estimated before” it). They show
