@@ -278,6 +278,8 @@
   .gx .ncst{display:inline-block;min-width:62px;font-size:12px;color:var(--g-ink2);text-align:left;padding-left:6px}
   .gx .ncst.ok{color:#0d652d} .gx .ncst.bad{color:#a50e0e}
   .gx .ncwrap{overflow-x:auto}
+  .gx button.gchip{border:0;cursor:pointer;font:inherit;font-size:12.5px;font-weight:600}
+  .gx button.gchip:hover{background:#fdeeb8}
   .gx table.gt th{font-size:12px;font-weight:600;color:var(--g-ink2);text-align:left;padding:8px 10px;border-bottom:1px solid var(--g-line);
     background:#fff;position:static;text-transform:none;letter-spacing:0}
   .gx table.gt td{padding:9px 10px;border-bottom:1px solid #f1f3f4;font-variant-numeric:tabular-nums}
@@ -456,7 +458,6 @@
       <nav class="gtabs" id="adTabs">
         <button data-tab="takings" class="sel">Takings</button>
         <button data-tab="insights">📊 Insights</button>
-        <button data-tab="nocost">🏷️ No cost</button>
         <span class="gink" id="adInk"></span>
       </nav>
       <span class="spacer"></span><button class="ghost" id="closeAdmin">Close</button></header>
@@ -505,17 +506,17 @@
           <div class="gstatus" id="gxStatus" style="flex:1"></div>
           <button class="ghost" id="gxRefresh">⟳ Refresh</button>
         </div>
-        <div class="ggrid" id="gxGrid"></div>
-      </div>
-      <!-- NO COST — things sold with no cost price, so they're left out of profit. Type the cost here. -->
-      <div id="adNoCost" class="gx" style="display:none;flex-direction:column;gap:14px">
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <div class="gstatus" id="ncStatus" style="flex:1"></div>
-          <label class="muted" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap">
-            <input type="checkbox" id="ncShowAll" style="width:auto;margin:0" /> Show ones already costed here</label>
-          <button class="ghost" id="ncRefresh">⟳ Refresh</button>
+        <!-- NO COST — opened from the yellow "sold with no cost" chip above: type the missing costs in -->
+        <div id="ncPanel" style="display:none;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div class="gstatus" id="ncStatus" style="flex:1"></div>
+            <label class="muted" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap">
+              <input type="checkbox" id="ncShowAll" style="width:auto;margin:0" /> Show ones already costed here</label>
+            <button class="ghost" id="ncClose">Done</button>
+          </div>
+          <div class="ggrid" id="ncGrid"></div>
         </div>
-        <div class="ggrid" id="ncGrid"></div>
+        <div class="ggrid" id="gxGrid"></div>
       </div>
     </div>
   </div>
@@ -2249,7 +2250,7 @@ function readAdminRange(){
 // Reload whichever tab is showing. lazy = only if the store/period changed.
 function reloadAdmin(lazy){
   readAdminRange();
-  if(adTab==='insights' || adTab==='nocost'){
+  if(adTab==='insights'){
     if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
   }else if(!lazy || adState.key!==adKey()) loadAdmin();
 }
@@ -2258,7 +2259,6 @@ function setAdminTab(tab){
   $('adTabs').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.tab===tab));
   $('adTakings').style.display = tab==='takings' ? 'flex' : 'none';
   $('adInsights').style.display = tab==='insights' ? 'flex' : 'none';
-  $('adNoCost').style.display = tab==='nocost' ? 'flex' : 'none';
   $('adminSheet').classList.toggle('xl', tab!=='takings');
   moveAdminInk();
   // The sheet widens as Insights opens; wait for it so the charts fit.
@@ -2394,15 +2394,18 @@ async function fetchCosts(){
   }catch(e){ return {error:'Could not reach the site.'}; }
 }
 
-// Insights and No cost share one load: the period's sales plus the cost prices.
-function renderGx(anim){ if(adTab==='nocost') renderNoCost(); else renderInsights(anim); }
+// Insights, and the no-cost list opened from its yellow chip.
+function renderGx(anim){
+  renderInsights(anim);
+  if(!ncOpen()) return;
+  if($('gxNoCostBtn')) renderNoCost(); else setNcOpen(false);   // nothing without a cost in this period
+}
 async function loadInsights(){
   readAdminRange();
   const key=adKey();
   gx.key=key;
-  const nc=adTab==='nocost';
-  $(nc?'ncGrid':'gxGrid').classList.add('dim');
-  $(nc?'ncStatus':'gxStatus').innerHTML='Reading sales and cost prices…';
+  $('gxGrid').classList.add('dim');
+  $('gxStatus').innerHTML='Reading sales and cost prices…';
   adLoading(true);
   try{
     const [d, c] = await Promise.all([
@@ -2412,8 +2415,8 @@ async function loadInsights(){
     if(gx.key!==key) return;                     // the filter moved on while this loaded
     if(!d || d.error){
       gx.sales=null;
-      $(nc?'ncGrid':'gxGrid').classList.remove('dim');
-      $(nc?'ncStatus':'gxStatus').innerHTML='<span class="gchip bad">'+esc((d && d.error) || 'Could not reach the sales log. Check the URL and token in Settings.')+'</span>';
+      $('gxGrid').classList.remove('dim');
+      $('gxStatus').innerHTML='<span class="gchip bad">'+esc((d && d.error) || 'Could not reach the sales log. Check the URL and token in Settings.')+'</span>';
       return;
     }
     gx.sales=(d.sales||[]).filter(s=>s && !s.voided);
@@ -2531,7 +2534,8 @@ function renderInsights(anim){
   if(!hasCost) chips.push('<span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+') — profit can’t be worked out. Re-run setup in the Google Sheet script.</span>');
   else{
     if(gx.costsAt) chips.push('<span class="gchip ok">Cost prices from the Google Sheet · updated '+esc(agoText(gx.costsAt))+'</span>');
-    if(r.missing) chips.push('<span class="gchip">'+r.missing+' item'+(r.missing===1?'':'s')+' sold with no cost yet — left out of profit · type them in under 🏷️ No cost</span>');
+    if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
+      ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
   $('gxStatus').innerHTML=chips.join('');
 
@@ -2579,13 +2583,21 @@ function renderInsights(anim){
   if(anim) countUp(grid); else grid.querySelectorAll('[data-count]').forEach(el=>{ el.textContent=fmtVal(+el.dataset.count, el.dataset.fmt); });
 }
 /* ---------------- No cost — things sold with no cost price ----------------
-   Anything sold in the period that has no cost is left out of profit. This
-   lists them so the cost can be typed straight in:
+   Anything sold in the period that has no cost is left out of profit. The
+   yellow chip on Insights opens this list so the cost can be typed straight in:
    - products, one row each (by barcode) — the cost goes to the site, and the
      Google Sheet copies it into the Products tab's Cost column on its next refresh;
    - Miscellaneous lines, one row per sale, by the date and time it was sold,
      since there's no barcode to say what it was. Their cost stays on the site. */
 const ncSaved = new Set();     // rows costed since this list loaded — kept on screen until Refresh
+function ncOpen(){ return $('ncPanel').style.display!=='none'; }
+function setNcOpen(on){
+  $('ncPanel').style.display = on ? 'flex' : 'none';
+  if(on) renderNoCost();
+  else if(ncSaved.size){ ncSaved.clear(); renderInsights(false); }   // profit has moved — redraw it
+  else{ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('hide ▲','show ▼'); }
+  if(on){ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('show ▼','hide ▲'); }
+}
 function noCostRows(){
   const prods=new Map(), misc=[];
   (gx.sales||[]).forEach(s=>{
@@ -2624,13 +2636,7 @@ function ncInput(kind, k, cost){
 function renderNoCost(){
   const grid=$('ncGrid'); grid.classList.remove('dim');
   if(!gx.sales) return;
-  const scope=(adState.store ? storeLabel(adState.store) : 'All stores')+' · '+
-    (adState.from===adState.to ? niceDay(adState.from) : niceDay(adState.from)+' → '+niceDay(adState.to));
-  if(!gx.costs){
-    $('ncStatus').innerHTML='<span>'+esc(scope)+'</span><span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+')</span>';
-    grid.innerHTML='';
-    return;
-  }
+  if(!gx.costs){ setNcOpen(false); return; }
   const all=$('ncShowAll').checked;
   const keep=(kind, r)=>r.cost==null || all || ncSaved.has(kind+':'+r.k);
   const {prods, misc}=noCostRows();
@@ -2641,7 +2647,7 @@ function renderNoCost(){
   let h=card('<div class="gtitle">Products with no cost</div>'+
     '<div class="gsub">Type the cost each (GST included, like the sheet’s Cost column) — it’s saved as you leave the box or press Enter. '+
     'The Google Sheet copies it into the Products tab on its next refresh; after that, change it there.</div>'+
-    (P.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Sales</th><th>Last sold</th><th class="num">Cost each</th></tr></thead><tbody>'+
+    (P.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Last sold</th><th class="num">Cost each</th></tr></thead><tbody>'+
       P.map(r=>'<tr><td><div>'+esc(r.name)+'</div><div class="muted">'+esc(r.sku)+'</div></td>'+
         '<td class="num">'+r.qty+'</td><td class="num">'+moneySigned(r.rev)+'</td>'+
         '<td>'+esc(whenSold(r.last, ''))+'</td><td class="num" style="white-space:nowrap">'+ncInput('p', r.k, r.cost)+'</td></tr>').join('')+
@@ -2649,9 +2655,9 @@ function renderNoCost(){
       : '<div class="gempty">No products without a cost in this period.</div>'));
   h+=card('<div class="gtitle">Miscellaneous sales</div>'+
     '<div class="gsub">Custom-priced “+ Misc $” lines have no barcode, so each one is listed by when it was sold. Type what it cost you.</div>'+
-    (M.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Sold</th>'+(adState.store?'':'<th>Store</th>')+
+    (M.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th>Sold</th>'+(adState.store?'':'<th>Store</th>')+
       '<th>Invoice</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Cost each</th></tr></thead><tbody>'+
-      M.map(r=>'<tr><td>'+esc(whenSold(r.s.ts, r.s.day))+(r.s.servedBy?'<div class="muted">'+esc(r.s.servedBy)+'</div>':'')+'</td>'+
+      M.map(r=>'<tr><td>'+esc(r.it.name || 'Miscellaneous')+'</td><td>'+esc(whenSold(r.s.ts, r.s.day))+(r.s.servedBy?'<div class="muted">'+esc(r.s.servedBy)+'</div>':'')+'</td>'+
         (adState.store?'':'<td>'+esc(storeLabel(r.s.store))+'</td>')+
         '<td>'+esc(r.s.no)+'</td><td class="num">'+r.q+'</td><td class="num">'+moneySigned(r.rev)+'</td>'+
         '<td class="num" style="white-space:nowrap">'+ncInput('m', r.k, r.cost)+'</td></tr>').join('')+
@@ -2661,15 +2667,13 @@ function renderNoCost(){
 }
 function renderNcStatus(prods, misc){
   if(!prods){ const r=noCostRows(); prods=r.prods; misc=r.misc; }
-  const scope=(adState.store ? storeLabel(adState.store) : 'All stores')+' · '+
-    (adState.from===adState.to ? niceDay(adState.from) : niceDay(adState.from)+' → '+niceDay(adState.to));
   const missP=prods.filter(r=>r.cost==null), missM=misc.filter(r=>r.cost==null);
   const missRev=missP.reduce((a,r)=>a+r.rev, 0)+missM.reduce((a,r)=>a+r.rev, 0);
-  const chips=['<span>'+esc(scope)+'</span>'];
+  const chips=[];
   if(missP.length || missM.length){
-    chips.push('<span class="gchip">'+missP.length+' product'+(missP.length===1?'':'s')+' and '+missM.length+
-      ' misc sale'+(missM.length===1?'':'s')+' with no cost · '+esc(moneySigned(missRev))+' of sales left out of profit</span>');
-  }else chips.push('<span class="gchip ok">Everything sold in this period has a cost</span>');
+    chips.push('<span>'+missP.length+' product'+(missP.length===1?'':'s')+' and '+missM.length+
+      ' misc sale'+(missM.length===1?'':'s')+' still to cost · '+esc(moneySigned(missRev))+' of sales left out of profit</span>');
+  }else chips.push('<span class="gchip ok">All costed — press Done to update the profit figures</span>');
   $('ncStatus').innerHTML=chips.join('');
 }
 async function saveNoCost(input){
@@ -3232,7 +3236,9 @@ function bind(){
   $('adTo').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); reloadAdmin(false); });
   $('adRefresh').onclick=()=>reloadAdmin(false);
   $('gxRefresh').onclick=()=>reloadAdmin(false);
-  $('ncRefresh').onclick=()=>reloadAdmin(false);
+  // The yellow "sold with no cost" chip opens the list to type them in.
+  $('gxStatus').addEventListener('click', e=>{ if(e.target.closest('#gxNoCostBtn')) setNcOpen(!ncOpen()); });
+  $('ncClose').onclick=()=>setNcOpen(false);
   $('ncShowAll').onchange=()=>renderNoCost();
   // A cost is saved as soon as it's typed (Enter or moving off the box). Blank = remove it.
   $('ncGrid').addEventListener('change', e=>{ const i=e.target.closest('input.nc'); if(i) saveNoCost(i); });
