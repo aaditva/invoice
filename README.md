@@ -374,7 +374,7 @@ sale** in the period you're viewing (and never from 19 Sep 2026 on), so no day i
 sales the till rang up before the site kept them were uploaded when it went live, and those win.
 The sheet only has each day's total, so each day counts as one
 South Melbourne lump under **Games (before the till)**, with the cost estimated at **50%** of
-takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included, and a second one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
+takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included, and a red one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
 

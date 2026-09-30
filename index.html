@@ -2614,7 +2614,7 @@ function renderInsights(anim){
   if(r.histDays){
     chips.push('<span class="gchip ok">Includes '+r.histDays+' day'+(r.histDays===1?'':'s')+' of Games takings from the Google Sheet ('+
       esc(moneySigned(r.histRev))+', before the till)'+(r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
-    chips.push('<span class="gchip">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
+    chips.push('<span class="gchip bad">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
       Math.round(HIST_COST*100)+'% of takings)</span>');
   }
   $('gxStatus').innerHTML=chips.join('');
