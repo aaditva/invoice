@@ -371,7 +371,7 @@ Items with no cost are left out of profit, and the page says how many there are.
 2026 tabs, 1 Oct 2025 → 18 Sep 2026) is built into the site, so Insights reaches back before the
 till's first sale (19 Sep 2026). The sheet only has each day's total, so each day counts as one
 South Melbourne lump under **Games (before the till)**, with the cost estimated at **50%** of
-takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included. They show
+takings (`HIST_COST` in `index.html`). A green chip says how many sheet days are included, and a second one notes that accurate profit margins were only tracked from Sep 2026 (the Margin card says “estimated before Sep 2026”). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
 

@@ -241,6 +241,9 @@
   .gx .chart svg{display:block;overflow:visible}
   .gx .chart text{font-size:11.5px;fill:var(--g-ink2);font-family:inherit}
   .gx .grid line{stroke:#e8eaed}
+  /* Bar charts: firmer gridlines and baseline so each bar reads against its value */
+  .gx .grid.bold line{stroke:#c4c7cc;stroke-width:1.25}
+  .gx .grid.bold line.zero{stroke:#5f6368;stroke-width:1.75}
   .gx .draw{transition:stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)}
   .gx .fadein{opacity:0;transition:opacity .8s .35s}
   .gx .fadein.on{opacity:1}
@@ -2600,9 +2603,12 @@ function renderInsights(anim){
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
-  if(r.histDays) chips.push('<span class="gchip ok">Includes '+r.histDays+' day'+(r.histDays===1?'':'s')+' of Games takings from the Google Sheet ('+
-    esc(moneySigned(r.histRev))+', before the till) · cost estimated at '+Math.round(HIST_COST*100)+'%'+
-    (r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
+  if(r.histDays){
+    chips.push('<span class="gchip ok">Includes '+r.histDays+' day'+(r.histDays===1?'':'s')+' of Games takings from the Google Sheet ('+
+      esc(moneySigned(r.histRev))+', before the till)'+(r.mode==='hour'?' · no times, so not in the by-hour chart':'')+'</span>');
+    chips.push('<span class="gchip">Accurate profit margins were only tracked from Sep 2026 — before that, profit is an estimate (cost taken as '+
+      Math.round(HIST_COST*100)+'% of takings)</span>');
+  }
   $('gxStatus').innerHTML=chips.join('');
 
   if(!r.count && !r.histDays){
@@ -2618,7 +2624,7 @@ function renderInsights(anim){
   let h='<div class="kpis">'+
     kpi(0, 'Revenue', r.revenue, 'money', salesSub, '#1a73e8')+
     kpi(1, 'Gross profit', hasCost?r.profit:0, hasCost?'money':'none', hasCost?('on '+esc(moneySigned(r.revKnown))+' of sales with a cost'):'needs cost prices', '#34a853')+
-    kpi(2, 'Margin', hasCost&&r.revKnown?margin*100:0, hasCost&&r.revKnown?'pct':'none', 'gross profit ÷ sales with a cost', '#fbbc04')+
+    kpi(2, 'Margin', hasCost&&r.revKnown?margin*100:0, hasCost&&r.revKnown?'pct':'none', r.histDays?'estimated before Sep 2026':'gross profit ÷ sales with a cost', '#fbbc04')+
     kpi(3, 'Items sold', r.items, 'int', r.products.size+' different product'+(r.products.size===1?'':'s'), '#ea4335')+
     kpi(4, 'Average sale', avg, 'money', r.histDays?'per till invoice':'per invoice', '#9334e6')+
     '</div>';
@@ -2874,9 +2880,9 @@ function columnChart(host, labels, longLabels, series, anim){
   const x0=k=>P.l+k*band+(band-(bw*m+(m-1)*2))/2;
   let s='<svg width="'+W+'" height="'+H+'">';
   labels.forEach((l,k)=>{ s+='<rect class="band" data-k="'+k+'" x="'+(P.l+k*band)+'" y="'+P.t+'" width="'+band+'" height="'+ih+'" rx="6"/>'; });
-  s+='<g class="grid">';
+  s+='<g class="grid bold">';
   for(let v=lo; v<=hi+st/2; v+=st){
-    s+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+y(v)+'" y2="'+y(v)+'"'+(Math.abs(v)<1e-9?' style="stroke:#bdc1c6"':'')+'/>'+
+    s+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+y(v)+'" y2="'+y(v)+'"'+(Math.abs(v)<1e-9?' class="zero"':'')+'/>'+
       '<text x="'+(P.l-8)+'" y="'+(y(v)+4)+'" text-anchor="end">'+esc(moneyShort(v))+'</text>';
   }
   s+='</g>';
