@@ -33,6 +33,11 @@
  *  Charts live on the website now (Admin → 📊 Insights): the sheet sends the
  *  cost prices and brands to the site each refresh, and straight away when
  *  you edit a Cost or Brand cell.
+ *
+ *  Costs typed on the website (Admin → 🏷️ No cost) come back the other way:
+ *  each refresh copies them into the Products tab's Cost column, and from then
+ *  on the sheet holds them. Costs typed there for Miscellaneous sales stay on
+ *  the site, and the Profit tab counts them.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
@@ -120,8 +125,13 @@ function refreshProducts() {
   if (!lock.tryLock(20000)) return; // another refresh is already running
   try {
     updateProducts();
+    let copied = [];
+    try { copied = fillSiteCosts(); } catch (e) { console.log('Website costs skipped: ' + e.message); }
     fillInvoiceCosts();
-    try { pushCosts(); } catch (e) { console.log('Push costs failed: ' + e.message); }
+    try {
+      pushCosts();
+      if (copied.length) clearSiteCosts(copied); // only once the site has the sheet's copy
+    } catch (e) { console.log('Push costs failed: ' + e.message); }
   } finally { lock.releaseLock(); }
 }
 
@@ -371,6 +381,52 @@ function pushCosts() {
     headers: authHeaders(), muteHttpExceptions: true,
   });
   if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode() + ': ' + res.getContentText());
+}
+
+// Cost prices from the site: the full list (sheet + website-typed) and the
+// Miscellaneous line costs. Null if the site can't be reached.
+function fetchSiteCosts() {
+  const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/costs', { headers: authHeaders(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode() + ': ' + res.getContentText());
+  return JSON.parse(res.getContentText());
+}
+
+// Costs typed on the website (Admin → 🏷️ No cost) for products sold with no
+// cost: write them into the Products tab's Cost column. The website entry is
+// the newest thing typed, so it wins. Returns the barcodes copied, which
+// clearSiteCosts() then removes from the site — the sheet holds them now.
+function fillSiteCosts() {
+  const site = fetchSiteCosts();
+  const manual = (site && site.manual) || {};
+  if (!Object.keys(manual).length) return [];
+  const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
+  const last = sheet ? lastDataRow(sheet) : 0;
+  if (last < 2) return [];
+  const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
+  const heads = vals[0].map(h => String(h).trim().toLowerCase());
+  const cSku = heads.indexOf('barcode'), cCost = heads.indexOf('cost');
+  if (cSku < 0 || cCost < 0) return [];
+  const norm = v => String(v).trim().toUpperCase().replace(/\s+/g, '');
+  const done = [];
+  vals.slice(1).forEach((r, i) => {
+    const k = norm(r[cSku]);
+    const m = k && manual[k];
+    if (!m || m.cost === null || m.cost === undefined) return;
+    if (Number(r[cCost]) !== Number(m.cost) || r[cCost] === '') {
+      sheet.getRange(i + 2, cCost + 1).setValue(Number(m.cost)).setNumberFormat('$#,##0.00');
+    }
+    done.push(k);
+  });
+  console.log('Website costs copied in: ' + done.length);
+  return done;
+}
+
+function clearSiteCosts(skus) {
+  const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/costs', {
+    method: 'post', contentType: 'application/json', payload: JSON.stringify({ clear: skus }),
+    headers: authHeaders(), muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) console.log('Clearing website costs failed: HTTP ' + res.getResponseCode());
 }
 
 function authHeaders() {
@@ -628,7 +684,21 @@ function fillInvoiceCosts() {
 // Older days are kept as they are. Newest day at the top.
 function updateProfit(now) {
   const prods = readProducts();
-  const costOf = sku => prods[sku] && prods[sku].cost !== null ? prods[sku].cost : null;
+  // Website costs: products not yet copied into the sheet, and Miscellaneous
+  // lines (costed per sale, as "<invoice no>#<line>").
+  let site = null;
+  try { site = fetchSiteCosts(); } catch (e) { console.log('Website costs skipped: ' + e.message); }
+  const siteItems = {};
+  Object.keys((site && site.items) || {}).forEach(k => {
+    siteItems[String(k).trim().toUpperCase().replace(/\s+/g, '')] = site.items[k];
+  });
+  const miscCosts = (site && site.misc) || {};
+  const costOf = sku => {
+    if (prods[sku] && prods[sku].cost !== null) return prods[sku].cost;
+    const s = siteItems[sku.toUpperCase().replace(/\s+/g, '')];
+    return s && s.cost !== null && s.cost !== undefined ? Number(s.cost) : null;
+  };
+  const isMisc = it => !String(it.sku || '').trim() || /^MISC-/i.test(String(it.sku));
 
   removeOldCharts();
   const sheet = tabNamed(PROFIT_TAB);
@@ -653,9 +723,11 @@ function updateProfit(now) {
     let takings = 0, cogs = 0, missing = 0;
     sales.forEach(s => {
       takings += Number(s.total) || 0;
-      (s.items || []).forEach(it => {
+      (s.items || []).forEach((it, i) => {
         const q = Number(it.qty) || 0;
-        const c = costOf(String(it.sku || '').trim());
+        const m = isMisc(it) ? miscCosts[s.no + '#' + i] : null;
+        const c = isMisc(it) ? (m && m.cost !== null && m.cost !== undefined ? Number(m.cost) : null)
+          : costOf(String(it.sku || '').trim());
         if (c !== null) cogs += c * q; else missing += q;
       });
     });

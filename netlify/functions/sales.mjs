@@ -40,7 +40,9 @@ import { getStore } from '@netlify/blobs';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const UNASSIGNED = 'unassigned';       // sales that arrived without a store (pre-store-selector tills)
+const UNASSIGNED = 'unassigned';       // where sales without a store used to be filed (pre-store-selector tills)
+const DEFAULT_STORE = 'south-melbourne'; // …they belong to South Melbourne, so that's where they go now
+const DEFAULT_STORE_NAME = 'South Melbourne';
 const MAX_RANGE_DAYS = 62;             // keeps an Admin range inside the function timeout
 const CONCURRENCY = 10;                // parallel blob reads
 const INDEX_V = 1;
@@ -91,6 +93,7 @@ async function handlePost(req, headers) {
 
   const store = slugStore(sale.store);
   const clean = { ...sale, no, day, store };
+  if (store === DEFAULT_STORE && sale.store !== DEFAULT_STORE) clean.storeName = DEFAULT_STORE_NAME; // no store → South Melbourne
   for (const k of LOCAL_ONLY) delete clean[k];
 
   const st = blobs();
@@ -186,6 +189,16 @@ async function readDay(day, storeFilter) {
   const st = blobs();
   const prefix = 'sale/' + day + '/' + (storeFilter ? storeFilter + '/' : '');
 
+  // Sales once filed as Unassigned belong to South Melbourne: move any still
+  // sitting there the first time their day is read. An all-stores read sees
+  // them in its own listing; a South Melbourne read has to look for them.
+  if (!storeFilter || storeFilter === DEFAULT_STORE) {
+    try {
+      const legacy = await st.list({ prefix: 'sale/' + day + '/' + UNASSIGNED + '/' });
+      if (legacy && legacy.blobs && legacy.blobs.length) await moveUnassigned(st, day, legacy.blobs);
+    } catch (e) { /* try again on the next read */ }
+  }
+
   let listed;
   try { listed = await st.list({ prefix }); } catch (e) { return []; }
   const blobList = (listed && listed.blobs) || [];
@@ -242,6 +255,26 @@ async function readDay(day, storeFilter) {
   return out;
 }
 
+// Re-file a day's Unassigned sales under South Melbourne, then drop the old
+// blobs and index. Each sale lands in its new home before its old copy goes,
+// so a failure part-way leaves it in one place or both — never neither.
+async function moveUnassigned(st, day, blobList) {
+  for (const b of blobList) {
+    const old = await getJSON(st, b.key);
+    if (!old || !old.no) continue;
+    let no = String(old.no);
+    // Old tills numbered INV-0001 and South Melbourne numbers INV-SM-0001, so
+    // a clash is unlikely — but never overwrite a different sale if there is one.
+    const there = await getJSON(st, saleKey(day, DEFAULT_STORE, no));
+    if (there && String(there.ts) !== String(old.ts)) no = no + '-U';
+    const moved = { ...old, no, store: DEFAULT_STORE, storeName: DEFAULT_STORE_NAME };
+    const res = await st.setJSON(saleKey(day, DEFAULT_STORE, no), moved);
+    await mergeIntoIndex(st, day, DEFAULT_STORE, moved, (res && res.etag) || null);
+    await st.delete(b.key);
+  }
+  try { await st.delete(indexKey(day, UNASSIGNED)); } catch (e) { /* cache only */ }
+}
+
 async function readIndex(st, key) {
   const v = await getJSON(st, key);
   const sales = v && Array.isArray(v.sales) ? v.sales : (Array.isArray(v) ? v : []);
@@ -292,7 +325,7 @@ async function getJSON(st, key) {
 
 function slugStore(v) {
   const s = String(v == null ? '' : v).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return s && STORE_RE.test(s) ? s : UNASSIGNED;
+  return s && STORE_RE.test(s) && s !== UNASSIGNED ? s : DEFAULT_STORE;
 }
 
 function dayRange(from, to) {

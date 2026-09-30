@@ -286,9 +286,10 @@ show) plus an optional **address** and **phone** — blank falls back to the bus
 each store's tax invoices can print its own address. Renaming is safe: sales are filed under a
 fixed internal id, so history follows the rename.
 
-> Sales rung up **before** the store selector existed have no store on them. They're pushed to
-> the site as **Unassigned** and show up that way in Admin, rather than being counted under a
-> store they might not belong to.
+> Sales rung up **before** the store selector existed have no store on them. They belong to
+> **South Melbourne**, so that's where they're filed: the site moves any old *Unassigned* sales
+> across the first time their day is read (Takings, Invoices, Admin or the sheet script), and a
+> sale that still arrives with no store is filed under South Melbourne too.
 
 ### Daily total into a Google Sheet (hourly)
 `google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
@@ -365,6 +366,17 @@ This week, Last 7 days, This month, Last 30 days, This year, or any From–To). 
 it needs the cost prices, so the sheet script sends the Products tab's costs and brands to the
 site (`/api/costs`) after every refresh and straight away when you edit a Cost or Brand cell.
 Items with no cost are left out of profit, and the page says how many there are.
+
+**Admin → 🏷️ No cost.** Everything sold in the chosen store and period that has **no cost
+price** (so it's left out of profit), with a box to type the cost straight in — it saves as you
+press Enter or move off the box.
+- **Products** are listed once each, with qty sold, sales and when last sold. A cost typed here is
+  used for profit straight away, and the sheet script copies it into the **Products** tab's Cost
+  column on its next refresh (every 5 minutes) — from then on the sheet holds it, so change it there.
+- **Miscellaneous** (“+ Misc $”) lines have no barcode, so each one sold is listed on its own by the
+  **date and time it was sold** (plus the invoice number and who served). Its cost stays on the site;
+  Insights and the sheet's Profit tab both count it.
+- Tick **Show ones already costed here** to see (and fix) costs typed on this page.
 
 > Cost prices are now on the site, readable with the Admin password. Set **`ADMIN_PIN`** on
 > Netlify (the same value as `ADMIN_PIN` in `index.html` and in the sheet script) so `/api/costs`
