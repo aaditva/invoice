@@ -362,10 +362,23 @@ month tables and the *Sales lines* tab. They live on the website instead: **Admi
 **Admin → 📊 Insights.** Revenue & profit over time (by hour for one day, by day, or by month for
 This year), revenue by brand, profit by brand with margin, a by-store split, and the top 10
 products by profit / revenue / qty — for the same store and period buttons as Takings (Today,
-This week, Last 7 days, This month, Last 30 days, This year, or any From–To). To work out profit
+This week, Last 7 days, This month, Last 30 days, This year, All time, or any From–To). To work out profit
 it needs the cost prices, so the sheet script sends the Products tab's costs and brands to the
 site (`/api/costs`) after every refresh and straight away when you edit a Cost or Brand cell.
 Items with no cost are left out of profit, and the page says how many there are.
+
+**Games takings from before the till.** The daily **Games** column of the Google Sheet (the 2025 and
+2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
+Insights reaches back before the till. The till rang up some of those days itself (sales made on the
+device before the site kept them were uploaded when it went live). The switch-over is fixed at
+**4 Sep 2026** (`TILL_FROM`) — the first day from which South Melbourne's till matches the sheet's
+Games figure every day (the till was in use from 8 Aug, but a few days up to 3 Sep differ, and the
+sheet is always right). Before it the sheet is used and those till sales are left out; from it
+only the till counts — so every month matches the sheet and nothing is counted twice. Sheet days
+have no items, so each counts as one South Melbourne lump under **Games (before the till)**, with
+the cost estimated at **50%** (`HIST_COST` in `index.html`). A red chip names that day — accurate profit margins were only tracked from then (the Margin card says “estimated before” it). They show
+in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
+for them. **All time** picks the whole period from the sheet's first day.
 
 **Items sold with no cost.** When anything sold in the chosen store and period has **no cost
 price** (so it's left out of profit), Insights shows a yellow **“N items sold with no cost yet”**
