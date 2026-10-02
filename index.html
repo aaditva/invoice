@@ -95,11 +95,14 @@
   /* Modal */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .modal.show{display:flex}
-  .sheet{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--shadow)}
-  /* Content scrolls UNDER the header: cards, tiles and tooltips in the body make
-     their own layers, so the header needs a z-index to stay on top. */
-  .sheet header{position:sticky;top:0;z-index:10}
+  .sheet{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:hidden;box-shadow:var(--shadow);
+    display:flex;flex-direction:column}
+  /* Only the body scrolls, so content always passes UNDER the header. (A sticky
+     header wasn't enough: Safari paints the animated Insights cards over it.) */
+  .sheet > header{flex-shrink:0;position:relative;z-index:1}
   .sheet .body{padding:18px;display:flex;flex-direction:column;gap:14px}
+  .sheet > .body{flex:1 1 auto;min-height:0;overflow:auto}
+  .sheet > .body > *{flex-shrink:0}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .sheet .foot{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:14px 18px;display:flex;gap:10px;justify-content:flex-end}
   .hint{font-size:12px;color:var(--muted);margin-top:4px}
