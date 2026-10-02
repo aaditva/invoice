@@ -115,6 +115,11 @@
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:#1d1d1f;color:#fff;
     padding:12px 20px;border-radius:12px;font-size:14px;font-weight:550;opacity:0;transition:.25s;z-index:80;pointer-events:none}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* Small green pill that slides down from the top when money added / an expense is saved */
+  .saved{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-24px);background:#e6f4ea;color:#0b5d24;
+    border:1px solid #b7dfc3;box-shadow:0 4px 14px rgba(0,0,0,.08);padding:7px 14px;border-radius:999px;font-size:13.5px;
+    font-weight:600;opacity:0;transition:.3s cubic-bezier(.2,0,0,1);z-index:90;pointer-events:none;white-space:nowrap}
+  .saved.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .bignum{font-size:40px;font-weight:800;line-height:1.1}
 
   /* Store chip in the header — shows which location this till is ringing up for */
@@ -763,6 +768,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="saved" id="saved" role="status" aria-live="polite"></div>
 
 <!-- RECEIPT (print only) -->
 <div class="receipt" id="receipt"></div>
@@ -1580,6 +1586,11 @@ function toast(msg){
   const el=$('toast'); el.textContent=msg; el.classList.add('show');
   clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('show'), 2200);
 }
+// Quiet confirmation at the top of the screen that an entry was registered
+function savedPill(msg){
+  const el=$('saved'); el.textContent='✓ '+msg; el.classList.add('show');
+  clearTimeout(savedPill._t); savedPill._t=setTimeout(()=>el.classList.remove('show'), 2500);
+}
 
 /* ---------------- receipt bridge ----------------
    The TM-T88V speaks ESC/POS, but macOS has no driver for it and falls back to
@@ -2066,7 +2077,7 @@ async function saveExpense(){
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     exTaps=[]; $('exNote').value=''; renderExpPad();
     $('exStatus').textContent='';
-    toast('Expense saved: '+money(amount));
+    savedPill('Expense added: '+money(amount));
     loadExpenses();
   }catch(e){ $('exStatus').textContent='Could not save: '+e.message; }
   finally{ $('exDone').disabled=false; }
@@ -2151,7 +2162,7 @@ async function saveMoneyAdded(){
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     maTaps=[]; renderAddPad();
     $('maStatus').textContent='';
-    toast('Money added saved: '+money(amount));
+    savedPill('Money added: '+money(amount));
     loadMoneyAdded();
   }catch(e){ $('maStatus').textContent='Could not save: '+e.message; }
   finally{ $('maDone').disabled=false; }
