@@ -411,9 +411,22 @@
           <select id="servedBy"></select>
         </div>
 
-        <div class="field" id="customerField" style="display:none">
-          <label for="customer">Customer name / ABN <span class="muted">(required for sales $1,000+)</span></label>
-          <input id="customer" placeholder="Customer name or ABN" autocomplete="off" />
+        <div class="field">
+          <label for="orderType">Order</label>
+          <select id="orderType">
+            <option value="now">Served on the spot</option>
+            <option value="pickup">Pick up later (keep it aside)</option>
+          </select>
+        </div>
+
+        <div class="field" id="customerField">
+          <label for="customer">Customer or business name <span class="muted" id="customerHint">(optional)</span></label>
+          <input id="customer" placeholder="e.g. Jane Smith or Smith Pty Ltd (ABN)" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="contact">Phone or email <span class="muted">(optional)</span></label>
+          <input id="contact" placeholder="e.g. 0412 345 678 or jane@example.com" autocomplete="off" inputmode="email" />
         </div>
 
         <div class="field">
@@ -1121,7 +1134,7 @@ function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(
 function removeItem(i){ basket.splice(i,1); render(); }
 function clearSale(){ basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
-  $('tender').value=''; $('customer').value=''; render(); }
+  $('tender').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
 
 /* ---------------- totals ---------------- */
 function totals(){
@@ -1191,8 +1204,8 @@ function render(){
   if(da && document.activeElement!==da) da.value = t.disc>0 ? t.disc.toFixed(2) : '';
   if(dp && document.activeElement!==dp) dp.value = t.disc>0 ? String(Math.round(t.pct*100)/100) : '';
 
-  // large-sale buyer field
-  $('customerField').style.display = t.total>=1000 ? 'block':'none';
+  // the buyer's name is optional, except on a $1,000+ tax invoice where the ATO needs it
+  $('customerHint').textContent = t.total>=1000 ? '(required — sale is $1,000+)' : '(optional)';
 
   // cash box
   if(method==='cash'){
@@ -1294,6 +1307,8 @@ function commitSale(){
   if(method==='cash'){ const tv=parseFloat($('tender').value); if(isFinite(tv) && tv<round5(t.total)) return null; }
   const servedBy=$('servedBy').value;
   const customer=$('customer').value.trim();
+  const contact=$('contact').value.trim();
+  const order=$('orderType').value==='pickup' ? 'pickup' : 'now';
   let paid=t.total, tendered=null, change=null, rounding=0;
   if(method==='cash'){
     const ct=round5(t.total); rounding=round2(ct-t.total); paid=ct;
@@ -1313,7 +1328,7 @@ function commitSale(){
   const sale = {
     no:invNo, day:todayKey(), ts:new Date().toISOString(),
     store: currentStore.id, storeName: currentStore.name,
-    method, servedBy, customer, device: settings.device||'',
+    method, servedBy, customer, contact, order, device: settings.device||'',
     items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
     sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
@@ -1572,6 +1587,7 @@ function toast(msg){
    normal print dialog. */
 const BRIDGE_URL = 'http://127.0.0.1:9100';
 
+let bridgeInfo = null;   // the bridge's /health reply — says which sale fields it prints
 async function bridgeReady(){
   if(settings.paper === 'A4') return false;
   try{
@@ -1579,6 +1595,7 @@ async function bridgeReady(){
     const t = setTimeout(()=>c.abort(), 800);      // never hang the till
     const r = await fetch(BRIDGE_URL + '/health', {signal:c.signal});
     clearTimeout(t);
+    if(r.ok) bridgeInfo = await r.json().catch(()=>null);
     return r.ok;
   }catch(e){ return false; }
 }
@@ -1600,6 +1617,13 @@ async function bridgeSend(payload){
 /* The ESC/POS bridge prints a fixed header — name, address, phone, ABN — so the
    location rides along on the address line rather than needing its own field.
    That keeps escpos-bridge.pl untouched, and so needs no re-install. */
+/* Bridges from before the order/contact fields only print `customer`; for those,
+   fold the phone/email and order type onto that line so they still reach paper. */
+function saleForBridge(sale, info){
+  if(info && Array.isArray(info.fields) && info.fields.includes('order')) return sale;
+  const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)].filter(Boolean).join(' / ');
+  return Object.assign({}, sale, {customer: extra});
+}
 function storeForBridge(sale){
   const st=receiptStore(sale);
   const addr = st.location ? (st.location + (st.address ? ' · '+st.address : '')) : st.address;
@@ -1615,7 +1639,7 @@ function finishPrint(isReprint){
 async function printSale(sale, isReprint){
   if(await bridgeReady()){
     try{
-      await bridgeSend({type:'receipt', store:storeForBridge(sale), sale,
+      await bridgeSend({type:'receipt', store:storeForBridge(sale), sale:saleForBridge(sale, bridgeInfo),
                         options:{cut:true, drawer:true}});
       toast('Printed ' + sale.no);
       finishPrint(isReprint);
@@ -1670,6 +1694,11 @@ function applyPageSize(){
   st.textContent = '@page{ size:'+pageW+'mm '+pageH+'mm; margin:0 }';
 }
 
+/* Order + buyer details shared by the receipt, the bridge and the invoice list.
+   Older sales have no `order`, so they read as served on the spot. */
+function orderLabel(s){ return s.order==='pickup' ? 'PICK UP LATER' : 'Served on the spot'; }
+function contactLabel(c){ return (/@/.test(c) ? 'Email: ' : 'Phone: ') + c; }
+
 function buildReceipt(s){
   const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
   document.documentElement.style.setProperty('--rwidth', w);
@@ -1687,6 +1716,8 @@ function buildReceipt(s){
   h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
   h+='<div>Served by: '+esc(s.servedBy)+'</div>';
   if(s.customer) h+='<div>Customer: '+esc(s.customer)+'</div>';
+  if(s.contact)  h+='<div>'+esc(contactLabel(s.contact))+'</div>';
+  h+='<div'+(s.order==='pickup'?' class="b big"':'')+'>Order: '+esc(orderLabel(s))+'</div>';
   h+='<hr>';
   s.items.forEach(it=>{
     h+='<div class="it"><div class="nm">'+esc(it.name)+'</div>'+
@@ -1762,7 +1793,7 @@ function renderInvList(q){
   q=(q||'').trim().toLowerCase();
   const res=invCache.slice().sort((a,b)=>String(b.ts).localeCompare(String(a.ts))).filter(s=>{
     if(!q) return true;
-    const hay=(s.no+' '+s.servedBy+' '+(s.customer||'')+' '+s.items.map(i=>i.name).join(' ')).toLowerCase();
+    const hay=(s.no+' '+s.servedBy+' '+(s.customer||'')+' '+(s.contact||'')+' '+(s.order==='pickup'?'pick up later ':'')+s.items.map(i=>i.name).join(' ')).toLowerCase();
     return hay.includes(q);
   }).slice(0,300);
   const list=$('invList');
@@ -1770,7 +1801,8 @@ function renderInvList(q){
   list.innerHTML=res.map(s=>{ const d=new Date(s.ts); const v=s.voided;
     return '<div class="r" data-no="'+esc(s.no)+'"'+(v?' style="opacity:.55"':'')+'>'+
       '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+' <span class="isku">'+
-        d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+'</span></span>'+
+        d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+
+        (s.customer?' · '+esc(s.customer):'')+(s.order==='pickup'?' · <b>Pick up later</b>':'')+'</span></span>'+
       '<span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span></div>';
   }).join('');
 }
@@ -1778,7 +1810,7 @@ function showInvoiceDetail(no){
   const s=invCache.find(x=>x.no===no) || load(LS.sales,[]).find(x=>x.no===no); if(!s) return;
   const d=new Date(s.ts);
   let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
-  h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+'</div>';
+  h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+(s.contact?(' · '+esc(s.contact)):'')+' · Order: '+esc(orderLabel(s))+'</div>';
   h+='<div style="margin:10px 0">';
   s.items.forEach(i=>{ h+='<div class="row"><span>'+i.qty+' × '+esc(i.name)+'</span><span class="money">'+money(i.price*i.qty)+'</span></div>'; });
   h+='</div>';
@@ -3086,12 +3118,12 @@ async function exportAdminCsv(){
   }
   const live=d.sales.filter(s=>!s.voided);
   if(!live.length){ $('adStatus').textContent='No sales in this period to export.'; return; }
-  const head=['Store','Invoice','Date','Time','Served by','Customer','Method','Discount',
+  const head=['Store','Invoice','Date','Time','Served by','Customer','Phone / email','Order','Method','Discount',
               'Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=live.map(s=>{ const dt=new Date(s.ts);
     const items=(s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ');
     return [storeLabel(s.store), s.no, dt.toLocaleDateString('en-AU'), dt.toLocaleTimeString('en-AU'),
-      s.servedBy, s.customer||'', s.method, (s.discount||0).toFixed(2),
+      s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, (s.discount||0).toFixed(2),
       Number(s.sub||0).toFixed(2), Number(s.gst||0).toFixed(2), Number(s.total||0).toFixed(2),
       Number(s.paid!=null?s.paid:s.total||0).toFixed(2),
       s.tendered!=null?Number(s.tendered).toFixed(2):'', s.change!=null?Number(s.change).toFixed(2):'', items]
@@ -3180,10 +3212,10 @@ function applySettings(){
 function exportCsv(){
   const sales=load(LS.sales,[]).filter(s=>!s.voided);   // voided/refunded sales are excluded
   if(!sales.length){ alert('No sales to export.'); return; }
-  const head=['Store','Invoice','Date','Time','Served by','Customer','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
+  const head=['Store','Invoice','Date','Time','Served by','Customer','Phone / email','Order','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=sales.map(s=>{ const d=new Date(s.ts);
     const items=s.items.map(i=>i.qty+'x '+i.name).join(' | ');
-    return [storeLabel(s.store), s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.method, (s.discount||0).toFixed(2),
+    return [storeLabel(s.store), s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, (s.discount||0).toFixed(2),
       s.sub.toFixed(2), s.gst.toFixed(2), s.total.toFixed(2), (s.paid||s.total).toFixed(2),
       s.tendered!=null?s.tendered.toFixed(2):'', s.change!=null?s.change.toFixed(2):'', items]
       .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');

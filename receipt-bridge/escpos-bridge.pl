@@ -149,6 +149,15 @@ sub build_receipt {
     $out .= pair($sale->{no} // '', strftime('%d/%m/%Y %I:%M %p', localtime($ts))) . "\n";
     if ($sale->{servedBy}) { $out .= "$_\n" for wrap_text('Served by: ' . ascii($sale->{servedBy})) }
     if ($sale->{customer}) { $out .= "$_\n" for wrap_text('Customer: '  . ascii($sale->{customer})) }
+    if ($sale->{contact}) {
+        my $c = $sale->{contact};
+        $out .= "$_\n" for wrap_text(($c =~ /\@/ ? 'Email: ' : 'Phone: ') . ascii($c));
+    }
+    if (($sale->{order} // '') eq 'pickup') {
+        $out .= $CMD{bold_on} . "Order: PICK UP LATER\n" . $CMD{bold_off};
+    } else {
+        $out .= "Order: Served on the spot\n";
+    }
     $out .= rule() . "\n";
 
     for my $it (@{ $sale->{items} || [] }) {
@@ -266,7 +275,8 @@ sub serve {
             if ($method eq 'OPTIONS')                  { respond($c, '204 No Content', '') }
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
-                    encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS }));
+                    encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
+                                 fields => ['order', 'contact'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';

@@ -144,6 +144,9 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   // Wrap these — a long customer name would otherwise run past the paper edge.
   if (sale.servedBy) for (const l of wrap('Served by: ' + ascii(sale.servedBy))) d.ln(l);
   if (sale.customer) for (const l of wrap('Customer: '  + ascii(sale.customer))) d.ln(l);
+  if (sale.contact)  for (const l of wrap((/@/.test(sale.contact) ? 'Email: ' : 'Phone: ') + ascii(sale.contact))) d.ln(l);
+  if (sale.order === 'pickup') d.raw(CMD.boldOn).ln('Order: PICK UP LATER').raw(CMD.boldOff);
+  else d.ln('Order: Served on the spot');
   d.ln(rule());
 
   for (const it of (sale.items || [])){
@@ -228,7 +231,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');
