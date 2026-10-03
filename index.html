@@ -94,6 +94,7 @@
   /* Modal */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .modal.show{display:flex}
+  #loginModal{z-index:60}
   .sheet{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:88vh;overflow:hidden;box-shadow:var(--shadow);
     display:flex;flex-direction:column}
   /* Only the body scrolls, so content always passes UNDER the header. (A sticky
@@ -193,6 +194,9 @@
   .cashpad button.coin{background:#fff4d6;color:#7a5200;border-radius:999px;aspect-ratio:1/1;padding:0}
   .cashpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
     background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
+  /* "⚠ 3 unsent" — only shown while sales are waiting to reach the site */
+  .unsent{display:none;background:#fff4d6;color:#7a5200;border:1px solid #f0d58a;font-weight:600}
+  .unsent.on{display:inline-flex}
   #btnExpenses{display:none}
   #btnExpenses.on{display:block}
   .addpad{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
@@ -391,6 +395,7 @@
   <header>
     <span class="store" id="hStore">Store Till</span>
     <span class="pill" id="catPill" title="Products in the catalog"><span class="dot" id="catDot"></span><b id="catCount">0</b><span id="catWhen" class="muted"></span></span>
+    <button class="unsent" id="btnUnsent"></button>
     <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
     <button class="ghost" id="btnReprint" title="Pick the exact invoice to reprint">⟲ Reprint</button>
     <!-- Invoices drop-down: previous invoices + the store this till is ringing up for -->
@@ -845,6 +850,19 @@
   </div>
 </div>
 
+<!-- ADMIN LOGIN — the site checks the password (ADMIN_PIN on Netlify) -->
+<div class="modal" id="loginModal">
+  <div class="sheet" style="max-width:380px">
+    <header><span class="store">🔒 Admin login</span></header>
+    <div class="body">
+      <div class="field"><label for="lgPin">Admin password</label>
+        <input id="lgPin" type="password" autocomplete="current-password" /></div>
+      <div class="warn" id="lgStatus" role="status"></div>
+    </div>
+    <div class="foot"><button class="ghost" id="lgCancel">Cancel</button><button class="primary" id="lgGo">Log in</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="saved" id="saved" role="status" aria-live="polite"></div>
 
@@ -887,27 +905,62 @@ const DEFAULTS = {
   stores:{}
 };
 
-// Asked for before Admin opens. Deliberately not in Settings — change it here.
-// It is in the page source of a public site, so it's a counter speed-bump that
-// keeps a customer out of the day's takings — not a real secret.
-const ADMIN_PIN = 'lotto2rema';
-
-/* Admin login. Once logged in on a device it stays logged in (survives reloads)
-   until Log out, so the person working the till doesn't retype the password to
-   see the totals. Logged out, the header's money figures are blacked out. */
-const ADMIN_KEY = 'inv_admin';
-function isAdmin(){ try{ return localStorage.getItem(ADMIN_KEY)==='1'; }catch(e){ return false; } }
-function requireAdmin(){
+/* Admin login. The password is NOT in this page: it's the ADMIN_PIN env var on
+   Netlify, and the site (/api/admin) checks what's typed. Once it says yes, the
+   password is kept on this device (until Log out) and sent as x-admin-pin, so the
+   person working the till doesn't retype it to see the totals. Logged out, the
+   header's money figures are blacked out. */
+const ADMIN_KEY = 'inv_admin_pin';
+try{ localStorage.removeItem('inv_admin'); }catch(e){}   // the old "logged in" flag — log in once more
+function adminPin(){ try{ return localStorage.getItem(ADMIN_KEY)||''; }catch(e){ return ''; } }
+function isAdmin(){ return !!adminPin(); }
+function adminUrl(){
+  let u='/api/admin';
+  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  return u;
+}
+// true when already logged in. Otherwise shows the login box and returns false;
+// `then` runs once the site accepts the password (e.g. re-open what was tapped).
+let loginThen=null;
+function requireAdmin(then){
   if(isAdmin()) return true;
-  const pin=String(ADMIN_PIN||'').trim();
-  if(pin){
-    const got=prompt('Admin password');
-    if(got===null) return false;                 // cancelled
-    if(String(got).trim()!==pin){ toast('Wrong password'); return false; }
-  }
-  try{ localStorage.setItem(ADMIN_KEY,'1'); }catch(e){}
-  renderAuth();
-  return true;
+  loginThen = typeof then==='function' ? then : null;
+  $('lgPin').value=''; $('lgStatus').textContent='';
+  $('loginModal').classList.add('show');
+  setTimeout(()=>$('lgPin').focus(), 30);
+  return false;
+}
+// Ask the site: { ok } | { bad:'message' } (wrong / not set) | throws when the site can't be reached.
+async function checkAdminPin(pin){
+  const h=shareHeaders(true); h['x-admin-pin']=pin;
+  const res=await fetch(adminUrl(), {method:'POST', headers:h, body:'{}'});
+  const d=await res.json().catch(()=>({}));
+  if(res.ok && d.ok) return {ok:true};
+  // wrong = the site rejected this password (or has none set) — not a token or network problem
+  if(res.status===401 || res.status===503) return {bad: d.error || 'Wrong password', wrong: res.status===503 || !/token/i.test(d.error||'')};
+  throw new Error(d.error || ('HTTP '+res.status));
+}
+async function submitLogin(){
+  const pin=$('lgPin').value.trim(), btn=$('lgGo');
+  if(!pin){ $('lgPin').focus(); return; }
+  btn.disabled=true; $('lgStatus').textContent='Checking…';
+  try{
+    const r=await checkAdminPin(pin);
+    if(r.bad){ $('lgStatus').textContent=r.bad; $('lgPin').select(); return; }
+    try{ localStorage.setItem(ADMIN_KEY, pin); }catch(e){}
+    $('loginModal').classList.remove('show');
+    renderAuth(); toast('Logged in');
+    const then=loginThen; loginThen=null;
+    if(then) then(); else focusScan();
+  }catch(e){
+    $('lgStatus').textContent='Can\'t reach the site to check the password — try again when the till is back online.';
+  }finally{ btn.disabled=false; }
+}
+function cancelLogin(){ loginThen=null; $('loginModal').classList.remove('show'); focusScan(); }
+// The password was changed on Netlify → a device still holding the old one is logged out.
+async function recheckAdmin(){
+  const pin=adminPin(); if(!pin || navigator.onLine===false) return;
+  try{ const r=await checkAdminPin(pin); if(r.wrong) logoutAdmin(); }catch(e){ /* offline — keep it */ }
 }
 function logoutAdmin(){
   try{ localStorage.removeItem(ADMIN_KEY); }catch(e){}
@@ -955,12 +1008,12 @@ let allTally = null;         // today's takings across every store (admin only)
 
 /* ---------------- helpers ---------------- */
 function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
-function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); if(k===LS.sales) renderUnsent(); }
 function loadSettings(){
   const saved = load(LS.settings, {}) || {};
   const s = Object.assign({}, DEFAULTS, saved);
   if(!s.stores || typeof s.stores!=='object' || Array.isArray(s.stores)) s.stores = {};
-  delete s.adminPin;   // was editable in Settings once; the code's ADMIN_PIN is the only one now
+  delete s.adminPin;   // was editable in Settings once; the password is ADMIN_PIN on Netlify now
   // One-time: a till set up before the sales moved onto the site has a blank URL
   // saved, which would keep it on browser-only storage. Point it at the site's
   // log once. After the next Save (which stores v) a blank is taken as deliberate.
@@ -1538,9 +1591,22 @@ function adoptPickupCode(sale, code){
   const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===sale.no && x.ts===sale.ts);
   if(s && !s.pickupCode){ s.pickupCode = code; save(LS.sales, sales); }
 }
+let flushing=false;
 async function flushUnsynced(){
-  if(!settings.shareUrl) return;
-  for(const s of load(LS.sales,[])){ if(!s.synced) await syncSale(s); }
+  if(!settings.shareUrl || flushing) return;
+  flushing=true;
+  try{ for(const s of load(LS.sales,[])){ if(!s.synced) await syncSale(s); } }
+  finally{ flushing=false; renderUnsent(); }
+}
+// Header badge: sales rung up here that haven't reached the site yet (no wifi).
+// Hidden whenever there are none, so it only appears while the till is offline
+// or catching up. Tapping it retries now.
+function renderUnsent(){
+  const b=$('btnUnsent'); if(!b) return;
+  const n = settings.shareUrl ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
+  b.classList.toggle('on', n>0);
+  b.textContent='⚠ '+n+' unsent';
+  b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet — tap to send now' : '';
 }
 
 /* ---------------- live stock (decrement Squarespace on each sale) ---------------- */
@@ -2183,7 +2249,7 @@ function showInvoiceDetail(ref){
 }
 
 /* ---------------- day takings ---------------- */
-function openTakings(){ if(!requireAdmin()) return; $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
+function openTakings(){ if(!requireAdmin(openTakings)) return; $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
 async function renderTakings(){
   const key=$('takDate').value||todayKey();
   $('takScope').textContent='Loading…';
@@ -2276,7 +2342,7 @@ async function loadBoxes(){
   renderBoxes();
 }
 async function saveBoxes(list){
-  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   const res=await fetch(boxesUrl(), {method:'POST', headers:h, body:JSON.stringify({boxes:list})});
   const d=await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
@@ -2292,7 +2358,7 @@ function renderBoxes(){
       :'<tr><td colspan="6" class="muted">No boxes yet — add one below.</td></tr>');
 }
 async function addBox(){
-  if(!requireAdmin()) return;             // anyone can open a box; changing the list is admin
+  if(!requireAdmin(addBox)) return;             // anyone can open a box; changing the list is admin
   const box=$('bxBox').value.trim(), pack=$('bxPack').value.trim(), packs=Math.round(Number($('bxQty').value)||0);
   if(!box||!pack||packs<1){ toast('Scan the box, scan a pack, and enter packs per box'); return; }
   if(normSku(box)===normSku(pack)){ toast('Box and pack barcodes are the same'); return; }
@@ -2303,7 +2369,7 @@ async function addBox(){
 }
 async function delBox(i){
   const b=boxes[i]; if(!b) return;
-  if(!requireAdmin()) return;
+  if(!requireAdmin(()=>delBox(i))) return;
   if(!confirm('Remove '+((catItem(b.box)&&catItem(b.box).name)||b.box)+' from the box list?')) return;
   try{ await saveBoxes(boxes.filter((_,j)=>j!==i)); }catch(e){ alert('Could not save: '+e.message); }
 }
@@ -2351,7 +2417,7 @@ async function scanBox(){
 let adState = { store:'', from:'', to:'', preset:'today', data:null };
 
 function openAdmin(){
-  if(!requireAdmin()) return;
+  if(!requireAdmin(openAdmin)) return;
   if(!salesUrl()){
     alert('Admin reads the sales record kept on the site, so it needs that address.\n\nSettings → Sales memory → Sales log URL = /api/sales');
     return;
@@ -2377,7 +2443,7 @@ function expensesUrl(params){
 }
 function cashLabel(v){ return v>=1 ? '$'+v : Math.round(v*100)+'c'; }
 function openExpenses(){
-  if(!requireAdmin()) return;
+  if(!requireAdmin(openExpenses)) return;
   $('exStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
   if(currentStore) $('exStore').value=currentStore.id;
   if(!$('exDate').value) $('exDate').value=todayKey();
@@ -2402,7 +2468,7 @@ async function saveExpense(){
   const day=$('exDate').value, store=$('exStore').value;
   if(!day){ toast('Pick a date'); return; }
   const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
-  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   $('exDone').disabled=true; $('exStatus').textContent='Saving…';
   try{
     const res=await fetch(expensesUrl(), {method:'POST', headers:h,
@@ -2435,7 +2501,7 @@ async function loadExpenses(){
 }
 async function deleteExpense(id){
   if(!confirm('Delete this expense?')) return;
-  const h=shareHeaders(false); h['x-admin-pin']=ADMIN_PIN;
+  const h=shareHeaders(false); h['x-admin-pin']=adminPin();
   try{
     const res=await fetch(expensesUrl({day:$('exDate').value, store:$('exStore').value, id}), {method:'DELETE', headers:h});
     const d=await res.json().catch(()=>({}));
@@ -2830,7 +2896,7 @@ function costsUrl(){
   return u;
 }
 async function fetchCosts(){
-  const h=shareHeaders(false); h['x-admin-pin']=ADMIN_PIN;
+  const h=shareHeaders(false); h['x-admin-pin']=adminPin();
   try{
     const res=await fetch(costsUrl(), {headers:h});
     const d=await res.json().catch(()=>({}));
@@ -3158,7 +3224,7 @@ async function saveNoCost(input){
   if(kind==='m') row={misc:k, cost};
   else{ const r=noCostRows().prods.find(x=>x.k===k); row={sku:r ? r.sku : k, name:r ? r.name : '', cost}; }
   st.className='ncst'; st.textContent='Saving…';
-  const h=shareHeaders(true); h['x-admin-pin']=ADMIN_PIN;
+  const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   try{
     const res=await fetch(costsUrl(), {method:'POST', headers:h, body:JSON.stringify({set:[row]})});
     const d=await res.json().catch(()=>({}));
@@ -3658,6 +3724,10 @@ function bind(){
   window.addEventListener('afterprint', afterPrint);
 
   // header
+  $('btnUnsent').onclick=async()=>{ const b=$('btnUnsent'); b.textContent='Sending…'; await flushUnsynced(); focusScan();
+    if(b.classList.contains('on')) toast('Still can\'t reach the site — they\'ll send when the wifi is back'); else toast('All sales sent'); };
+  // Wifi back → send the queue straight away rather than waiting for the next minute.
+  window.addEventListener('online', ()=>{ flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
   $('btnSync').onclick=()=>syncCatalog(false);
   $('btnReprint').onclick=reprintLast;
   $('btnInvoices').onclick=e=>{ e.stopPropagation(); toggleInvMenu(); };
@@ -3669,7 +3739,10 @@ function bind(){
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.querySelector('.dd.open')){ closeMenus(); focusScan(); } });
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
-  $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else if(requireAdmin()) toast('Logged in'); };
+  $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else requireAdmin(); };
+  $('lgGo').onclick=submitLogin;
+  $('lgCancel').onclick=cancelLogin;
+  $('lgPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitLogin(); } else if(e.key==='Escape') cancelLogin(); });
   $('bxAdd').onclick=addBox;
   $('bxScan').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); scanBox(); } });
   $('bxBox').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxPack').focus(); } });
@@ -3852,7 +3925,14 @@ function bind(){
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  setInterval(()=>{ flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  renderUnsent();
+  recheckAdmin();
+
+  // Keep a copy of the page on the device so the till still opens with no internet.
+  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }
 
   // Nothing is usable until a store is picked. The one last used here is
   // highlighted, so opening up in the morning is a single tap.

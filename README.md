@@ -313,14 +313,14 @@ it can't clash with a number another till gets.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
-Admin is **password-protected**, asked for each time it opens, so a customer at the counter
-can't tap it and read the day's takings. The password is set in code only — `ADMIN_PIN`
-in `index.html` — and can't be changed from Settings. Set it to `''` to leave Admin open.
+Admin is **password-protected**, so a customer at the counter can't tap it and read the day's
+takings. The password is the Netlify environment variable **`ADMIN_PIN`** (Site configuration →
+Environment variables, then redeploy). It is **not** in `index.html`: the till sends what's typed
+to `/api/admin`, which checks it on the server. Without `ADMIN_PIN` set, nobody can log in.
 
-> This password sits in `index.html`, which a public site hands to anyone who asks for the
-> page. It's a lock on the counter, not a secret — so don't reuse a password from anywhere
-> else here. If you need Admin to be genuinely private, that means moving the check into
-> `sales.mjs` behind `SALES_TOKEN` rather than doing it in the browser.
+To change the password, change `ADMIN_PIN` on Netlify and redeploy (and the `ADMIN_PIN` line in
+the Google Sheet script). Devices still holding the old one are logged out the next time they
+open the till online.
 
 ### Renaming a store, or per-store details on the docket
 
@@ -437,7 +437,7 @@ No button means nothing is missing a cost.
 - Tick **Show ones already costed here** to see (and fix) costs typed in this list.
 
 > Cost prices are now on the site, readable with the Admin password. Set **`ADMIN_PIN`** on
-> Netlify (the same value as `ADMIN_PIN` in `index.html` and in the sheet script) so `/api/costs`
+> Netlify (the same value as `ADMIN_PIN` in the sheet script) so `/api/costs`
 > refuses anyone without it. The till never shows cost prices at the counter or on a receipt.
 
 After pasting the updated script into Apps Script, run **setup** once — it adds the 5-minute,
@@ -515,8 +515,13 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 - **Admin ▾ → 🔒 Login** (header) asks for the Admin password once; the device then stays logged in
   until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
   totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
-- The password is `ADMIN_PIN` in `index.html`. Optionally set the same value as the Netlify env var
-  **ADMIN_PIN** so the server also refuses box-list edits without it.
+- The password is the Netlify env var **ADMIN_PIN** — the site checks it, so it isn't in the page.
+  The server also refuses box-list edits, expenses and cost prices without it.
+- **⚠ N unsent** appears in the header only while sales rung up on this device haven't reached the
+  site (no wifi). They send themselves when the connection is back; tap it to try straight away.
+  It disappears once everything is sent.
+- **Offline reload.** The page keeps a copy of itself on the device (`sw.js`), so the till still
+  opens with no internet; sales made then queue up under **⚠ N unsent**.
 
 ## Open box (box → single packs)
 
