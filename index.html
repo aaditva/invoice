@@ -340,6 +340,10 @@
   @keyframes puflash{50%{background:#ffe08a}}
   .puhead{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:4px 2px -6px}
 
+  /* One invoice on its own (opened from Pick ups): no date, search or list */
+  #invoicesModal.single .invbrowse,#invoicesModal.single #invList{display:none}
+  #invoicesModal.single #invDetail fieldset{margin-top:0 !important}
+
   .receipt{display:none}
   @media print{
     /* The real @page rule is injected at print time by applyPageSize() into
@@ -786,13 +790,13 @@
 <!-- INVOICES / HISTORY MODAL -->
 <div class="modal" id="invoicesModal">
   <div class="sheet">
-    <header><span class="store">Previous invoices</span><span class="spacer"></span><button class="ghost" id="closeInvoices">Close</button></header>
+    <header><span class="store" id="invTitle">Previous invoices</span><span class="spacer"></span><button class="ghost" id="closeInvoices">Close</button></header>
     <div class="body">
-      <div class="grid2">
+      <div class="grid2 invbrowse">
         <div class="field"><label for="invDate">Date</label><input type="date" id="invDate" /></div>
         <div class="field"><label>&nbsp;</label><input id="invSearch" placeholder="Search #, staff, customer, item…" autocomplete="off" /></div>
       </div>
-      <div class="muted" id="invScope"></div>
+      <div class="muted invbrowse" id="invScope"></div>
       <div class="searchlist" id="invList"></div>
       <div id="invDetail"></div>
     </div>
@@ -2028,11 +2032,16 @@ async function tickPickup(code, btn){
   await loadPickups();
   refreshPickupCount();
 }
-async function openPickupInvoice(code){
+// Just that one invoice — not the day's list around it.
+function openPickupInvoice(code){
   const s=puFind(code); if(!s) return;
-  await openInvoices(s.day, s.store||currentStore.id);
+  invScopeStore = s.store||currentStore.id;
+  $('invDate').value = s.day;               // so a void reloads the right day
+  $('invSearch').value='';
+  invCache=[s]; invShown=[];
+  $('invTitle').textContent='Invoice '+s.no;
+  $('invoicesModal').classList.add('show','single');
   showInvoiceDetail(s);
-  const det=$('invDetail'); if(det.firstChild) det.scrollIntoView({block:'start', behavior:'smooth'});
 }
 
 /* ---------------- search ---------------- */
@@ -2062,6 +2071,7 @@ let invShown=[];       // the rows currently listed, in order (data-i indexes in
 let invScopeStore;     // undefined = the store that's open; an id = that store (Admin drill-down)
 async function openInvoices(day, storeId){
   invScopeStore = storeId;
+  $('invoicesModal').classList.remove('single'); $('invTitle').textContent='Previous invoices';
   $('invoicesModal').classList.add('show'); $('invSearch').value=''; $('invDetail').innerHTML='';
   $('invDate').value = day || todayKey();
   await loadInvoices(); setTimeout(()=>$('invSearch').focus(),50);
