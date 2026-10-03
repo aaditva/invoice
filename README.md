@@ -181,6 +181,12 @@ port 9100.
 Re-run the installer after editing `escpos-bridge.pl` — the daemon runs the
 deployed copy, not the one in this folder.
 
+> **Re-run the installer now if receipts show a 1970 date.** Older copies of the bridge
+> misread the sale time the till sends (an ISO string such as `2026-10-03T02:50:00.000Z`)
+> and printed `01/01/1970` on the invoice line. Fixed in `escpos-bridge.pl`; the deployed
+> copy only picks it up when you re-run whichever installer you used.
+> Test: `perl receipt-bridge/t/receipt-ts.t`.
+
 **Single-user setup:** double-click **`receipt-bridge/Install Receipt Printer.command`**.
 No admin password, no driver install. It finds your Epson queue, prints a test
 docket, asks you to confirm it's readable, then installs a login item so the
