@@ -42,7 +42,7 @@
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
-const ADMIN_PIN    = 'lotto2rema'; // the till's Admin password (ADMIN_PIN in index.html / Netlify)
+const ADMIN_PIN    = '';          // the till's Admin password — type it here in Apps Script (same as ADMIN_PIN on Netlify); never commit it
 const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
@@ -518,6 +518,7 @@ const INVOICE_COSTS = [
   [["tom and jerry"], [], 17.40], // Kakawow Phantom Tom and Jerry pack — $16.90 + $0.50 (26.08.2026)
   [["road to", "world cup", "mega"], [], 70.30], // Panini Select Road to World Cup Mega Box — $69.80 + $0.50 (17.09.2026)
   [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
+  [["chrome", "uefa", "value"], [], 41.85], // Topps Chrome UEFA Club Competitions 25/26 Value Box — $41.35 + $0.50 (27.06.2026)
   // Tax Invoice 388075: invoice unit price (ex GST) + $0.32 each — the $8.00 delivery split over the 25 units on the order
   [["marvel", "jumpstart"], ["pack"], 164.96], // Magic Marvel Super Heroes Jumpstart Booster Display — $164.64 + $0.32
   [["marvel", "collector"], ["pack"], 494.24], // Magic Marvel Super Heroes Collector Booster Display — $493.92 + $0.32
