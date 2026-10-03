@@ -48,6 +48,23 @@ my %CMD = (
     drawer      => $ESC . 'p' . chr(0) . chr(25) . chr(250),
 );
 
+# Code 128 barcode, centred, human-readable code printed underneath. Set B
+# ("{B"); the data is letters and digits only, so nothing needs escaping.
+# Module width 2 keeps a 12-character code well inside the 72mm print area.
+sub barcode128 {
+    my ($data) = @_;
+    $data = uc(ascii($data));
+    $data =~ s/[^0-9A-Z]//g;
+    return '' unless length $data;
+    return $CMD{align_mid}
+         . $GS . 'h' . chr(80)              # height in dots
+         . $GS . 'w' . chr(2)               # module width
+         . $GS . 'H' . chr(2)               # text below the bars
+         . $GS . 'f' . chr(0)
+         . $GS . 'k' . chr(73) . chr(length($data) + 2) . '{B' . $data
+         . "\n" . $CMD{align_left};
+}
+
 # ---------------- text helpers ----------------
 
 # Reduce to printable ASCII. NFD first so accents keep their base letter:
@@ -184,6 +201,12 @@ sub build_receipt {
         $out .= pair('CARD', money($sale->{paid})) . "\n";
     }
 
+    if (($sale->{order} // '') eq 'pickup' && $sale->{pickupCode}) {
+        $out .= rule() . "\n" . $CMD{align_mid} . $CMD{bold_on} . "PICK-UP BARCODE\n" . $CMD{bold_off}
+              . "Bring this receipt to collect your order\n" . $CMD{align_left};
+        $out .= barcode128($sale->{pickupCode});
+    }
+
     doc_footer(\$out, $store, $opts, $cash);
     return $out;
 }
@@ -276,7 +299,7 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact'] }));
+                                 fields => ['order', 'contact', 'pickupCode'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';

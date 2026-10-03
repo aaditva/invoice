@@ -44,6 +44,21 @@ const CMD = {
   drawer:     [ESC, 0x70, 0x00, 0x19, 0xfa],
 };
 
+/* Code 128 barcode, centred, human-readable code underneath. Set B ("{B");
+   the data is letters and digits only, so nothing needs escaping. Module
+   width 2 keeps a 12-character code well inside the 72mm print area. */
+function barcode128(d, data){
+  data = String(data || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  if (!data) return;
+  d.raw(CMD.alignCentre)
+   .raw([GS, 0x68, 80])                 // height in dots
+   .raw([GS, 0x77, 2])                  // module width
+   .raw([GS, 0x48, 2])                  // text below the bars
+   .raw([GS, 0x66, 0])
+   .raw([GS, 0x6b, 73, data.length + 2]).text('{B' + data).ln()
+   .raw(CMD.alignLeft);
+}
+
 class Doc {
   constructor(){ this.parts = []; }
   raw(bytes){ this.parts.push(Buffer.from(bytes)); return this; }
@@ -171,6 +186,12 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
     d.ln(pair('CARD', money(sale.paid)));
   }
 
+  if (sale.order === 'pickup' && sale.pickupCode){
+    d.ln(rule()).raw(CMD.alignCentre).raw(CMD.boldOn).ln('PICK-UP BARCODE').raw(CMD.boldOff)
+     .ln('Bring this receipt to collect your order').raw(CMD.alignLeft);
+    barcode128(d, sale.pickupCode);
+  }
+
   footer(d, store, options, cash);
   return d.build();
 }
@@ -231,7 +252,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact'] }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');
