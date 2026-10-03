@@ -9,7 +9,21 @@
  *  Routes (all on /api/sales):
  *    POST /api/sales                     body = the sale object
  *      Upsert by invoice number. Re-POSTing the same invoice overwrites it,
- *      which is how a void/refund propagates.
+ *      which is how a void/refund propagates. A *different* sale (other ts)
+ *      that arrives with a number already taken is never allowed to overwrite
+ *      it: it's filed as <no>-2 (-3…) and the reply's `no` says so, so the
+ *      till renames its own copy and every reprint shows the same number.
+ *
+ *    POST /api/sales?counter=next        body = { store, min? }
+ *      → { ok, store, n }   the store's next invoice number, handed out once.
+ *      Every device draws from this one sequence, so two tills at the same
+ *      store can never print the same number. `min` (the device's own
+ *      counter) only ever pushes the sequence up, never back.
+ *
+ *    POST /api/sales?counter=set         body = { store, next }
+ *      → { ok, store, next }   Settings → Next invoice #.
+ *
+ *    GET  /api/sales?counter=1&store=ID  → { store, next }
  *
  *    GET  /api/sales?day=YYYY-MM-DD[&store=ID]
  *      → { day, store, sales:[...] }     one day, one store or all stores
@@ -34,6 +48,9 @@
  *                                     per sale. Rebuilt automatically from the
  *                                     sale blobs whenever it looks out of date,
  *                                     so a lost index write never hides a sale.
+ *    counter/<store>                  { next } — the store's shared invoice
+ *                                     counter. Bumped with a compare-and-swap,
+ *                                     so two tills asking at once get two numbers.
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
@@ -79,6 +96,9 @@ export const config = { path: '/api/sales' };
 /* ---------------- write ---------------- */
 
 async function handlePost(req, headers) {
+  const counter = new URL(req.url).searchParams.get('counter');
+  if (counter) return await handleCounter(req, headers, counter);
+
   let sale;
   try { sale = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
   if (!sale || typeof sale !== 'object' || Array.isArray(sale)) {
@@ -97,12 +117,60 @@ async function handlePost(req, headers) {
   for (const k of LOCAL_ONLY) delete clean[k];
 
   const st = blobs();
+  // A different sale already holds this number (two tills that counted on their
+  // own, or one that was offline): file this one under the next free suffix
+  // rather than overwrite it. Same ts = the same sale coming back (a void).
+  let finalNo = no;
+  for (let i = 2; ; i++) {
+    const there = await getJSON(st, saleKey(day, store, finalNo));
+    if (!there || String(there.ts) === String(clean.ts)) break;
+    if (i > 50) return json({ error: 'Invoice number ' + no + ' is taken.' }, 409, headers);
+    finalNo = no + '-' + i;
+  }
+  clean.no = finalNo;
+
   // Sale blob first: once this lands the sale is recorded, whatever happens to the index.
-  const res = await st.setJSON(saleKey(day, store, no), clean);
+  const res = await st.setJSON(saleKey(day, store, finalNo), clean);
   const etag = (res && res.etag) || null;
   await mergeIntoIndex(st, day, store, clean, etag);
 
-  return json({ ok: true, store, day, no }, 200, headers);
+  return json({ ok: true, store, day, no: finalNo }, 200, headers);
+}
+
+/* ---------------- the shared invoice counter ---------------- */
+
+async function handleCounter(req, headers, mode) {
+  let body = {};
+  try { body = await req.json(); } catch (e) { /* empty body is fine */ }
+  const store = slugStore(body && body.store);
+  const st = blobs();
+  const key = counterKey(store);
+
+  if (mode === 'set') {
+    const next = Math.floor(Number(body && body.next));
+    if (!isFinite(next) || next < 1) return json({ error: 'next must be a whole number ≥ 1.' }, 400, headers);
+    await st.setJSON(key, { next });
+    return json({ ok: true, store, next }, 200, headers);
+  }
+  if (mode !== 'next') return json({ error: 'counter must be next or set.' }, 400, headers);
+
+  const min = Math.max(1, Math.floor(Number(body && body.min)) || 1);
+  // Compare-and-swap: read, bump, write only if nobody else wrote in between.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const cur = await getWithEtag(st, key);
+    const n = Math.max(min, Math.floor(Number(cur.data && cur.data.next)) || 1);
+    const opts = cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true };
+    const res = await st.setJSON(key, { next: n + 1 }, opts);
+    if (!res || res.modified !== false) return json({ ok: true, store, n }, 200, headers);
+  }
+  return json({ error: 'The invoice counter is busy — try again.' }, 503, headers);
+}
+
+async function getWithEtag(st, key) {
+  try {
+    const r = await st.getWithMetadata(key, { type: 'json' });
+    return r ? { data: r.data, etag: r.etag || null } : { data: null, etag: null };
+  } catch (e) { return { data: null, etag: null }; }
 }
 
 // Add (or replace) one sale in the day's index. A concurrent write at the same
@@ -123,6 +191,12 @@ async function mergeIntoIndex(st, day, store, sale, etag) {
 
 async function handleGet(req, headers) {
   const q = new URL(req.url).searchParams;
+
+  if (q.get('counter')) {
+    const store = slugStore(q.get('store'));
+    const v = await getJSON(blobs(), counterKey(store));
+    return json({ store, next: Math.floor(Number(v && v.next)) || null }, 200, headers);
+  }
 
   const storeParam = (q.get('store') || '').trim();
   let store = null;
@@ -318,6 +392,7 @@ function blobs() {
 
 function saleKey(day, store, no) { return 'sale/' + day + '/' + store + '/' + encodeURIComponent(no); }
 function indexKey(day, store) { return 'index/' + day + '/' + store; }
+function counterKey(store) { return 'counter/' + store; }
 
 async function getJSON(st, key) {
   try { return await st.get(key, { type: 'json' }); } catch (e) { return null; }
