@@ -144,7 +144,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
-- **Reprint last** re-prints this store's most recent invoice (paper jams / cancelled print).
+- **⟲ Reprint** opens today's invoices at this store — from every device, newest first — and each
+  row has its own **⟲ Reprint** button. Tap the one you want and it prints exactly as it was saved:
+  same invoice number, time and lines. It never reprints "whatever came last".
 - Admin → **Export range CSV** gives your accountant a file covering both stores; Settings →
   **Export this device's CSV** dumps just the local copy.
 
@@ -248,8 +250,8 @@ Roxy till ────────────┘   (one blob per sale)         
    - **Sales log URL** — leave as `/api/sales` (or the full
      `https://<your-site>.netlify.app/api/sales` on a till hosted elsewhere).
    - **Sales log token** = the same `SALES_TOKEN` value.
-   - **Device tag** — only needed if **two tills share one store**; it keeps their numbers apart
-     (`INV-SM-0007` vs `INV-SM2-0007`). The store already tags its own.
+   - **Device tag** — not needed: every device at a store shares one invoice count (see
+     [Invoice numbers](#invoice-numbers)). If set, it's added to that device's numbers (`INV-SM2-0007`).
 4. Takings then reads **✓ From the site — every device at this store**. If a device is offline,
    its sales still complete and print, and are sent up automatically once it's back online.
 
@@ -258,6 +260,14 @@ Roxy till ────────────┘   (one blob per sale)         
 Each store counts its own sequence, tagged so the two can never collide:
 `INV-SM-0001`, `INV-SM-0002`… at South Melbourne, `INV-RX-0001`… at Roxy.
 Set the prefix and each store's next number in **Settings → Tax & printing**.
+
+The count lives **on the site**, not in each browser: every device at a store takes its next
+number from the same sequence (`POST /api/sales?counter=next`), so a number is only ever used
+once, and reprinting an invoice from any device prints the same number. The site also refuses to
+let a second sale overwrite one that already holds a number — it files it as `…-2` and the till
+renames its own copy to match. If the site can't be reached, the sale still goes through and is
+numbered from the device's own count with a short device code on the end (`INV-SM-0042-K7Q`), so
+it can't clash with a number another till gets.
 
 ### The Admin tab
 
@@ -446,7 +456,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 - GST is treated as **inclusive** (price ÷ 11). Change the rate in Settings if needed.
 - **Sales live on the site** (Netlify Blobs), so any device can read any store's history —
   see [section 6](#6-two-stores-one-record). Settings, the catalogue cache, the store last
-  picked and each store's invoice counter stay per-device (localStorage), as does a copy of
+  picked and an offline fallback invoice counter stay per-device (localStorage), as does a copy of
   the sales this device rang up — that copy is what it falls back on when the site is
   unreachable, and the queue it re-sends from.
 - The till needs the internet for **live** totals. Offline it still scans, prints and numbers

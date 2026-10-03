@@ -347,7 +347,7 @@
     </button>
     <span class="pill"><span class="dot" id="catDot"></span><b id="catCount">0</b>&nbsp;products <span id="catWhen" class="muted"></span></span>
     <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
-    <button class="ghost" id="btnReprint">⟲ Reprint</button>
+    <button class="ghost" id="btnReprint" title="Pick the exact invoice to reprint">⟲ Reprint</button>
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
@@ -682,7 +682,7 @@
         <div class="grid2">
           <div class="field"><label>Sales log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" /></div>
           <div class="field"><label>Device tag (optional)</label><input id="sDevice" placeholder="e.g. 2" />
-            <div class="hint">Only needed if <b>two tills share one store</b> — it keeps their invoice numbers apart (INV-SM-0007 vs INV-SM2-0007). The store already tags its own numbers.</div>
+            <div class="hint">Not needed any more — every device at a store already shares one invoice count from the site. If set, it's added to this device's numbers (INV-SM2-0007).</div>
           </div>
         </div>
       </fieldset>
@@ -709,7 +709,7 @@
         <div class="grid2">
           <div class="field"><label>Invoice prefix</label><input id="sPrefix" value="INV-" /></div>
           <div class="field"><label>Next invoice # <span id="sCounterStore" class="muted"></span></label><input id="sCounter" inputmode="numeric" value="1" />
-            <div class="hint">Each store counts separately, so its invoices run in sequence.</div>
+            <div class="hint">Each store counts separately, and <b>every device at a store shares one count</b> (kept on the site), so a number is only ever used once and a reprint from any device shows the same number. A sale made while the site is unreachable gets this device's code on the end (e.g. INV-SM-0042-K7Q) so it can't clash.</div>
           </div>
         </div>
       </fieldset>
@@ -928,6 +928,8 @@ function adoptStorelessSales(){
   if(n) save(LS.sales, sales);
 }
 // Invoice numbers count per store, so each location's run stays in sequence.
+// The real counter lives on the site (one sequence per store, shared by every
+// device); this local one is only the fallback when the site can't be reached.
 function counterKey(){ return currentStore ? (LS.counter+':'+currentStore.id) : LS.counter; }
 function readCounter(){
   const n = parseInt(localStorage.getItem(counterKey())||'', 10);
@@ -935,6 +937,34 @@ function readCounter(){
   // First sale for this store on this device — carry the old single counter over.
   const legacy = parseInt(localStorage.getItem(LS.counter)||'1', 10);
   return isNaN(legacy) ? 1 : legacy;
+}
+// Short random id for this browser. Only used to keep an offline-numbered sale
+// from ever matching a number the site hands another till.
+function deviceId(){
+  let id='';
+  try{ id=localStorage.getItem('inv_devid')||''; }catch(e){}
+  if(!/^[A-Z0-9]{3}$/.test(id)){
+    const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    id=''; for(let i=0;i<3;i++) id+=c[Math.floor(Math.random()*c.length)];
+    try{ localStorage.setItem('inv_devid', id); }catch(e){}
+  }
+  return id;
+}
+// Ask the site for this store's next invoice number. Every device draws from
+// the same sequence, so a number is only ever printed for one sale. null =
+// couldn't reach the site in time.
+async function nextServerNumber(){
+  const url=salesUrl({counter:'next'}); if(!url || !currentStore) return null;
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(), 5000);
+  try{
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
+      body:JSON.stringify({store:currentStore.id, min:readCounter()})});
+    if(!res.ok) return null;
+    const d=await res.json();
+    const n=parseInt(d && d.n, 10);
+    return n>0 ? n : null;
+  }catch(e){ return null; }
+  finally{ clearTimeout(t); }
 }
 // Supplier details for the docket: the business, with the store's own address
 // and phone when it has them, and the location named so the two differ. Pass the
@@ -1311,7 +1341,7 @@ async function refreshToday(){
 /* ---------------- finalise + print ---------------- */
 let suppressClearOnPrint=false;   // true while re-printing a sale or a report (keep current basket)
 
-function commitSale(){
+async function commitSale(){
   const t=totals();
   if(!currentStore) return null;          // no sale exists outside a store
   if(!basket.length || !method || !$('servedBy').value) return null;
@@ -1327,19 +1357,15 @@ function commitSale(){
     const tv=parseFloat($('tender').value);
     if(isFinite(tv)){ tendered=round2(tv); change=round2(Math.max(0,tv-ct)); }
   }
-  const counter = readCounter();
-  // The store tag keeps the two locations' numbers apart; the device tag is only
-  // needed when two tills share one store (INV-SM-0007 vs INV-SM2-0007).
-  const tag = currentStore.tag + (settings.device||'').trim() + '-';
-  const invNo = settings.prefix + tag + String(counter).padStart(4,'0');
   // Real catalog lines whose stock should drop in Squarespace (skip misc/custom lines).
   const stockItems = basket.filter(b=>!b.misc).map(b=>{
     const p=catItem(b.sku);
     return { variantId:(p&&p.variantId)||null, sku:b.sku, quantity:b.qty };
   }).filter(x=>x.variantId || x.sku);
+  const store = currentStore;
   const sale = {
-    no:invNo, day:todayKey(), ts:new Date().toISOString(),
-    store: currentStore.id, storeName: currentStore.name,
+    no:'', day:todayKey(), ts:new Date().toISOString(),
+    store: store.id, storeName: store.name,
     method, servedBy, customer, contact, order, device: settings.device||'',
     items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
@@ -1347,6 +1373,15 @@ function commitSale(){
     paid, tendered, change, rounding, synced:false,
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
+  // Everything above is a snapshot of the basket; only now wait on the site for
+  // the number, so a scan during the wait can't slip into this sale.
+  // The store tag keeps the two locations' numbers apart; the device tag is optional.
+  const tag = store.tag + (settings.device||'').trim() + '-';
+  const fromSite = await nextServerNumber();
+  const counter = fromSite || readCounter();
+  // Offline the number can't come from the shared sequence, so it carries this
+  // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
+  sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite ? '' : '-'+deviceId());
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
   localStorage.setItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
@@ -1381,8 +1416,21 @@ async function syncSale(sale){
   const url=salesUrl(); if(!url) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
-    if(res.ok) markSynced(sale.no);
+    if(!res.ok) return;
+    let d=null; try{ d=await res.json(); }catch(e){}
+    // The site only renames a sale when another sale already had its number —
+    // take the site's number so a reprint from any device matches.
+    if(d && d.no && String(d.no)!==String(sale.no)) renameSale(sale, String(d.no));
+    markSynced(sale.no);
   }catch(e){ /* stays unsynced; flushUnsynced() retries */ }
+}
+function renameSale(sale, no){
+  const sales=load(LS.sales,[]);
+  const s=sales.find(x=>x.no===sale.no && x.ts===sale.ts);
+  const old=sale.no;
+  sale.origNo = sale.origNo || old; sale.no = no;
+  if(s){ s.origNo = s.origNo || old; s.no = no; save(LS.sales, sales); }
+  toast('Invoice '+old+' is now '+no);
 }
 async function flushUnsynced(){
   if(!settings.shareUrl) return;
@@ -1412,7 +1460,7 @@ async function adjustStock(sale){
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
   try{
     // idemKey = invoice no + sale timestamp: unique per sale (invoice numbers repeat), stable on retry
-    const idemKey = sale.no + '|' + (sale.ts || '');
+    const idemKey = (sale.origNo || sale.no) + '|' + (sale.ts || '');
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, idemKey, items})});
     if(res.ok){
       markStockAdjusted(sale.no);
@@ -1438,7 +1486,7 @@ async function restockInventory(sale){
   if(!items.length){ markRestocked(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
   try{
-    const idemKey = sale.no + '|void|' + (sale.voidedAt || '');
+    const idemKey = (sale.origNo || sale.no) + '|void|' + (sale.voidedAt || '');
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({invoiceNo:sale.no, idemKey, mode:'increment', items})});
     if(res.ok){ markRestocked(sale.no); try{ const d=await res.json(); reconcileStock(d && d.inventory); }catch(e){} }
   }catch(e){ /* stays not-restocked; flushRestocks() retries */ }
@@ -1556,8 +1604,12 @@ function aggregate(sales){
   cash=round2(cash); card=round2(card);
   return {count:live.length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
 }
-function finalizeSale(doPrint){
-  const sale=commitSale();
+let finalizing=false;   // a number is being fetched — ignore a second tap
+async function finalizeSale(doPrint){
+  if(finalizing) return;
+  finalizing=true;
+  let sale=null;
+  try{ sale=await commitSale(); }finally{ finalizing=false; }
   if(!sale) return;
   if(doPrint){
     printSale(sale, false);       // bridge, or window.print() -> afterPrint()
@@ -1575,12 +1627,13 @@ function reprintSale(s){
   suppressClearOnPrint=true;      // don't wipe the current in-progress basket
   printSale(s, true);
 }
+// ⟲ Reprint opens today's invoices at this store — from every device, newest
+// first — so the exact one is picked and printed as it was saved: same number,
+// same time, same lines. (It used to blindly reprint this device's latest sale,
+// which after another sale was the next invoice, not the one wanted.)
 function reprintLast(){
-  // The last sale rung up at this store on this device — what you want after a
-  // paper jam. The other store's docket is never what "reprint last" means.
-  const mine=load(LS.sales,[]).filter(s=>sameStore(s));
-  if(!mine.length){ alert('No sales to reprint at '+(currentStore?currentStore.name:'this store')+' yet.'); return; }
-  reprintSale(mine[mine.length-1]);
+  if(!currentStore){ alert('Pick a store first.'); return; }
+  openInvoices();
 }
 function toast(msg){
   const el=$('toast'); el.textContent=msg; el.classList.add('show');
@@ -1788,6 +1841,7 @@ function renderSearch(q){
 
 /* ---------------- previous invoices ---------------- */
 let invCache=[];       // sales for the selected date, as the site has them
+let invShown=[];       // the rows currently listed, in order (data-i indexes into this)
 let invScopeStore;     // undefined = the store that's open; an id = that store (Admin drill-down)
 async function openInvoices(day, storeId){
   invScopeStore = storeId;
@@ -1815,16 +1869,21 @@ function renderInvList(q){
   }).slice(0,300);
   const list=$('invList');
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No invoices</span></div>'; return; }
-  list.innerHTML=res.map(s=>{ const d=new Date(s.ts); const v=s.voided;
-    return '<div class="r" data-no="'+esc(s.no)+'"'+(v?' style="opacity:.55"':'')+'>'+
+  invShown=res;
+  list.innerHTML=res.map((s,i)=>{ const d=new Date(s.ts); const v=s.voided;
+    return '<div class="r" data-i="'+i+'"'+(v?' style="opacity:.55"':'')+'>'+
       '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+' <span class="isku">'+
         d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+
         (s.customer?' · '+esc(s.customer):'')+(s.order==='pickup'?' · <b>Pick up later</b>':'')+'</span></span>'+
-      '<span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span></div>';
+      '<span style="display:flex;gap:8px;align-items:center"><span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span>'+
+      '<button class="ghost" data-reprint="'+i+'" title="Reprint this exact invoice">⟲ Reprint</button></span></div>';
   }).join('');
 }
-function showInvoiceDetail(no){
-  const s=invCache.find(x=>x.no===no) || load(LS.sales,[]).find(x=>x.no===no); if(!s) return;
+// The sale itself, matched on number AND time — a number alone could (on old
+// data) belong to two sales, and a reprint must be the exact one that was tapped.
+function sameSale(a, b){ return a && b && a.no===b.no && String(a.ts)===String(b.ts); }
+function showInvoiceDetail(ref){
+  const s=invCache.find(x=>sameSale(x,ref)) || load(LS.sales,[]).find(x=>sameSale(x,ref)); if(!s) return;
   const d=new Date(s.ts);
   let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
   h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+(s.contact?(' · '+esc(s.contact)):'')+' · Order: '+esc(orderLabel(s))+'</div>';
@@ -1845,7 +1904,7 @@ function showInvoiceDetail(no){
   h+='</div></fieldset>';
   $('invDetail').innerHTML=h;
   $('btnReprintOne').onclick=()=>reprintSale(s);
-  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s.no); } };
+  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s); } };
 }
 
 /* ---------------- day takings ---------------- */
@@ -3160,7 +3219,9 @@ function openSettings(){
   $('sAddress').value=settings.address; $('sFooter').value=settings.footer; $('sCatUrl').value=settings.catUrl;
   $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;
   $('sPrefix').value=settings.prefix; $('sCounter').value=String(readCounter());
+  $('sCounter').dataset.was=$('sCounter').value;
   $('sCounterStore').textContent = currentStore ? ('— '+currentStore.name) : '';
+  loadSiteCounter();
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
   $('sInvUrl').value=settings.invUrl;
   renderStoreFields();
@@ -3187,6 +3248,28 @@ function renderStoreFields(){
       '</div>'+
     '</fieldset>').join('');
 }
+// Show the store's shared next number (the site's) rather than this device's guess.
+async function loadSiteCounter(){
+  const url=salesUrl({counter:'1', store: currentStore ? currentStore.id : ''});
+  if(!url || !currentStore) return;
+  try{
+    const res=await fetch(url, {headers:shareHeaders(false)});
+    const d=res.ok ? await res.json() : null;
+    const n=parseInt(d && d.next, 10);
+    // Only if the field hasn't been touched since Settings opened.
+    if(n>0 && $('sCounter').value===$('sCounter').dataset.was){
+      $('sCounter').value=String(n); $('sCounter').dataset.was=String(n);
+      localStorage.setItem(counterKey(), String(n));
+    }
+  }catch(e){}
+}
+async function setSiteCounter(n){
+  const url=salesUrl({counter:'set'}); if(!url || !currentStore) return;
+  try{
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({store:currentStore.id, next:n})});
+    if(!res.ok) toast('Couldn\'t update the shared invoice number — try again online');
+  }catch(e){ toast('Couldn\'t update the shared invoice number — try again online'); }
+}
 function saveSettingsUI(){
   settings.name=$('sName').value.trim()||'My Store';
   settings.abn=$('sAbn').value.trim(); settings.phone=$('sPhone').value.trim();
@@ -3205,7 +3288,11 @@ function saveSettingsUI(){
     if(v) stores[id][f]=v;
   });
   settings.stores=stores;
-  const c=parseInt($('sCounter').value,10); if(!isNaN(c)) localStorage.setItem(counterKey(),String(c));
+  const c=parseInt($('sCounter').value,10);
+  if(!isNaN(c) && c>0){
+    localStorage.setItem(counterKey(),String(c));
+    if(String(c)!==$('sCounter').dataset.was) setSiteCounter(c);   // changed by hand → every device follows
+  }
   save(LS.settings, settings);
   if(currentStore) currentStore=storeById(currentStore.id);   // pick up a rename
   renderGate();
@@ -3420,7 +3507,11 @@ function bind(){
   $('closeInvoices').onclick=()=>{ $('invoicesModal').classList.remove('show'); focusScan(); };
   $('invSearch').addEventListener('input', e=>renderInvList(e.target.value));
   $('invDate').addEventListener('change', loadInvoices);
-  $('invList').addEventListener('click', e=>{ const r=e.target.closest('[data-no]'); if(r) showInvoiceDetail(r.dataset.no); });
+  $('invList').addEventListener('click', e=>{
+    const rp=e.target.closest('[data-reprint]');
+    if(rp){ e.stopPropagation(); const s=invShown[Number(rp.dataset.reprint)]; if(s) reprintSale(s); return; }
+    const r=e.target.closest('[data-i]'); if(r) showInvoiceDetail(invShown[Number(r.dataset.i)]);
+  });
 
   // day takings
   $('todayBox').onclick=openTakings;
