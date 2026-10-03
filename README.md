@@ -348,7 +348,7 @@ The script finds today's date in column A of that year's tab and writes the tota
 Games column on that row. If the date isn't in the sheet, the day is skipped. The total leaves out voided sales and matches
 the Admin tab's figure.
 
-**Expenses.** Once logged in as Admin, a **💸 Expenses** entry appears in the header's **Admin ▾** menu (and in
+**Expenses.** Once logged in as Admin, a **💸 Expenses** button appears in the header (and in
 Admin). Pick the date and store, tap the notes and coins that went out — they add up — then
 press **Done** or **Enter**. Each expense is saved on the site (`/api/expenses`). The same hourly
 script writes each day's expenses total into the **Expenses** column, on the row for the date
@@ -356,7 +356,7 @@ the expense was for (it re-checks the last 14 days, so a late entry still lands 
 row). Days with no till expenses are left alone, so figures typed in by hand stay. Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
 script into Apps Script again.
 
-**Money Added.** **Admin ▾ → 💰 Money Added** in the header is open to everyone (no login).
+**Money Added.** The **💰 Money Added** button in the header is open to everyone (no login).
 Pick the date and store, tap **$2 / $4 / $10 / $20 / $50** (they add up) or type any amount
 under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 (`/api/money-added`) and the same hourly script writes each day's total into the sheet's
