@@ -198,7 +198,7 @@
   .unsent{display:none;background:#fff4d6;color:#7a5200;border:1px solid #f0d58a;font-weight:600}
   .unsent.on{display:inline-flex}
   #btnExpenses{display:none}
-  #btnExpenses.on{display:block}
+  #btnExpenses.on{display:inline-flex}
   .addpad{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
   .addpad button{padding:18px 6px;font-size:20px;font-weight:700;position:relative;background:#e6f4ea;color:#0b5d24;border-radius:8px}
   .addpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
@@ -410,14 +410,15 @@
       </div>
     </div>
     <button class="ghost" id="btnPickups" title="Orders waiting to be picked up — scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
-    <!-- Admin drop-down: takings, the dashboard, cash in/out and the admin login -->
+    <!-- Money Added is for everyone; Expenses shows only while an admin is logged in -->
+    <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
+    <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
+    <!-- Admin drop-down: takings, the dashboard and the admin login -->
     <div class="dd" id="admMenu">
-      <button class="ghost" id="btnAdminMenu" aria-haspopup="menu" aria-expanded="false" title="Takings, Admin, money in/out, login">Admin<span class="ddlock" id="hAdminLock">🔒</span><span class="caret">▾</span></button>
+      <button class="ghost" id="btnAdminMenu" aria-haspopup="menu" aria-expanded="false" title="Takings, Admin, login">Admin<span class="ddlock" id="hAdminLock">🔒</span><span class="caret">▾</span></button>
       <div class="ddmenu" id="admMenuList" role="menu">
         <button role="menuitem" id="btnTakings">🧮 Takings</button>
         <button role="menuitem" id="btnAdmin">📊 Admin dashboard</button>
-        <button role="menuitem" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
-        <button role="menuitem" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
         <div class="ddsep"></div>
         <button role="menuitem" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
       </div>
@@ -976,7 +977,7 @@ function renderAuth(){
   b.classList.toggle('in', on);
   $('btnExpenses').classList.toggle('on', on);
   $('hAdminLock').textContent = on ? '🔓' : '🔒';
-  $('btnAdminMenu').title = on ? 'Admin — logged in on this device' : 'Takings, Admin, money in/out, login';
+  $('btnAdminMenu').title = on ? 'Admin — logged in on this device' : 'Takings, Admin, login';
   renderToday();
   if(on) refreshToday();
 }
