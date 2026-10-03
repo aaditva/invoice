@@ -17,7 +17,8 @@
 #   perl escpos-bridge.pl --selftest   # print one test docket and exit
 #   perl escpos-bridge.pl --dry-run    # write ESC/POS to stdout, don't spool
 #
-# Only core modules are used: JSON::PP, Unicode::Normalize, IO::Socket::INET.
+# Only core modules are used: JSON::PP, Unicode::Normalize, IO::Socket::INET,
+# Time::Local, Scalar::Util.
 
 use strict;
 use warnings;
@@ -25,6 +26,8 @@ use IO::Socket::INET;
 use JSON::PP;
 use Unicode::Normalize qw(NFD);
 use POSIX qw(strftime);
+use Time::Local qw(timegm timelocal);
+use Scalar::Util qw(looks_like_number);
 
 my $PORT    = $ENV{BRIDGE_PORT}  || 9100;
 my $QUEUE   = $ENV{BRIDGE_QUEUE} || 'EPSON_TM_T88V';
@@ -123,6 +126,26 @@ sub rule { return '-' x $COLS }
 
 sub now_str { return strftime('%d/%m/%Y %I:%M %p', localtime) }
 
+# Sale timestamp -> epoch seconds. The till sends an ISO string
+# ("2026-10-03T02:50:00.000Z"); --selftest sends epoch milliseconds.
+# Anything unparseable falls back to now. An ISO string without a zone is
+# local time, as in JS `new Date()`.
+sub sale_epoch {
+    my ($ts) = @_;
+    return time unless defined $ts && length $ts;
+    return int($ts / 1000) if looks_like_number($ts);
+    my ($y, $mo, $d, $h, $mi, $s, $zone) = $ts =~
+        /^\s*(\d{4})-(\d\d)-(\d\d)(?:[T ](\d\d):(\d\d)(?::(\d\d)(?:\.\d+)?)?)?\s*(Z|[+-]\d\d:?\d\d)?\s*$/i
+        or return time;
+    my @t = ($s // 0, $mi // 0, $h // 0, $d, $mo - 1, $y);
+    my $epoch = eval { defined $zone ? timegm(@t) : timelocal(@t) };
+    return time unless defined $epoch;
+    if (defined $zone && $zone =~ /^([+-])(\d\d):?(\d\d)$/) {
+        $epoch -= ($1 eq '-' ? -1 : 1) * ($2 * 3600 + $3 * 60);
+    }
+    return $epoch;
+}
+
 # ---------------- documents ----------------
 
 sub doc_header {
@@ -162,7 +185,7 @@ sub build_receipt {
     $out .= rule() . "\n";
     $out .= $CMD{align_mid} . $CMD{bold_on} . "TAX INVOICE\n" . $CMD{bold_off} . $CMD{align_left};
 
-    my $ts = $sale->{ts} ? int($sale->{ts} / 1000) : time;
+    my $ts = sale_epoch($sale->{ts});
     $out .= pair($sale->{no} // '', strftime('%d/%m/%Y %I:%M %p', localtime($ts))) . "\n";
     if ($sale->{servedBy}) { $out .= "$_\n" for wrap_text('Served by: ' . ascii($sale->{servedBy})) }
     if ($sale->{customer}) { $out .= "$_\n" for wrap_text('Customer: '  . ascii($sale->{customer})) }
@@ -328,6 +351,8 @@ sub serve {
 }
 
 # ---------------- entry ----------------
+
+return 1 if caller;                     # loaded by a test: define subs only
 
 if (grep { $_ eq '--selftest' } @ARGV) {
     my $bytes = build_receipt({
