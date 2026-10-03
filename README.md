@@ -129,8 +129,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Pick the store first.** The till opens on two boxes — **South Melbourne** and **Roxy**.
   Tap one and that's the location this till is ringing up for; the one you used last on this
   device is outlined, so it's a single tap each morning. Nothing behind the screen can be
-  touched until a store is chosen. The header then shows the store next to the business name —
-  click it to switch (the sale in progress is cleared, since a basket belongs to one store).
+  touched until a store is chosen. The store's tag (e.g. **SM**) then shows on the **Invoices ▾**
+  button; open that menu and tap the store to switch (the sale in progress is cleared, since a
+  basket belongs to one store).
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
@@ -139,7 +140,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
   **Finalise — no print** to record the sale without printing (still numbered & logged).
-- **Invoices** (header) → search and view any past sale **for this store**, on any date;
+- **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
   open one to **reprint** it.
 - **Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
