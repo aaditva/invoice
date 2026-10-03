@@ -2,7 +2,10 @@
 # The secret Squarespace key lives in an env var (SQUARESPACE_API_KEY), never in the browser.
 
 [build]
-  publish = "."
+  # Only the till itself is published. Publishing "." used to put the whole repo
+  # on the web — the Google Sheet script, the cost-price spreadsheets, README…
+  command = "mkdir -p site && cp index.html sw.js site/"
+  publish = "site"
   functions = "netlify/functions"
 
 # Pretty URL: the app calls /api/catalog, Netlify routes it to the function.

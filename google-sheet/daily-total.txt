@@ -42,7 +42,7 @@
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
-const ADMIN_PIN    = 'lotto2rema'; // the till's Admin password (ADMIN_PIN in index.html / Netlify)
+const ADMIN_PIN    = '';          // the till's Admin password — type it here in Apps Script (same as ADMIN_PIN on Netlify); never commit it
 const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
