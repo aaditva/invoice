@@ -347,7 +347,7 @@
     </button>
     <span class="pill"><span class="dot" id="catDot"></span><b id="catCount">0</b>&nbsp;products <span id="catWhen" class="muted"></span></span>
     <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
-    <button class="ghost" id="btnReprint">⟲ Reprint</button>
+    <button class="ghost" id="btnReprint" title="Pick the exact invoice to reprint">⟲ Reprint</button>
     <button class="ghost" id="btnInvoices">Invoices</button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
@@ -1627,12 +1627,13 @@ function reprintSale(s){
   suppressClearOnPrint=true;      // don't wipe the current in-progress basket
   printSale(s, true);
 }
+// ⟲ Reprint opens today's invoices at this store — from every device, newest
+// first — so the exact one is picked and printed as it was saved: same number,
+// same time, same lines. (It used to blindly reprint this device's latest sale,
+// which after another sale was the next invoice, not the one wanted.)
 function reprintLast(){
-  // The last sale rung up at this store on this device — what you want after a
-  // paper jam. The other store's docket is never what "reprint last" means.
-  const mine=load(LS.sales,[]).filter(s=>sameStore(s));
-  if(!mine.length){ alert('No sales to reprint at '+(currentStore?currentStore.name:'this store')+' yet.'); return; }
-  reprintSale(mine[mine.length-1]);
+  if(!currentStore){ alert('Pick a store first.'); return; }
+  openInvoices();
 }
 function toast(msg){
   const el=$('toast'); el.textContent=msg; el.classList.add('show');
@@ -1840,6 +1841,7 @@ function renderSearch(q){
 
 /* ---------------- previous invoices ---------------- */
 let invCache=[];       // sales for the selected date, as the site has them
+let invShown=[];       // the rows currently listed, in order (data-i indexes into this)
 let invScopeStore;     // undefined = the store that's open; an id = that store (Admin drill-down)
 async function openInvoices(day, storeId){
   invScopeStore = storeId;
@@ -1867,16 +1869,21 @@ function renderInvList(q){
   }).slice(0,300);
   const list=$('invList');
   if(!res.length){ list.innerHTML='<div class="r"><span class="muted">No invoices</span></div>'; return; }
-  list.innerHTML=res.map(s=>{ const d=new Date(s.ts); const v=s.voided;
-    return '<div class="r" data-no="'+esc(s.no)+'"'+(v?' style="opacity:.55"':'')+'>'+
+  invShown=res;
+  list.innerHTML=res.map((s,i)=>{ const d=new Date(s.ts); const v=s.voided;
+    return '<div class="r" data-i="'+i+'"'+(v?' style="opacity:.55"':'')+'>'+
       '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+' <span class="isku">'+
         d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+
         (s.customer?' · '+esc(s.customer):'')+(s.order==='pickup'?' · <b>Pick up later</b>':'')+'</span></span>'+
-      '<span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span></div>';
+      '<span style="display:flex;gap:8px;align-items:center"><span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span>'+
+      '<button class="ghost" data-reprint="'+i+'" title="Reprint this exact invoice">⟲ Reprint</button></span></div>';
   }).join('');
 }
-function showInvoiceDetail(no){
-  const s=invCache.find(x=>x.no===no) || load(LS.sales,[]).find(x=>x.no===no); if(!s) return;
+// The sale itself, matched on number AND time — a number alone could (on old
+// data) belong to two sales, and a reprint must be the exact one that was tapped.
+function sameSale(a, b){ return a && b && a.no===b.no && String(a.ts)===String(b.ts); }
+function showInvoiceDetail(ref){
+  const s=invCache.find(x=>sameSale(x,ref)) || load(LS.sales,[]).find(x=>sameSale(x,ref)); if(!s) return;
   const d=new Date(s.ts);
   let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
   h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+(s.contact?(' · '+esc(s.contact)):'')+' · Order: '+esc(orderLabel(s))+'</div>';
@@ -1897,7 +1904,7 @@ function showInvoiceDetail(no){
   h+='</div></fieldset>';
   $('invDetail').innerHTML=h;
   $('btnReprintOne').onclick=()=>reprintSale(s);
-  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s.no); } };
+  const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s); } };
 }
 
 /* ---------------- day takings ---------------- */
@@ -3500,7 +3507,11 @@ function bind(){
   $('closeInvoices').onclick=()=>{ $('invoicesModal').classList.remove('show'); focusScan(); };
   $('invSearch').addEventListener('input', e=>renderInvList(e.target.value));
   $('invDate').addEventListener('change', loadInvoices);
-  $('invList').addEventListener('click', e=>{ const r=e.target.closest('[data-no]'); if(r) showInvoiceDetail(r.dataset.no); });
+  $('invList').addEventListener('click', e=>{
+    const rp=e.target.closest('[data-reprint]');
+    if(rp){ e.stopPropagation(); const s=invShown[Number(rp.dataset.reprint)]; if(s) reprintSale(s); return; }
+    const r=e.target.closest('[data-i]'); if(r) showInvoiceDetail(invShown[Number(r.dataset.i)]);
+  });
 
   // day takings
   $('todayBox').onclick=openTakings;

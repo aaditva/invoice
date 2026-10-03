@@ -144,7 +144,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
-- **Reprint last** re-prints this store's most recent invoice (paper jams / cancelled print).
+- **⟲ Reprint** opens today's invoices at this store — from every device, newest first — and each
+  row has its own **⟲ Reprint** button. Tap the one you want and it prints exactly as it was saved:
+  same invoice number, time and lines. It never reprints "whatever came last".
 - Admin → **Export range CSV** gives your accountant a file covering both stores; Settings →
   **Export this device's CSV** dumps just the local copy.
 
