@@ -10,3 +10,10 @@
   from = "/api/catalog"
   to = "/.netlify/functions/catalog"
   status = 200
+
+# The offline worker must always be re-checked, or a new version of the till
+# could wait days to reach a device.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

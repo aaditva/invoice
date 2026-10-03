@@ -129,8 +129,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Pick the store first.** The till opens on two boxes — **South Melbourne** and **Roxy**.
   Tap one and that's the location this till is ringing up for; the one you used last on this
   device is outlined, so it's a single tap each morning. Nothing behind the screen can be
-  touched until a store is chosen. The header then shows the store next to the business name —
-  click it to switch (the sale in progress is cleared, since a basket belongs to one store).
+  touched until a store is chosen. The store's tag (e.g. **SM**) then shows on the **Invoices ▾**
+  button; open that menu and tap the store to switch (the sale in progress is cleared, since a
+  basket belongs to one store).
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
@@ -139,11 +140,11 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
   **Finalise — no print** to record the sale without printing (still numbered & logged).
-- **Invoices** (header) → search and view any past sale **for this store**, on any date;
+- **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
   open one to **reprint** it.
-- **Takings** (header, or click the Today tally) → this store's **total earnings** with a
+- **Admin ▾ → Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
-- **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
+- **Admin ▾ → Admin dashboard** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
 - **Pick up later** — set **Order → Pick up later** before finalising. The receipt then prints a
   **pick-up barcode** (Code 128) with its own unique code, e.g. `PUMGB4K2X17Q`. See
   [Pick up later](#pick-up-later) below.
@@ -303,7 +304,7 @@ it can't clash with a number another till gets.
 
 ### The Admin tab
 
-**Admin** in the header (also reachable from the opening screen, before picking a store):
+**Admin ▾ → Admin dashboard** in the header (also reachable from the opening screen, before picking a store):
 
 - **All stores**, or one store on its own.
 - **Today / This week / Last 7 days / This month / Last 30 days / This year**, or any From–To you type.
@@ -312,14 +313,14 @@ it can't clash with a number another till gets.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
-Admin is **password-protected**, asked for each time it opens, so a customer at the counter
-can't tap it and read the day's takings. The password is set in code only — `ADMIN_PIN`
-in `index.html` — and can't be changed from Settings. Set it to `''` to leave Admin open.
+Admin is **password-protected**, so a customer at the counter can't tap it and read the day's
+takings. The password is the Netlify environment variable **`ADMIN_PIN`** (Site configuration →
+Environment variables, then redeploy). It is **not** in `index.html`: the till sends what's typed
+to `/api/admin`, which checks it on the server. Without `ADMIN_PIN` set, nobody can log in.
 
-> This password sits in `index.html`, which a public site hands to anyone who asks for the
-> page. It's a lock on the counter, not a secret — so don't reuse a password from anywhere
-> else here. If you need Admin to be genuinely private, that means moving the check into
-> `sales.mjs` behind `SALES_TOKEN` rather than doing it in the browser.
+To change the password, change `ADMIN_PIN` on Netlify and redeploy (and the `ADMIN_PIN` line in
+the Google Sheet script). Devices still holding the old one are logged out the next time they
+open the till online.
 
 ### Renaming a store, or per-store details on the docket
 
@@ -347,7 +348,7 @@ The script finds today's date in column A of that year's tab and writes the tota
 Games column on that row. If the date isn't in the sheet, the day is skipped. The total leaves out voided sales and matches
 the Admin tab's figure.
 
-**Expenses.** Once logged in as Admin, a **💸 Expenses** button appears in the header (and in
+**Expenses.** Once logged in as Admin, a **💸 Expenses** entry appears in the header's **Admin ▾** menu (and in
 Admin). Pick the date and store, tap the notes and coins that went out — they add up — then
 press **Done** or **Enter**. Each expense is saved on the site (`/api/expenses`). The same hourly
 script writes each day's expenses total into the **Expenses** column, on the row for the date
@@ -355,7 +356,7 @@ the expense was for (it re-checks the last 14 days, so a late entry still lands 
 row). Days with no till expenses are left alone, so figures typed in by hand stay. Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
 script into Apps Script again.
 
-**Money Added.** A **💰 Money Added** button in the header is open to everyone (no login).
+**Money Added.** **Admin ▾ → 💰 Money Added** in the header is open to everyone (no login).
 Pick the date and store, tap **$2 / $4 / $10 / $20 / $50** (they add up) or type any amount
 under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 (`/api/money-added`) and the same hourly script writes each day's total into the sheet's
@@ -436,7 +437,7 @@ No button means nothing is missing a cost.
 - Tick **Show ones already costed here** to see (and fix) costs typed in this list.
 
 > Cost prices are now on the site, readable with the Admin password. Set **`ADMIN_PIN`** on
-> Netlify (the same value as `ADMIN_PIN` in `index.html` and in the sheet script) so `/api/costs`
+> Netlify (the same value as `ADMIN_PIN` in the sheet script) so `/api/costs`
 > refuses anyone without it. The till never shows cost prices at the counter or on a receipt.
 
 After pasting the updated script into Apps Script, run **setup** once — it adds the 5-minute,
@@ -511,11 +512,16 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 
 ## Admin login & sales totals
 
-- **🔒 Admin login** (header) asks for the Admin password once; the device then stays logged in
+- **Admin ▾ → 🔒 Login** (header) asks for the Admin password once; the device then stays logged in
   until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
   totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
-- The password is `ADMIN_PIN` in `index.html`. Optionally set the same value as the Netlify env var
-  **ADMIN_PIN** so the server also refuses box-list edits without it.
+- The password is the Netlify env var **ADMIN_PIN** — the site checks it, so it isn't in the page.
+  The server also refuses box-list edits, expenses and cost prices without it.
+- **⚠ N unsent** appears in the header only while sales rung up on this device haven't reached the
+  site (no wifi). They send themselves when the connection is back; tap it to try straight away.
+  It disappears once everything is sent.
+- **Offline reload.** The page keeps a copy of itself on the device (`sw.js`), so the till still
+  opens with no internet; sales made then queue up under **⚠ N unsent**.
 
 ## Open box (box → single packs)
 
