@@ -144,6 +144,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
+- **Pick up later** — set **Order → Pick up later** before finalising. The receipt then prints a
+  **pick-up barcode** (Code 128) with its own unique code, e.g. `PUMGB4K2X17Q`. See
+  [Pick up later](#pick-up-later) below.
 - **⟲ Reprint** opens today's invoices at this store — from every device, newest first — and each
   row has its own **⟲ Reprint** button. Tap the one you want and it prints exactly as it was saved:
   same invoice number, time and lines. It never reprints "whatever came last".
@@ -221,6 +224,29 @@ page: the text prints in a narrow strip and the printer feeds ~30 cm of blank ro
 each sale. `var()` inside `@page` fails the same way. Literal millimetres only.
 
 ---
+
+### Pick up later
+
+Every *Pick up later* sale gets a **pick-up code**: `PU` + the time in base 36 + two random
+characters. It's printed under the totals as a **Code 128 barcode** (with the code in text
+underneath), and stays with the sale forever. It's separate from the invoice number on purpose:
+a number can still change after printing (a clash is renamed `…-2`), the code never does.
+
+- **🛍 Pick ups** (header) lists this store's orders **waiting to be picked up** — from any day —
+  with the customer's name and phone, invoice number, number of items and price. The red badge
+  is how many are waiting. Search by name, phone, invoice # or item.
+- **Scan the barcode** on a customer's receipt — into the normal scan box, or the Pick ups search
+  box — and the tab opens with that order **highlighted**. A code from the other store says which
+  store it's at; one already collected says when.
+- **Tap the ✓** when the customer has collected it. It moves to **Picked up — last 7 days**
+  (with who ticked it and when) on every till. Tap the ✓ again to undo.
+- **Tap a row** to open its invoice (reprint, void). The invoice also shows *Waiting* or
+  *✓ Picked up*. Voiding a pick-up takes it off the list.
+- Pick-up orders rung up before this existed are found automatically (last 45 days) the first
+  time Pick ups is opened, and given a code, so reprinting one adds the barcode.
+- The receipt bridge prints the barcode itself (`GS k`), so **re-run the receipt printer
+  installer** once after updating. An older bridge still prints the docket, just without the
+  barcode, and the till says so.
 
 ## 6. Two stores, one record
 
@@ -467,7 +493,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 |------|-----------|
 | `index.html` | The till app — the only file you actually run. |
 | `netlify/functions/catalog.js` | Netlify catalogue proxy (holds the Squarespace key). |
-| `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs). |
+| `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs), plus the Pick up later list. |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |

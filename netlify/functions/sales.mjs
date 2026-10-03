@@ -25,6 +25,18 @@
  *
  *    GET  /api/sales?counter=1&store=ID  → { store, next }
  *
+ *    GET  /api/sales?pickups=1[&store=ID|all][&days=7]
+ *      → { store, open:[sale…], done:[sale…] }   the "Pick up later" orders.
+ *      open = not collected yet (any day); done = collected in the last
+ *      `days` days. The first read for a store also adopts pick-up orders
+ *      rung up before pick-up codes existed (last BACKFILL_DAYS days).
+ *
+ *    POST /api/sales?pickup=done         body = { store, code, done, day?, by? }
+ *      Tick (done:true) or untick (done:false) a pick-up. Writes
+ *      pickedUp / pickedUpAt / pickedUpDay / pickedUpBy onto the sale itself,
+ *      so every view of that invoice shows it. `day` is the till's local day
+ *      it was collected; untick needs the sale's pickedUpDay.
+ *
  *    GET  /api/sales?day=YYYY-MM-DD[&store=ID]
  *      → { day, store, sales:[...] }     one day, one store or all stores
  *
@@ -51,6 +63,12 @@
  *    counter/<store>                  { next } — the store's shared invoice
  *                                     counter. Bumped with a compare-and-swap,
  *                                     so two tills asking at once get two numbers.
+ *    pickup/<store>/open/<code>       { code, no, day, store, ts } — a pick-up
+ *                                     still waiting. Points at the sale blob.
+ *    pickup/<store>/done/<day>/<code> the same pointer once collected, filed
+ *                                     under the day it was collected so the
+ *                                     "recently collected" list stays cheap.
+ *    pickupscan/<store>               marker: older pick-ups already adopted.
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
@@ -63,10 +81,16 @@ const DEFAULT_STORE_NAME = 'South Melbourne';
 const MAX_RANGE_DAYS = 62;             // keeps an Admin range inside the function timeout
 const CONCURRENCY = 10;                // parallel blob reads
 const INDEX_V = 1;
+const PICKUP_RE = /^PU[0-9A-Z]{6,20}$/;  // the code printed as the pick-up barcode
+const BACKFILL_DAYS = 45;              // how far back to adopt pick-ups made before codes existed
+const MAX_DONE_DAYS = 31;
 
 // Local bookkeeping the till uses to track its own offline queue. It means
 // nothing once the sale is on the server, so it doesn't get stored.
 const LOCAL_ONLY = ['synced', 'stockAdjusted', 'restocked', 'stockItems'];
+// Collected-or-not lives on the server and only changes through ?pickup=done.
+// A till re-sending its own copy of a sale (a void) must not undo a tick.
+const PICKUP_STATE = ['pickedUp', 'pickedUpAt', 'pickedUpDay', 'pickedUpBy'];
 
 export default async (req) => {
   const headers = {
@@ -96,8 +120,10 @@ export const config = { path: '/api/sales' };
 /* ---------------- write ---------------- */
 
 async function handlePost(req, headers) {
-  const counter = new URL(req.url).searchParams.get('counter');
+  const sp = new URL(req.url).searchParams;
+  const counter = sp.get('counter');
   if (counter) return await handleCounter(req, headers, counter);
+  if (sp.get('pickup')) return await handlePickupDone(req, headers);
 
   let sale;
   try { sale = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
@@ -115,26 +141,177 @@ async function handlePost(req, headers) {
   const clean = { ...sale, no, day, store };
   if (store === DEFAULT_STORE && sale.store !== DEFAULT_STORE) clean.storeName = DEFAULT_STORE_NAME; // no store → South Melbourne
   for (const k of LOCAL_ONLY) delete clean[k];
+  for (const k of PICKUP_STATE) delete clean[k];
+  if (clean.pickupCode != null) {
+    clean.pickupCode = String(clean.pickupCode).trim().toUpperCase();
+    if (!PICKUP_RE.test(clean.pickupCode)) delete clean.pickupCode;
+  }
 
   const st = blobs();
   // A different sale already holds this number (two tills that counted on their
   // own, or one that was offline): file this one under the next free suffix
   // rather than overwrite it. Same ts = the same sale coming back (a void).
   let finalNo = no;
+  let prev = null;
   for (let i = 2; ; i++) {
     const there = await getJSON(st, saleKey(day, store, finalNo));
-    if (!there || String(there.ts) === String(clean.ts)) break;
+    if (!there) break;
+    if (String(there.ts) === String(clean.ts)) { prev = there; break; }
     if (i > 50) return json({ error: 'Invoice number ' + no + ' is taken.' }, 409, headers);
     finalNo = no + '-' + i;
   }
   clean.no = finalNo;
+  if (prev) {
+    for (const k of PICKUP_STATE) if (prev[k] !== undefined) clean[k] = prev[k];
+    if (!clean.pickupCode && prev.pickupCode) clean.pickupCode = prev.pickupCode;
+  }
+  // A pick-up from a till still running an older page arrives with no code.
+  if (clean.order === 'pickup' && !clean.pickupCode) clean.pickupCode = newPickupCode(Date.parse(clean.ts) || Date.now());
 
   // Sale blob first: once this lands the sale is recorded, whatever happens to the index.
   const res = await st.setJSON(saleKey(day, store, finalNo), clean);
   const etag = (res && res.etag) || null;
   await mergeIntoIndex(st, day, store, clean, etag);
+  await syncPickupPointer(st, clean);
 
-  return json({ ok: true, store, day, no: finalNo }, 200, headers);
+  return json({ ok: true, store, day, no: finalNo, pickupCode: clean.pickupCode || undefined }, 200, headers);
+}
+
+/* ---------------- pick up later ---------------- */
+
+// Keep the "still waiting" pointer in step with the sale: there while it's an
+// uncollected, un-voided pick-up, gone otherwise.
+async function syncPickupPointer(st, sale) {
+  if (sale.order !== 'pickup' || !sale.pickupCode) return;
+  const key = openKey(sale.store, sale.pickupCode);
+  try {
+    if (sale.voided || sale.pickedUp) await st.delete(key);
+    else await st.setJSON(key, pointerOf(sale));
+  } catch (e) { /* the sale itself is saved; the next re-POST or scan repairs this */ }
+}
+
+function pointerOf(sale) {
+  return { code: sale.pickupCode, no: sale.no, day: sale.day, store: sale.store, ts: sale.ts };
+}
+
+async function handlePickupDone(req, headers) {
+  let body = {};
+  try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
+  const store = slugStore(body && body.store);
+  const code = String((body && body.code) || '').trim().toUpperCase();
+  if (!PICKUP_RE.test(code)) return json({ error: 'Bad pick-up code.' }, 400, headers);
+  const done = !!(body && body.done);
+  const st = blobs();
+
+  let fromKey, ptr;
+  if (done) {
+    fromKey = openKey(store, code);
+    ptr = await getJSON(st, fromKey);
+    if (!ptr) {
+      // Already ticked (another till got there first)? Then that's fine.
+      const sale = await findPickupSale(st, store, code);
+      if (sale && sale.pickedUp) return json({ ok: true, sale }, 200, headers);
+      return json({ error: 'That pick-up isn\'t waiting any more.' }, 404, headers);
+    }
+  } else {
+    const dd = String((body && body.day) || '').trim();
+    if (!DAY_RE.test(dd)) return json({ error: 'Unticking needs the day it was collected.' }, 400, headers);
+    fromKey = doneKey(store, dd, code);
+    ptr = await getJSON(st, fromKey);
+    if (!ptr) return json({ error: 'That pick-up isn\'t marked collected.' }, 404, headers);
+  }
+
+  const sk = saleKey(ptr.day, store, ptr.no);
+  const sale = await getJSON(st, sk);
+  if (!sale) return json({ error: 'The invoice for that pick-up is missing.' }, 404, headers);
+
+  if (done) {
+    const day = DAY_RE.test(String(body.day || '')) ? String(body.day) : utcToday();
+    sale.pickedUp = true;
+    sale.pickedUpAt = new Date().toISOString();
+    sale.pickedUpDay = day;
+    if (body.by) sale.pickedUpBy = String(body.by).slice(0, 60); else delete sale.pickedUpBy;
+  } else {
+    for (const k of PICKUP_STATE) delete sale[k];
+  }
+  const res = await st.setJSON(sk, sale);
+  await mergeIntoIndex(st, sale.day, store, sale, (res && res.etag) || null);
+
+  // New pointer first, then drop the old one — never lose it in between.
+  const p = pointerOf(sale);
+  if (done) await st.setJSON(doneKey(store, sale.pickedUpDay, code), p);
+  else await st.setJSON(openKey(store, code), p);
+  try { await st.delete(fromKey); } catch (e) { /* a stray pointer is ignored on read */ }
+
+  return json({ ok: true, sale }, 200, headers);
+}
+
+// The sale a code belongs to, wherever its pointer is (open or done lately).
+async function findPickupSale(st, store, code) {
+  let ptr = await getJSON(st, openKey(store, code));
+  if (!ptr) {
+    try {
+      const l = await st.list({ prefix: 'pickup/' + store + '/done/' });
+      const hit = ((l && l.blobs) || []).find(b => String(b.key).endsWith('/' + code));
+      if (hit) ptr = await getJSON(st, hit.key);
+    } catch (e) { /* not found */ }
+  }
+  return ptr ? await getJSON(st, saleKey(ptr.day, store, ptr.no)) : null;
+}
+
+async function listPickups(storeFilter, doneDays) {
+  const st = blobs();
+  let listed;
+  try { listed = await st.list({ prefix: 'pickup/' + (storeFilter ? storeFilter + '/' : '') }); }
+  catch (e) { return { open: [], done: [] }; }
+  const since = shiftUtcDay(utcToday(), -(doneDays + 1));   // +1: the till's day can be ahead of UTC
+  const openKeys = [], doneKeys = [];
+  for (const b of (listed && listed.blobs) || []) {
+    const parts = String(b.key).split('/');           // pickup/<store>/open/<code> | pickup/<store>/done/<day>/<code>
+    if (parts[2] === 'open' && parts.length === 4) openKeys.push(b.key);
+    else if (parts[2] === 'done' && parts.length === 5 && parts[3] >= since) doneKeys.push(b.key);
+  }
+  const load = async key => {
+    const ptr = await getJSON(st, key);
+    if (!ptr || !ptr.no || !DAY_RE.test(String(ptr.day))) return null;
+    const sale = await getJSON(st, saleKey(ptr.day, slugStore(ptr.store), ptr.no));
+    return sale && !sale.voided && sale.order === 'pickup' ? sale : null;
+  };
+  const open = (await mapLimit(openKeys, CONCURRENCY, load)).filter(s => s && !s.pickedUp).sort(byTs);
+  const done = (await mapLimit(doneKeys, CONCURRENCY, load)).filter(s => s && s.pickedUp)
+    .sort((a, b) => String(b.pickedUpAt).localeCompare(String(a.pickedUpAt)));
+  return { open, done };
+}
+
+// Pick-up orders rung up before codes existed have no pointer. Adopt them once
+// per store: give each a code (so a reprint carries a barcode) and a pointer.
+async function adoptOldPickups(store) {
+  const st = blobs();
+  const mark = 'pickupscan/' + store;
+  if (await getJSON(st, mark)) return;
+  const today = utcToday();
+  const days = dayRange(shiftUtcDay(today, -BACKFILL_DAYS), shiftUtcDay(today, 1));
+  const perDay = await mapLimit(days, CONCURRENCY, d => readDay(d, store));
+  for (const list of perDay) {
+    for (const s of list) {
+      if (!s || s.order !== 'pickup' || s.voided || s.pickedUp) continue;
+      if (s.pickupCode && await getJSON(st, openKey(store, s.pickupCode))) continue;
+      const sale = { ...s };
+      if (!sale.pickupCode) {
+        sale.pickupCode = newPickupCode(Date.parse(sale.ts) || Date.now());
+        const res = await st.setJSON(saleKey(sale.day, store, sale.no), sale);
+        await mergeIntoIndex(st, sale.day, store, sale, (res && res.etag) || null);
+      }
+      await st.setJSON(openKey(store, sale.pickupCode), pointerOf(sale));
+    }
+  }
+  await st.setJSON(mark, { at: new Date().toISOString() });
+}
+
+// Same shape as the till's: PU + base-36 time + 2 random characters.
+function newPickupCode(t) {
+  const rnd = Math.floor(Math.random() * 1296).toString(36).padStart(2, '0');
+  return ('PU' + Math.floor(t).toString(36) + rnd).toUpperCase();
 }
 
 /* ---------------- the shared invoice counter ---------------- */
@@ -203,6 +380,13 @@ async function handleGet(req, headers) {
   if (storeParam && storeParam !== 'all') {
     store = slugStore(storeParam);
     if (!STORE_RE.test(store)) return json({ error: 'Bad store id.' }, 400, headers);
+  }
+
+  if (q.get('pickups')) {
+    const doneDays = Math.min(MAX_DONE_DAYS, Math.max(0, Math.floor(Number(q.get('days'))) || 7));
+    if (store) { try { await adoptOldPickups(store); } catch (e) { /* retried on the next read */ } }
+    const { open, done } = await listPickups(store, doneDays);
+    return json({ store: store || 'all', open, done }, 200, headers);
   }
 
   const from = (q.get('from') || '').trim();
@@ -393,6 +577,8 @@ function blobs() {
 function saleKey(day, store, no) { return 'sale/' + day + '/' + store + '/' + encodeURIComponent(no); }
 function indexKey(day, store) { return 'index/' + day + '/' + store; }
 function counterKey(store) { return 'counter/' + store; }
+function openKey(store, code) { return 'pickup/' + store + '/open/' + code; }
+function doneKey(store, day, code) { return 'pickup/' + store + '/done/' + day + '/' + code; }
 
 async function getJSON(st, key) {
   try { return await st.get(key, { type: 'json' }); } catch (e) { return null; }
@@ -415,6 +601,7 @@ function dayRange(from, to) {
 }
 
 function utcToday() { return new Date().toISOString().slice(0, 10); }
+function shiftUtcDay(day, n) { return new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10); }
 
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);

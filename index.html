@@ -314,6 +314,32 @@
   }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
+  /* ---------- Pick up later ---------- */
+  #btnPickups .badge{display:none;margin-left:6px;min-width:20px;padding:1px 7px;border-radius:999px;
+    background:var(--danger);color:#fff;font-size:12px;font-weight:700}
+  #btnPickups .badge.on{display:inline-block}
+  .pulist{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .pulist .pr{display:grid;grid-template-columns:1fr auto 52px;gap:12px;align-items:center;padding:12px 14px;
+    border-bottom:1px solid var(--line);cursor:pointer;transition:background .2s}
+  .pulist .pr:last-child{border-bottom:none}
+  .pulist .pr:hover{background:#f5f5f7}
+  .pulist .pr .who{font-weight:650}
+  .pulist .pr .meta{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .pulist .pr .amt{text-align:right;font-variant-numeric:tabular-nums}
+  .pulist .pr .amt b{display:block;font-size:16px}
+  .pulist .pr .amt span{font-size:12.5px;color:var(--muted)}
+  .pulist .pr.done{opacity:.6}
+  .pulist .pr.done .who{text-decoration:line-through}
+  .pulist .empty1{padding:18px;text-align:center;color:var(--muted)}
+  .tick{width:44px;height:44px;border-radius:999px;border:2px solid var(--line);background:#fff;padding:0;
+    font-size:22px;line-height:1;color:transparent;display:flex;align-items:center;justify-content:center}
+  .tick:hover{border-color:var(--ok);color:#b7dfc3}
+  .tick.on{background:var(--ok);border-color:var(--ok);color:#fff}
+  .tick:disabled{opacity:.5;cursor:wait}
+  .pulist .pr.hl{background:#fff4d6;box-shadow:inset 4px 0 0 #eda100;animation:puflash 1.1s ease-in-out 3}
+  @keyframes puflash{50%{background:#ffe08a}}
+  .puhead{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:4px 2px -6px}
+
   .receipt{display:none}
   @media print{
     /* The real @page rule is injected at print time by applyPageSize() into
@@ -333,6 +359,9 @@
     .receipt .tot{display:flex;justify-content:space-between}
     .receipt .tot.g{font-weight:700;font-size:14px}
     .receipt .sp{height:6px}
+    .receipt .bc{text-align:center;margin:6px 0 2px}
+    .receipt .bc svg{width:100%;max-width:64mm;height:14mm;display:block;margin:0 auto}
+    .receipt .bc .code{font-size:12px;letter-spacing:.12em;margin-top:2px}
   }
 </style>
 <!-- Rewritten before every print job by applyPageSize(). -->
@@ -349,6 +378,7 @@
     <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
     <button class="ghost" id="btnReprint" title="Pick the exact invoice to reprint">⟲ Reprint</button>
     <button class="ghost" id="btnInvoices">Invoices</button>
+    <button class="ghost" id="btnPickups" title="Orders waiting to be picked up — scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
     <button class="ghost" id="btnTakings">Takings</button>
     <button class="ghost" id="btnAdmin">Admin</button>
     <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
@@ -738,6 +768,21 @@
   </div>
 </div>
 
+<!-- PICK UP LATER MODAL -->
+<div class="modal" id="pickupsModal">
+  <div class="sheet wide">
+    <header><span class="store">Pick up later</span><span class="muted" id="puScope"></span><span class="spacer"></span>
+      <button class="ghost" id="puRefresh">⟳ Refresh</button><button class="ghost" id="closePickups">Close</button></header>
+    <div class="body">
+      <div class="field"><input id="puSearch" placeholder="Scan the pick-up barcode, or search name, phone, invoice #…" autocomplete="off" /></div>
+      <div class="puhead" id="puOpenHead">Waiting to be picked up</div>
+      <div class="pulist" id="puOpen"></div>
+      <div class="puhead">Picked up — last 7 days</div>
+      <div class="pulist" id="puDone"></div>
+    </div>
+  </div>
+</div>
+
 <!-- INVOICES / HISTORY MODAL -->
 <div class="modal" id="invoicesModal">
   <div class="sheet">
@@ -1006,6 +1051,7 @@ function selectStore(id){
   applySettings();
   todayTally = null; renderToday();
   refreshToday();                 // pull this store's day from the site's record
+  refreshPickupCount();
   flushUnsynced();
   focusScan();
 }
@@ -1151,6 +1197,7 @@ function addByBarcode(code){
   const key = normSku(code);
   if(!key) return;
   const p = skuMap.get(key);
+  if(!p && isPickupCode(key)){ beep(true); openPickups(key); return; }
   if(!p){ flash('Not found: '+code, false); beep(false); return; }
   addItem(p);
   const rem = remainingStock(p.sku);         // after adding this unit
@@ -1373,6 +1420,7 @@ async function commitSale(){
     paid, tendered, change, rounding, synced:false,
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
+  if(order==='pickup') sale.pickupCode = newPickupCode();
   // Everything above is a snapshot of the basket; only now wait on the site for
   // the number, so a scan during the wait can't slip into this sale.
   // The store tag keeps the two locations' numbers apart; the device tag is optional.
@@ -1388,6 +1436,7 @@ async function commitSale(){
   syncSale(sale);                 // write to the site's record (retried later if offline)
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
   refreshToday();                 // re-read the day from the site so both tills agree
+  if(order==='pickup') refreshPickupCount();
   return sale;
 }
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
@@ -1421,6 +1470,7 @@ async function syncSale(sale){
     // The site only renames a sale when another sale already had its number —
     // take the site's number so a reprint from any device matches.
     if(d && d.no && String(d.no)!==String(sale.no)) renameSale(sale, String(d.no));
+    if(d && d.pickupCode && !sale.pickupCode) adoptPickupCode(sale, String(d.pickupCode));
     markSynced(sale.no);
   }catch(e){ /* stays unsynced; flushUnsynced() retries */ }
 }
@@ -1431,6 +1481,12 @@ function renameSale(sale, no){
   sale.origNo = sale.origNo || old; sale.no = no;
   if(s){ s.origNo = s.origNo || old; s.no = no; save(LS.sales, sales); }
   toast('Invoice '+old+' is now '+no);
+}
+// Only a sale from before this till made pick-up codes comes back with one the site made up.
+function adoptPickupCode(sale, code){
+  sale.pickupCode = code;
+  const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===sale.no && x.ts===sale.ts);
+  if(s && !s.pickupCode){ s.pickupCode = code; save(LS.sales, sales); }
 }
 async function flushUnsynced(){
   if(!settings.shareUrl) return;
@@ -1689,8 +1745,9 @@ async function bridgeSend(payload){
    That keeps escpos-bridge.pl untouched, and so needs no re-install. */
 /* Bridges from before the order/contact fields only print `customer`; for those,
    fold the phone/email and order type onto that line so they still reach paper. */
+function bridgeHas(info, f){ return !!(info && Array.isArray(info.fields) && info.fields.includes(f)); }
 function saleForBridge(sale, info){
-  if(info && Array.isArray(info.fields) && info.fields.includes('order')) return sale;
+  if(bridgeHas(info, 'order')) return sale;
   const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)].filter(Boolean).join(' / ');
   return Object.assign({}, sale, {customer: extra});
 }
@@ -1711,7 +1768,10 @@ async function printSale(sale, isReprint){
     try{
       await bridgeSend({type:'receipt', store:storeForBridge(sale), sale:saleForBridge(sale, bridgeInfo),
                         options:{cut:true, drawer:true}});
-      toast('Printed ' + sale.no);
+      // A bridge installed before pick-up barcodes prints the docket without one.
+      if(sale.pickupCode && !bridgeHas(bridgeInfo, 'pickupCode'))
+        toast('Printed ' + sale.no + ' — no barcode: re-run the receipt printer installer');
+      else toast('Printed ' + sale.no);
       finishPrint(isReprint);
       return;
     }catch(e){
@@ -1811,11 +1871,168 @@ function buildReceipt(s){
   }else{
     h+='<div class="tot"><span>CARD</span><span>'+money(s.paid)+'</span></div>';
   }
+  if(s.order==='pickup' && s.pickupCode){
+    h+='<hr><div class="c b">PICK-UP BARCODE</div><div class="c" style="font-size:11px">Bring this receipt to collect your order</div>';
+    h+='<div class="bc">'+code128Svg(s.pickupCode)+'<div class="code">'+esc(s.pickupCode)+'</div></div>';
+  }
   h+='<hr>';
   if(settings.footer) h+='<div class="c">'+esc(settings.footer)+'</div>';
   h+='<div class="c" style="font-size:11px">'+dt+'</div>';
   $('receipt').innerHTML=h;
   applyPageSize();
+}
+
+/* ---------------- pick-up barcode ----------------
+   Every "Pick up later" sale gets its own code — PU + the time in base 36 + two
+   random characters, e.g. PUMGB4K2X17Q — printed on the receipt as a Code 128
+   barcode. It's separate from the invoice number on purpose: the number can still
+   change after printing (the site renames a clash to …-2), the code never does.
+   Scanning it anywhere on the till opens Pick ups with that order highlighted. */
+const PICKUP_RE = /^PU[0-9A-Z]{6,20}$/;
+function isPickupCode(v){ return PICKUP_RE.test(normSku(v)); }
+function newPickupCode(){
+  const rnd = Math.floor(Math.random()*1296).toString(36).padStart(2,'0');
+  return ('PU' + Date.now().toString(36) + rnd).toUpperCase();
+}
+// Code 128 set B: bar/space widths for symbol values 0–105, then the stop symbol.
+const C128 = ('212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 '+
+  '122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 '+
+  '212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 '+
+  '113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 '+
+  '431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 '+
+  '241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 '+
+  '131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112').split(' ');
+function code128Svg(text){
+  const vals=[104];                                   // Start B
+  for(const ch of String(text)){ const c=ch.charCodeAt(0); vals.push(c>=32&&c<=126 ? c-32 : 0); }
+  let sum=vals[0]; for(let i=1;i<vals.length;i++) sum+=vals[i]*i;
+  vals.push(sum%103, 106);                            // checksum, stop
+  const QUIET=10; let x=QUIET, rects='';
+  for(const v of vals){
+    const w=C128[v];
+    for(let i=0;i<w.length;i++){ const n=+w[i]; if(i%2===0) rects+='<rect x="'+x+'" y="0" width="'+n+'" height="40"/>'; x+=n; }
+  }
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+(x+QUIET)+' 40" preserveAspectRatio="none" shape-rendering="crispEdges" fill="#000">'+rects+'</svg>';
+}
+
+/* ---------------- pick up later ----------------
+   The site keeps every pick-up that hasn't been collected, from any day, plus the
+   ones collected in the last week. The tick marks one collected on the site, so
+   every till sees it at once. */
+let puData = { open:[], done:[] };
+let puHighlight = '';       // pick-up code to highlight after the next render
+function salesPickupParams(storeId){ return {pickups:'1', store: storeId || 'all'}; }
+// This device's own pick-ups the site hasn't received yet (offline), so they still show.
+function localPickups(storeId){
+  return load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && !s.synced && !s.pickedUp &&
+    (!storeId || String(s.store||'')===storeId));
+}
+async function fetchPickups(storeId){
+  const d = await fetchServerSales(salesPickupParams(storeId));
+  const local = localPickups(storeId);
+  if(d && Array.isArray(d.open)){
+    const have = new Set([...d.open, ...(d.done||[])].map(s=>s.pickupCode));
+    return { open: d.open.concat(local.filter(s=>!have.has(s.pickupCode))), done: d.done||[], online:true };
+  }
+  return { open: local, done: [], online:false, error: d && d.error };
+}
+async function refreshPickupCount(){
+  if(!currentStore || !settings.shareUrl) return renderPickupBadge(localPickups(currentStore && currentStore.id).length);
+  const d = await fetchPickups(currentStore.id);
+  renderPickupBadge(d.open.length);
+}
+function renderPickupBadge(n){ const b=$('puBadge'); b.textContent=n; b.classList.toggle('on', n>0); }
+
+async function openPickups(code){
+  if(!currentStore){ alert('Pick a store first.'); return; }
+  closeAllModals();
+  $('pickupsModal').classList.add('show');
+  $('puSearch').value='';
+  puHighlight = code ? normSku(code) : '';
+  await loadPickups();
+  if(code) await findScannedPickup(normSku(code));
+  setTimeout(()=>$('puSearch').focus(), 50);
+}
+async function loadPickups(){
+  $('puScope').textContent=' · '+currentStore.name+' · loading…';
+  const d = await fetchPickups(currentStore.id);
+  puData = d;
+  $('puScope').textContent=' · '+currentStore.name+(d.online?'':(' · '+(d.error||'site unreachable — this device only')));
+  renderPickupBadge(d.open.length);
+  renderPickups();
+}
+function puMatches(s, q){
+  if(!q) return true;
+  const hay=(s.no+' '+(s.customer||'')+' '+(s.contact||'')+' '+(s.contact||'').replace(/\s+/g,'')+' '+(s.pickupCode||'')+' '+
+    (s.items||[]).map(i=>i.name).join(' ')).toLowerCase();
+  return hay.includes(q);
+}
+function puRow(s, done){
+  const items=(s.items||[]).reduce((n,i)=>n+(Number(i.qty)||0),0);
+  const d=new Date(s.ts);
+  const when=d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+  const got = done && s.pickedUpAt ? ' · picked up '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(s.pickedUpBy?' by '+esc(s.pickedUpBy):'') : '';
+  return '<div class="pr'+(done?' done':'')+(puHighlight && s.pickupCode===puHighlight?' hl':'')+'" data-code="'+esc(s.pickupCode)+'">'+
+    '<div><div class="who">'+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
+      '<div class="meta">'+esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'—')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
+    '<div class="amt"><b>'+money(s.total)+'</b><span>'+items+' item'+(items===1?'':'s')+' · '+esc(s.method||'')+'</span></div>'+
+    '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up — tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
+  '</div>';
+}
+function renderPickups(){
+  const q=$('puSearch').value.trim().toLowerCase();
+  const filt = isPickupCode(q) ? '' : q;     // a scanned code highlights rather than filters
+  const open=puData.open.filter(s=>puMatches(s,filt));
+  const done=puData.done.filter(s=>puMatches(s,filt));
+  $('puOpenHead').textContent='Waiting to be picked up ('+puData.open.length+')';
+  $('puOpen').innerHTML = open.length ? open.map(s=>puRow(s,false)).join('') : '<div class="empty1">'+(filt?'No matches':'Nothing waiting to be picked up')+'</div>';
+  $('puDone').innerHTML = done.length ? done.map(s=>puRow(s,true)).join('') : '<div class="empty1">'+(filt?'No matches':'None in the last 7 days')+'</div>';
+  const hl=document.querySelector('#pickupsModal .pr.hl');
+  if(hl) hl.scrollIntoView({block:'center', behavior:'smooth'});
+}
+function puFind(code){ return puData.open.find(s=>s.pickupCode===code) || puData.done.find(s=>s.pickupCode===code) || null; }
+// A scanned barcode: highlight it here, or say where it is if it isn't this store's.
+async function findScannedPickup(code){
+  puHighlight = code;
+  const s = puFind(code);
+  if(s){
+    renderPickups();
+    if(s.pickedUp) toast('Already picked up'+(s.pickedUpAt?' · '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''));
+    else toast((s.customer||s.no)+' · '+money(s.total));
+    return;
+  }
+  const all = await fetchPickups('');
+  const other = [...all.open, ...all.done].find(x=>x.pickupCode===code);
+  renderPickups();
+  if(other) alert('That pick-up ('+other.no+(other.customer?', '+other.customer:'')+') is at '+storeLabel(other.store)+
+    (other.pickedUp?' and has already been picked up.':', not '+currentStore.name+'.'));
+  else { toast('No pick-up found for '+code); beep(false); }
+}
+async function tickPickup(code, btn){
+  const s=puFind(code); if(!s) return;
+  const undo=!!s.pickedUp;
+  if(undo && !confirm('Mark '+s.no+(s.customer?' ('+s.customer+')':'')+' as NOT picked up?')) return;
+  if(s.synced===false){                                // still only on this device — send it first
+    await syncSale(s);
+    if(!load(LS.sales,[]).some(x=>x.pickupCode===code && x.synced)){ alert('Can\'t reach the site — try again when back online.'); return; }
+  }
+  btn.disabled=true;
+  try{
+    const res=await fetch(salesUrl({pickup:'done'}), {method:'POST', headers:shareHeaders(true),
+      body:JSON.stringify({store:s.store||currentStore.id, code, done:!undo, day: undo ? s.pickedUpDay : todayKey(), by:$('servedBy').value||''})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ alert(d.error || ('Couldn\'t update — HTTP '+res.status)); btn.disabled=false; return; }
+    savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
+  }catch(e){ alert('Can\'t reach the site — try again when back online.'); btn.disabled=false; return; }
+  puHighlight='';
+  await loadPickups();
+  refreshPickupCount();
+}
+async function openPickupInvoice(code){
+  const s=puFind(code); if(!s) return;
+  await openInvoices(s.day, s.store||currentStore.id);
+  showInvoiceDetail(s);
+  const det=$('invDetail'); if(det.firstChild) det.scrollIntoView({block:'start', behavior:'smooth'});
 }
 
 /* ---------------- search ---------------- */
@@ -1897,6 +2114,8 @@ function showInvoiceDetail(ref){
   h+='<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(s.sub)+'</span></div>';
   h+='<div class="row"><span class="lbl">GST ('+s.rate+'%)</span><span class="money">'+money(s.gst)+'</span></div>';
   h+='<div class="row" style="font-weight:700"><span>Total ('+esc(s.method)+')</span><span class="money">'+money(s.total)+'</span></div>';
+  if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up'+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
+    (s.pickedUp ? '<b style="color:var(--ok)">✓ Picked up</b>'+(s.pickedUpAt?' '+esc(new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):'') : '<b style="color:#b26a00">Waiting</b>')+'</span></div>';
   if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+' — removed from takings; stock returned to Squarespace.</div>';
   h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
   h+='<button class="ghost" id="btnReprintOne">Reprint this invoice</button>';
@@ -3504,7 +3723,11 @@ function bind(){
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
 
   // previous invoices
-  $('closeInvoices').onclick=()=>{ $('invoicesModal').classList.remove('show'); focusScan(); };
+  $('closeInvoices').onclick=()=>{
+    $('invoicesModal').classList.remove('show');
+    if($('pickupsModal').classList.contains('show')){ loadPickups(); $('puSearch').focus(); }   // opened from Pick ups — a void may have changed it
+    else focusScan();
+  };
   $('invSearch').addEventListener('input', e=>renderInvList(e.target.value));
   $('invDate').addEventListener('change', loadInvoices);
   $('invList').addEventListener('click', e=>{
@@ -3512,6 +3735,23 @@ function bind(){
     if(rp){ e.stopPropagation(); const s=invShown[Number(rp.dataset.reprint)]; if(s) reprintSale(s); return; }
     const r=e.target.closest('[data-i]'); if(r) showInvoiceDetail(invShown[Number(r.dataset.i)]);
   });
+
+  // pick up later
+  $('btnPickups').onclick=()=>openPickups();
+  $('closePickups').onclick=()=>{ $('pickupsModal').classList.remove('show'); focusScan(); };
+  $('puRefresh').onclick=()=>{ puHighlight=''; loadPickups(); };
+  $('puSearch').addEventListener('input', renderPickups);
+  $('puSearch').addEventListener('keydown', e=>{
+    if(e.key!=='Enter') return;
+    e.preventDefault();
+    const v=normSku($('puSearch').value);
+    if(isPickupCode(v)){ $('puSearch').value=''; beep(true); findScannedPickup(v); }
+  });
+  ['puOpen','puDone'].forEach(id=>$(id).addEventListener('click', e=>{
+    const t=e.target.closest('[data-tick]');
+    if(t){ e.stopPropagation(); tickPickup(t.dataset.tick, t); return; }
+    const r=e.target.closest('[data-code]'); if(r) openPickupInvoice(r.dataset.code);
+  }));
 
   // day takings
   $('todayBox').onclick=openTakings;
@@ -3548,7 +3788,7 @@ function bind(){
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ if(!anyModalOpen()) refreshToday(); }, 60000);
+  setInterval(()=>{ if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
 
   // Nothing is usable until a store is picked. The one last used here is
   // highlighted, so opening up in the morning is a single tap.
