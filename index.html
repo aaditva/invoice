@@ -2,7 +2,7 @@
 <html lang="en-AU">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Store Till &amp; Tax Invoice</title>
 <style>
   :root{
@@ -138,6 +138,8 @@
   .ddmenu > button:hover{background:#f5f5f7}
   .ddmenu > button.storechip{display:flex;justify-content:space-between;background:#e8f1fd}
   .ddmenu > button.storechip:hover{background:#dbe9fc}
+  .dd .ddlock{margin-left:6px;font-size:12px}
+  .ddsep{border-top:1px solid var(--line);margin:4px 0}
   .ddlbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 12px 2px;border-top:1px solid var(--line);margin-top:4px}
 
   /* ---------- Store gate (shown before the till opens) ---------- */
@@ -192,7 +194,7 @@
   .cashpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
     background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
   #btnExpenses{display:none}
-  #btnExpenses.on{display:inline-flex}
+  #btnExpenses.on{display:block}
   .addpad{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
   .addpad button{padding:18px 6px;font-size:20px;font-weight:700;position:relative;background:#e6f4ea;color:#0b5d24;border-radius:8px}
   .addpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
@@ -403,11 +405,18 @@
       </div>
     </div>
     <button class="ghost" id="btnPickups" title="Orders waiting to be picked up — scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
-    <button class="ghost" id="btnTakings">Takings</button>
-    <button class="ghost" id="btnAdmin">Admin</button>
-    <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
-    <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
-    <button class="ghost" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
+    <!-- Admin drop-down: takings, the dashboard, cash in/out and the admin login -->
+    <div class="dd" id="admMenu">
+      <button class="ghost" id="btnAdminMenu" aria-haspopup="menu" aria-expanded="false" title="Takings, Admin, money in/out, login">Admin<span class="ddlock" id="hAdminLock">🔒</span><span class="caret">▾</span></button>
+      <div class="ddmenu" id="admMenuList" role="menu">
+        <button role="menuitem" id="btnTakings">🧮 Takings</button>
+        <button role="menuitem" id="btnAdmin">📊 Admin dashboard</button>
+        <button role="menuitem" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
+        <button role="menuitem" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
+        <div class="ddsep"></div>
+        <button role="menuitem" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
+      </div>
+    </div>
     <span class="spacer"></span>
     <div class="today" id="todayBox" title="Click for full day takings"></div>
     <button class="ghost" id="btnSettings" title="Settings">⚙︎</button>
@@ -913,6 +922,8 @@ function renderAuth(){
   b.textContent = on ? 'Log out' : '🔒 Login';
   b.classList.toggle('in', on);
   $('btnExpenses').classList.toggle('on', on);
+  $('hAdminLock').textContent = on ? '🔓' : '🔒';
+  $('btnAdminMenu').title = on ? 'Admin — logged in on this device' : 'Takings, Admin, money in/out, login';
   renderToday();
   if(on) refreshToday();
 }
@@ -1085,11 +1096,15 @@ function switchStore(){
   clearSale();
   openGate();
 }
-function toggleInvMenu(open){
-  const m=$('invMenu'); open = open===undefined ? !m.classList.contains('open') : !!open;
+// Header drop-downs (Invoices ▾, Admin ▾). Opening one closes the other.
+function toggleMenu(id, open){
+  const m=$(id); open = open===undefined ? !m.classList.contains('open') : !!open;
+  document.querySelectorAll('.dd.open').forEach(d=>{ if(d!==m){ d.classList.remove('open'); d.querySelector('[aria-expanded]').setAttribute('aria-expanded', false); } });
   m.classList.toggle('open', open);
-  $('btnInvoices').setAttribute('aria-expanded', open);
+  m.querySelector('[aria-expanded]').setAttribute('aria-expanded', open);
 }
+function closeMenus(){ document.querySelectorAll('.dd.open').forEach(d=>toggleMenu(d.id, false)); }
+function toggleInvMenu(open){ toggleMenu('invMenu', open); }
 function closeAllModals(){
   document.querySelectorAll('.modal.show').forEach(m=>{ if(m.id!=='gateModal') m.classList.remove('show'); });
 }
@@ -3647,8 +3662,11 @@ function bind(){
   $('btnReprint').onclick=reprintLast;
   $('btnInvoices').onclick=e=>{ e.stopPropagation(); toggleInvMenu(); };
   $('mnuInvoices').onclick=()=>{ toggleInvMenu(false); openInvoices(); };
-  document.addEventListener('click', e=>{ if(!e.target.closest('#invMenu')) toggleInvMenu(false); });
-  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('invMenu').classList.contains('open')){ toggleInvMenu(false); focusScan(); } });
+  $('btnAdminMenu').onclick=e=>{ e.stopPropagation(); toggleMenu('admMenu'); };
+  // Picking anything in a menu closes it; so does a click outside, or Esc.
+  document.querySelectorAll('.ddmenu').forEach(m=>m.addEventListener('click', e=>{ if(e.target.closest('button')) closeMenus(); }));
+  document.addEventListener('click', e=>{ if(!e.target.closest('.dd')) closeMenus(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.querySelector('.dd.open')){ closeMenus(); focusScan(); } });
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else if(requireAdmin()) toast('Logged in'); };

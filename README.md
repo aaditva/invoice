@@ -142,9 +142,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
   **Finalise — no print** to record the sale without printing (still numbered & logged).
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
   open one to **reprint** it.
-- **Takings** (header, or click the Today tally) → this store's **total earnings** with a
+- **Admin ▾ → Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
-- **Admin** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
+- **Admin ▾ → Admin dashboard** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
 - **Pick up later** — set **Order → Pick up later** before finalising. The receipt then prints a
   **pick-up barcode** (Code 128) with its own unique code, e.g. `PUMGB4K2X17Q`. See
   [Pick up later](#pick-up-later) below.
@@ -304,7 +304,7 @@ it can't clash with a number another till gets.
 
 ### The Admin tab
 
-**Admin** in the header (also reachable from the opening screen, before picking a store):
+**Admin ▾ → Admin dashboard** in the header (also reachable from the opening screen, before picking a store):
 
 - **All stores**, or one store on its own.
 - **Today / This week / Last 7 days / This month / Last 30 days / This year**, or any From–To you type.
@@ -348,7 +348,7 @@ The script finds today's date in column A of that year's tab and writes the tota
 Games column on that row. If the date isn't in the sheet, the day is skipped. The total leaves out voided sales and matches
 the Admin tab's figure.
 
-**Expenses.** Once logged in as Admin, a **💸 Expenses** button appears in the header (and in
+**Expenses.** Once logged in as Admin, a **💸 Expenses** entry appears in the header's **Admin ▾** menu (and in
 Admin). Pick the date and store, tap the notes and coins that went out — they add up — then
 press **Done** or **Enter**. Each expense is saved on the site (`/api/expenses`). The same hourly
 script writes each day's expenses total into the **Expenses** column, on the row for the date
@@ -356,7 +356,7 @@ the expense was for (it re-checks the last 14 days, so a late entry still lands 
 row). Days with no till expenses are left alone, so figures typed in by hand stay. Add an `Expenses` heading in row 1 if the tab doesn't have one, and paste the updated
 script into Apps Script again.
 
-**Money Added.** A **💰 Money Added** button in the header is open to everyone (no login).
+**Money Added.** **Admin ▾ → 💰 Money Added** in the header is open to everyone (no login).
 Pick the date and store, tap **$2 / $4 / $10 / $20 / $50** (they add up) or type any amount
 under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 (`/api/money-added`) and the same hourly script writes each day's total into the sheet's
@@ -512,7 +512,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 
 ## Admin login & sales totals
 
-- **🔒 Admin login** (header) asks for the Admin password once; the device then stays logged in
+- **Admin ▾ → 🔒 Login** (header) asks for the Admin password once; the device then stays logged in
   until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
   totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
 - The password is `ADMIN_PIN` in `index.html`. Optionally set the same value as the Netlify env var
