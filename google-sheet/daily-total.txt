@@ -291,6 +291,9 @@ function updateProducts() {
     // The first fill of an empty tab isn't "new", so it gets no Added date.
     const added = n ? Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd') : '';
     sheet.getRange(2, 11, k, 1).setValues(fresh.map(() => [added]));
+    // Inserting at row 2 shifts the column formulas' A2:A down to A3:A etc.,
+    // misaligning margins with their rows — put them back on row 2.
+    setMarginFormulas(sheet);
     console.log('New products: ' + k);
   }
   productFormats(sheet);
@@ -305,6 +308,16 @@ function productFormats(sheet) {
   sheet.getRange(2, 7, max - 1, 1).setNumberFormat('$#,##0.00');
   sheet.getRange(2, 8, max - 1, 1).setNumberFormat('0.0%');
   sheet.getRange(2, 9, max - 1, 2).setNumberFormat('$#,##0.00');
+}
+
+// Column-wide Margin / Stock value formulas in G1:J1, starting at row 2.
+function setMarginFormulas(sheet) {
+  sheet.getRange(1, 7, 1, 4).setFormulas([[
+    '={"Margin $";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(E2:E=""),"",D2:D-E2:E))}',
+    '={"Margin %";ARRAYFORMULA(IFERROR(IF((A2:A="")+(D2:D="")+(E2:E="")+(D2:D=0),"",(D2:D-E2:E)/D2:D),""))}',
+    '={"Stock value (cost)";ARRAYFORMULA(IF((A2:A="")+(E2:E="")+(F2:F=""),"",E2:E*F2:F))}',
+    '={"Stock value (retail)";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(F2:F=""),"",D2:D*F2:F))}',
+  ]]);
 }
 
 // One-off look & layout for the Products tab: coloured header, margin
@@ -322,12 +335,7 @@ function styleProducts(sheet) {
   if (last > 1) sheet.getRange(2, 7, last - 1, 4).clearContent();
   sheet.getRange(1, 1, 1, 6).setValues([PRODUCT_HEADS.slice(0, 6)]);
   sheet.getRange(1, 11).setValue(PRODUCT_HEADS[10]);
-  sheet.getRange(1, 7, 1, 4).setFormulas([[
-    '={"Margin $";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(E2:E=""),"",D2:D-E2:E))}',
-    '={"Margin %";ARRAYFORMULA(IFERROR(IF((A2:A="")+(D2:D="")+(E2:E="")+(D2:D=0),"",(D2:D-E2:E)/D2:D),""))}',
-    '={"Stock value (cost)";ARRAYFORMULA(IF((A2:A="")+(E2:E="")+(F2:F=""),"",E2:E*F2:F))}',
-    '={"Stock value (retail)";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(F2:F=""),"",D2:D*F2:F))}',
-  ]]);
+  setMarginFormulas(sheet);
 
   const head = sheet.getRange(1, 1, 1, w);
   head.setBackground(HEAD_BG).setFontColor(HEAD_INK).setFontWeight('bold')
