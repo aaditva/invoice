@@ -343,12 +343,13 @@ fixed internal id, so history follows the rename.
 > sale that still arrives with no store is filed under South Melbourne too.
 
 ### Weekly backup to Google Drive (Sundays)
-The same sheet script (`google-sheet/daily-total.gs`) makes a spreadsheet called **Till Backup**
-in your Google Drive, and every **Sunday night** rewrites it with everything the site holds:
-every sale and refund (both stores, since `BACKUP_FROM`), each item sold, expenses, money added,
-website cost prices, the box → pack list and a copy of the Products tab. Paste in the new script,
-then run **setup()** once to add the Sunday trigger (it asks for Drive access the first time).
-**🧾 Till → Back up now** runs it straight away; the backup's **About** tab shows when it last ran.
+A separate spreadsheet, **Till Backup**, in your Google Drive holds a full copy of the till. Its
+own script (`google-sheet/backup.gs`) rewrites it every **Sunday night** with everything the
+site holds: every sale and refund (both stores, since `BACKUP_FROM`), each item sold, expenses,
+money added, website cost prices, the box → pack list and a copy of the main sheet's Products
+tab. Paste the script into Till Backup → **Extensions → Apps Script**, type in `ADMIN_PIN`, and
+run **setup()** once. **🧾 Backup → Back up now** runs it any time; the **About** tab shows
+when it last ran.
 
 ### Daily total into a Google Sheet (hourly)
 `google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
