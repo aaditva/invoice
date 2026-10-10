@@ -541,7 +541,8 @@ async function readIndex(st, key) {
 }
 
 /* ---------------- totals ----------------
-   Mirrors aggregate() in index.html — voided sales don't count, cash is the
+   Mirrors aggregate() in index.html — voided sales don't count, refunds
+   (kind:'refund') are negative, a split counts its cash and card parts, cash is the
    5c-rounded amount actually taken, card is the exact total. Keep the two in
    step: the till aggregates single days itself and trusts these for a range. */
 
@@ -550,13 +551,14 @@ function aggregate(sales) {
   let cash = 0, card = 0, gst = 0, sub = 0;
   for (const s of live) {
     const total = num(s.total);
-    if (s.method === 'cash') cash += (s.paid != null ? num(s.paid) : total);
+    if (s.method === 'split') { cash += num(s.cashPaid); card += num(s.cardPaid); }
+    else if (s.method === 'cash') cash += (s.paid != null ? num(s.paid) : total);
     else card += total;
     gst += num(s.gst);
     sub += num(s.sub);
   }
   cash = r2(cash); card = r2(card);
-  return { count: live.length, cash, card, gst: r2(gst), sub: r2(sub), total: r2(cash + card) };
+  return { count: live.filter(s => s.kind !== 'refund').length, cash, card, gst: r2(gst), sub: r2(sub), total: r2(cash + card) };
 }
 
 function addAgg(a, b) {

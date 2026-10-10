@@ -151,7 +151,8 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   header(d, store);
 
   d.ln(rule());
-  d.raw(CMD.alignCentre).raw(CMD.boldOn).ln('TAX INVOICE').raw(CMD.boldOff).raw(CMD.alignLeft);
+  d.raw(CMD.alignCentre).raw(CMD.boldOn).ln(sale.kind === 'refund' ? 'REFUND - ADJUSTMENT NOTE' : 'TAX INVOICE').raw(CMD.boldOff).raw(CMD.alignLeft);
+  if (sale.kind === 'refund') d.ln('Refund of: ' + ascii(sale.refundOf || ''));
 
   const when = new Date(sale.ts || Date.now());
   d.ln(pair(sale.no || '', when.toLocaleDateString('en-AU') + ' ' +
@@ -176,8 +177,16 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   d.ln('Total price includes GST ' + money(sale.gst));
   d.ln();
 
-  const cash = sale.method === 'cash';
-  if (cash){
+  const cash = sale.method === 'cash' || sale.method === 'split';
+  if (sale.kind === 'refund'){
+    if (sale.rounding) d.ln(pair('Rounding', (sale.rounding > 0 ? '+' : '') + money(sale.rounding)));
+    d.raw(CMD.boldOn).ln(pair('REFUNDED TO ' + (sale.method === 'cash' ? 'CASH' : 'CARD'), money(-sale.paid))).raw(CMD.boldOff);
+  } else if (sale.method === 'split'){
+    d.ln(pair('CARD', money(sale.cardPaid)));
+    if (sale.rounding) d.ln(pair('Cash rounding', (sale.rounding > 0 ? '+' : '') + money(sale.rounding)));
+    d.ln(pair('CASH', money(sale.tendered != null ? sale.tendered : sale.cashPaid)));
+    if (sale.change != null) d.ln(pair('Change', money(sale.change)));
+  } else if (cash){
     if (sale.rounding) d.ln(pair('Rounding', (sale.rounding > 0 ? '+' : '') + money(sale.rounding)));
     d.ln(pair('Rounded total', money(sale.paid)));
     d.ln(pair('CASH', money(sale.tendered != null ? sale.tendered : sale.paid)));
@@ -252,7 +261,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode'] }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'split', 'refund'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');

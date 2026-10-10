@@ -78,7 +78,7 @@
   .row .lbl{color:var(--muted)}
   .row.total{font-size:26px;font-weight:700;padding-top:8px;border-top:1px solid var(--line);margin-top:2px}
   .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
-  .paybtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .paybtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .paybtns button{padding:16px;font-size:16px;font-weight:600;border:2px solid transparent}
   .paybtns button.cash{background:#e9f7ef;color:var(--cash)}
   .paybtns button.card{background:#e8f1fd;color:var(--card)}
@@ -514,7 +514,13 @@
           <div class="paybtns">
             <button class="cash" id="payCash">Cash</button>
             <button class="card" id="payCard">Card</button>
+            <button class="card" id="paySplit">Split</button>
           </div>
+        </div>
+
+        <div class="cashbox" id="splitBox" style="display:none">
+          <div class="field"><label for="splitCard">Paid by card</label><input id="splitCard" inputmode="decimal" placeholder="0.00" autocomplete="off" /></div>
+          <div class="row"><span class="lbl">Rest in cash</span><span class="money b" id="splitCash">$0.00</span></div>
         </div>
 
         <div class="cashbox" id="cashBox" style="display:none">
@@ -1022,7 +1028,7 @@ function loadSettings(){
   s.v = 2;
   return s;
 }
-function money(n){ return settings.currency + (Math.round((n+Number.EPSILON)*100)/100).toFixed(2); }
+function money(n){ const v=Math.round((Math.abs(n)+Number.EPSILON)*100)/100; return (n<0 && v>0?'-':'') + settings.currency + v.toFixed(2); }
 function round2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
 function round5(n){ return Math.round(n*20)/20; }                 // nearest 0.05
 function normSku(s){ return String(s==null?'':s).trim().toUpperCase().replace(/\s+/g,''); }
@@ -1327,7 +1333,7 @@ function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(
 function removeItem(i){ basket.splice(i,1); render(); }
 function clearSale(){ basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
-  $('tender').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
+  $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
 
 /* ---------------- totals ---------------- */
 function totals(){
@@ -1401,10 +1407,14 @@ function render(){
   $('customerHint').textContent = t.total>=1000 ? '(required — sale is $1,000+)' : '(optional)';
 
   // cash box
-  if(method==='cash'){
-    const ct=round5(t.total);
+  if(method==='split'){
+    const sc=splitParts(t);
+    $('splitCash').textContent=money(sc.cash);
+  }
+  if(method==='cash' || method==='split'){
+    const ct=round5(cashDue(t));
     $('cashTotal').textContent=money(ct);
-    const adj=round2(ct-t.total);
+    const adj=round2(ct-cashDue(t));
     $('roundLbl').textContent = adj===0?'Rounding':'Rounding ('+(adj>0?'+':'')+money(adj).replace(settings.currency,settings.currency)+')';
     $('roundAdj').textContent = (adj>0?'+':'')+money(adj);
     const tender=parseFloat($('tender').value);
@@ -1414,11 +1424,21 @@ function render(){
   }
   $('payCash').classList.toggle('sel', method==='cash');
   $('payCard').classList.toggle('sel', method==='card');
-  $('cashBox').style.display = method==='cash'?'flex':'none';
+  $('paySplit').classList.toggle('sel', method==='split');
+  $('splitBox').style.display = method==='split'?'flex':'none';
+  $('cashBox').style.display = (method==='cash'||method==='split')?'flex':'none';
 
   updateFinalizeState();
   renderToday();
 }
+// Split payment: the card part is typed in, the rest is cash (rounded to 5c like any cash).
+function splitParts(t){
+  const card=round2(parseFloat($('splitCard').value)||0);
+  const cash=round2(t.total-card);
+  return {card, cash, ok: card>0 && cash>0};
+}
+// What the cash drawer is owed: the whole total, or the cash part of a split.
+function cashDue(t){ return method==='split' ? Math.max(0, splitParts(t).cash) : t.total; }
 function renderQuickTender(ct){
   const wrap=$('quickTender'); wrap.innerHTML='';
   const notes=[ct, Math.ceil(ct/5)*5, Math.ceil(ct/10)*10, Math.ceil(ct/20)*20, Math.ceil(ct/50)*50];
@@ -1435,9 +1455,10 @@ function updateFinalizeState(){
   else if(!$('servedBy').value) msg='Select who served the customer.';
   else if(!method) msg='Choose Cash or Card.';
   else if(t.total>=1000 && !$('customer').value.trim()) { msg='Enter customer name/ABN (sale is $1,000+).'; ok=false; }
-  else if(method==='cash'){
-    const ct=round5(t.total), tender=parseFloat($('tender').value);
-    if(isFinite(tender) && tender<ct){ msg='Cash received is less than the total.'; ok=false; }
+  else if(method==='split' && !splitParts(t).ok){ msg='Enter the card part of the split — more than $0 and less than the total.'; ok=false; }
+  else if(method==='cash' || method==='split'){
+    const ct=round5(cashDue(t)), tender=parseFloat($('tender').value);
+    if(isFinite(tender) && tender<ct){ msg='Cash received is less than the '+(method==='split'?'cash part.':'total.'); ok=false; }
   }
   // Warn-but-allow: flag any line selling more than Squarespace shows in stock, but never block.
   if(ok && !msg){
@@ -1497,14 +1518,17 @@ async function commitSale(){
   if(!currentStore) return null;          // no sale exists outside a store
   if(!basket.length || !method || !$('servedBy').value) return null;
   if(t.total>=1000 && !$('customer').value.trim()) return null;
-  if(method==='cash'){ const tv=parseFloat($('tender').value); if(isFinite(tv) && tv<round5(t.total)) return null; }
+  if(method==='split' && !splitParts(t).ok) return null;
+  if(method==='cash' || method==='split'){ const tv=parseFloat($('tender').value); if(isFinite(tv) && tv<round5(cashDue(t))) return null; }
   const servedBy=$('servedBy').value;
   const customer=$('customer').value.trim();
   const contact=$('contact').value.trim();
   const order=$('orderType').value==='pickup' ? 'pickup' : 'now';
-  let paid=t.total, tendered=null, change=null, rounding=0;
-  if(method==='cash'){
-    const ct=round5(t.total); rounding=round2(ct-t.total); paid=ct;
+  let paid=t.total, tendered=null, change=null, rounding=0, cardPaid=null, cashPaid=null;
+  if(method==='cash' || method==='split'){
+    const due=cashDue(t), ct=round5(due); rounding=round2(ct-due);
+    if(method==='split'){ cardPaid=splitParts(t).card; cashPaid=ct; paid=round2(cardPaid+cashPaid); }
+    else paid=ct;
     const tv=parseFloat($('tender').value);
     if(isFinite(tv)){ tendered=round2(tv); change=round2(Math.max(0,tv-ct)); }
   }
@@ -1522,6 +1546,7 @@ async function commitSale(){
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
     sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
     paid, tendered, change, rounding, synced:false,
+    ...(method==='split' ? {cardPaid, cashPaid} : {}),
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
   if(order==='pickup') sale.pickupCode = newPickupCode();
@@ -1654,7 +1679,7 @@ function markRestocked(no){
 // PUT the stock back in Squarespace for a voided sale (increment). Distinct idemKey from the sale's
 // decrement, and only while restocked===false → exactly once.
 async function restockInventory(sale){
-  if(!sale || !sale.voided || sale.restocked) return;
+  if(!sale || !(sale.voided || sale.kind==='refund') || sale.restocked) return;
   const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
   if(!items.length){ markRestocked(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
@@ -1666,7 +1691,7 @@ async function restockInventory(sale){
 }
 async function flushRestocks(){
   if(!inventoryUrl()) return;
-  for(const s of load(LS.sales,[])){ if(s.voided && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
+  for(const s of load(LS.sales,[])){ if((s.voided || s.kind==='refund') && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
 }
 // Void a sale (immediate refund): drops it from takings, puts the stock back, keeps a voided record.
 // `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till isn't in this
@@ -1688,6 +1713,8 @@ function voidSale(no, ref){
     sales.push(s);
   }
   if(s.voided) return;
+  if(s.kind==='refund'){ alert('A refund can’t be voided.'); return; }
+  if(Object.keys(s.refunded||{}).length){ alert(s.no+' already has items refunded — use “Refund items” for the rest instead of voiding it.'); return; }
   if(!confirm('Void '+s.no+' ('+money(s.total)+')?\nThis removes it from takings and returns the stock to Squarespace.')) return;
   s.voided=true; s.voidedAt=new Date().toISOString();
   const wasDecremented = s.stockAdjusted===true && (s.stockItems||[]).length;
@@ -1771,11 +1798,16 @@ async function rangeSales(from, to, storeId, withSales){
   return await fetchServerSales(p);
 }
 function aggregate(sales){
-  const live=(sales||[]).filter(s=>!s.voided);   // voided/refunded sales don't count
+  const live=(sales||[]).filter(s=>!s.voided);   // voided sales don't count
   let cash=0, card=0, gst=0, sub=0;
-  live.forEach(s=>{ if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total; gst+=s.gst; sub+=s.sub; });
+  // Split sales count their cash and card parts; refunds (kind:'refund') are negative and take away.
+  live.forEach(s=>{
+    if(s.method==='split'){ cash+=Number(s.cashPaid)||0; card+=Number(s.cardPaid)||0; }
+    else if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total;
+    gst+=s.gst; sub+=s.sub;
+  });
   cash=round2(cash); card=round2(card);
-  return {count:live.length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
+  return {count:live.filter(s=>s.kind!=='refund').length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
 }
 let finalizing=false;   // a number is being fetched — ignore a second tap
 async function finalizeSale(doPrint){
@@ -1864,6 +1896,12 @@ async function bridgeSend(payload){
    fold the phone/email and order type onto that line so they still reach paper. */
 function bridgeHas(info, f){ return !!(info && Array.isArray(info.fields) && info.fields.includes(f)); }
 function saleForBridge(sale, info){
+  // A bridge from before split payments / refunds: say it on the customer line instead.
+  if((sale.method==='split' && !bridgeHas(info,'split')) || (sale.kind==='refund' && !bridgeHas(info,'refund'))){
+    const note = sale.kind==='refund' ? 'REFUND of '+sale.refundOf+' to '+sale.method
+               : 'SPLIT: card '+money(sale.cardPaid)+' + cash '+money(sale.cashPaid);
+    sale=Object.assign({}, sale, {customer:[note, sale.customer].filter(Boolean).join(' / ')});
+  }
   if(bridgeHas(info, 'order')) return sale;
   const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)].filter(Boolean).join(' / ');
   return Object.assign({}, sale, {customer: extra});
@@ -1959,7 +1997,8 @@ function buildReceipt(s){
   if(st.phone)    h+='<div class="c">'+esc(st.phone)+'</div>';
   if(st.abn)      h+='<div class="c">ABN '+esc(st.abn)+'</div>';
   h+='<hr>';
-  h+='<div class="c b">TAX INVOICE</div>';
+  h+='<div class="c b">'+(s.kind==='refund'?'REFUND — ADJUSTMENT NOTE':'TAX INVOICE')+'</div>';
+  if(s.kind==='refund') h+='<div>Refund of: '+esc(s.refundOf)+'</div>';
   h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
   h+='<div>Served by: '+esc(s.servedBy)+'</div>';
   if(s.customer) h+='<div>Customer: '+esc(s.customer)+'</div>';
@@ -1980,7 +2019,15 @@ function buildReceipt(s){
   h+='<div class="tot g"><span>TOTAL</span><span>'+money(s.total)+'</span></div>';
   h+='<div style="font-size:11px">Total price includes GST '+money(s.gst)+'</div>';
   h+='<div class="sp"></div>';
-  if(s.method==='cash'){
+  if(s.kind==='refund'){
+    if(s.rounding) h+='<div class="tot"><span>Rounding</span><span>'+(s.rounding>0?'+':'')+money(s.rounding)+'</span></div>';
+    h+='<div class="tot b"><span>REFUNDED TO '+(s.method==='cash'?'CASH':'CARD')+'</span><span>'+money(-s.paid)+'</span></div>';
+  }else if(s.method==='split'){
+    h+='<div class="tot"><span>CARD</span><span>'+money(s.cardPaid)+'</span></div>';
+    if(s.rounding) h+='<div class="tot"><span>Cash rounding</span><span>'+(s.rounding>0?'+':'')+money(s.rounding)+'</span></div>';
+    h+='<div class="tot"><span>CASH</span><span>'+(s.tendered!=null?money(s.tendered):money(s.cashPaid))+'</span></div>';
+    if(s.change!=null) h+='<div class="tot"><span>Change</span><span>'+money(s.change)+'</span></div>';
+  }else if(s.method==='cash'){
     if(s.rounding!==0) h+='<div class="tot"><span>Rounding</span><span>'+(s.rounding>0?'+':'')+money(s.rounding)+'</span></div>';
     h+='<div class="tot"><span>Rounded total</span><span>'+money(s.paid)+'</span></div>';
     h+='<div class="tot"><span>CASH</span><span>'+(s.tendered!=null?money(s.tendered):money(s.paid))+'</span></div>';
@@ -2212,7 +2259,7 @@ function renderInvList(q){
   invShown=res;
   list.innerHTML=res.map((s,i)=>{ const d=new Date(s.ts); const v=s.voided;
     return '<div class="r" data-i="'+i+'"'+(v?' style="opacity:.55"':'')+'>'+
-      '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+' <span class="isku">'+
+      '<span>'+esc(s.no)+(v?' <span style="color:var(--danger);font-weight:600">VOID</span>':'')+(s.kind==='refund'?' <span style="color:var(--danger);font-weight:600">REFUND</span>':'')+' <span class="isku">'+
         d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'})+' · '+esc(s.servedBy)+' · '+esc(s.method)+
         (s.customer?' · '+esc(s.customer):'')+(s.order==='pickup'?' · <b>Pick up later</b>':'')+'</span></span>'+
       '<span style="display:flex;gap:8px;align-items:center"><span class="money"'+(v?' style="text-decoration:line-through"':'')+'>'+money(s.total)+'</span>'+
@@ -2237,16 +2284,126 @@ function showInvoiceDetail(ref){
   h+='<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(s.sub)+'</span></div>';
   h+='<div class="row"><span class="lbl">GST ('+s.rate+'%)</span><span class="money">'+money(s.gst)+'</span></div>';
   h+='<div class="row" style="font-weight:700"><span>Total ('+esc(s.method)+')</span><span class="money">'+money(s.total)+'</span></div>';
+  if(s.method==='split') h+='<div class="row"><span class="lbl">Card '+money(s.cardPaid)+' · Cash '+money(s.cashPaid)+'</span></div>';
+  if(s.kind==='refund') h+='<div class="warn" style="margin-top:10px">↩ Refund of '+esc(s.refundOf)+' — paid back by '+esc(s.method)+'.</div>';
+  const refNos=(s.refunds||[]); if(refNos.length) h+='<div class="muted" style="margin-top:8px">Refunds: '+refNos.map(esc).join(', ')+'</div>';
   if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up'+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
     (s.pickedUp ? '<b style="color:var(--ok)">✓ Picked up</b>'+(s.pickedUpAt?' '+esc(new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):'') : '<b style="color:#b26a00">Waiting</b>')+'</span></div>';
   if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+' — removed from takings; stock returned to Squarespace.</div>';
   h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
   h+='<button class="ghost" id="btnReprintOne">Reprint this invoice</button>';
-  if(!s.voided) h+='<button class="ghost" id="btnVoidOne" style="color:var(--danger)">Void / Refund</button>';
-  h+='</div></fieldset>';
+  if(!s.voided && s.kind!=='refund'){
+    if(refundableLines(s).length) h+='<button class="ghost" id="btnRefundOne" style="color:var(--danger)">Refund items…</button>';
+    if(!Object.keys(s.refunded||{}).length) h+='<button class="ghost" id="btnVoidOne" style="color:var(--danger)">Void whole sale</button>';
+  }
+  h+='</div><div id="refundForm"></div></fieldset>';
   $('invDetail').innerHTML=h;
   $('btnReprintOne').onclick=()=>reprintSale(s);
   const vb=$('btnVoidOne'); if(vb) vb.onclick=async ()=>{ if(voidSale(s.no, s)){ await loadInvoices(); showInvoiceDetail(s); } };
+  const rb=$('btnRefundOne'); if(rb) rb.onclick=()=>showRefundForm(s);
+}
+
+/* ---------------- partial refund / exchange ----------------
+   Refunding some of a sale makes a separate record — a credit note numbered
+   CR-<invoice>-<n> — with negative quantities and totals, filed on the day and
+   store the money went back. It takes away from that day's takings (cash or card)
+   and puts the stock back. The original invoice keeps `refunded` (line → qty
+   refunded so far) and `refunds` (credit note numbers) so nothing is refunded twice.
+   An exchange is a refund and then a new sale for the replacement. */
+function refundableLines(s){
+  const done=s.refunded||{};
+  return (s.items||[]).map((it,i)=>({it, i, left:(Number(it.qty)||0)-(Number(done[i])||0)})).filter(x=>x.left>0);
+}
+function showRefundForm(s){
+  const lines=refundableLines(s);
+  const staff=settings.staff||[];
+  const meth = s.method==='cash' ? 'cash' : 'card';
+  let h='<fieldset style="margin-top:12px"><legend>Refund items</legend>';
+  lines.forEach(x=>{
+    h+='<div class="row"><span>'+esc(x.it.name)+' <span class="muted">('+money(x.it.price)+' · up to '+x.left+')</span></span>'+
+       '<input type="number" min="0" max="'+x.left+'" step="1" value="0" data-rline="'+x.i+'" style="width:70px"></div>';
+  });
+  h+='<div class="row"><span class="lbl">Refund to</span><select id="refMethod"><option value="cash"'+(meth==='cash'?' selected':'')+'>Cash</option><option value="card"'+(meth==='card'?' selected':'')+'>Card</option></select></div>';
+  h+='<div class="row"><span class="lbl">Done by</span><select id="refBy">'+staff.map(n=>'<option'+(n===$('servedBy').value?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></div>';
+  h+='<div class="row" style="font-weight:700"><span>Refund</span><span class="money" id="refTotal">$0.00</span></div>';
+  if(s.discount>0) h+='<div class="muted">The sale’s discount is taken off the refund in proportion.</div>';
+  h+='<div style="display:flex;gap:10px;margin-top:10px"><button class="primary" id="btnDoRefund" disabled>Refund &amp; print</button></div></fieldset>';
+  $('refundForm').innerHTML=h;
+  const pick=()=>{
+    const out=[];
+    document.querySelectorAll('[data-rline]').forEach(inp=>{
+      const i=Number(inp.dataset.rline), max=Number(inp.max);
+      const q=Math.min(max, Math.max(0, Math.floor(Number(inp.value)||0)));
+      if(q>0) out.push({i, q});
+    });
+    return out;
+  };
+  const upd=()=>{ const r=refundFigures(s, pick(), $('refMethod').value); $('refTotal').textContent=money(-r.paid); $('btnDoRefund').disabled=!r.items.length; };
+  document.querySelectorAll('[data-rline]').forEach(inp=>inp.addEventListener('input', upd));
+  $('refMethod').onchange=upd;
+  $('btnDoRefund').onclick=async ()=>{
+    const r=await refundSale(s, pick(), $('refMethod').value, $('refBy').value);
+    if(r){ await loadInvoices(); showInvoiceDetail(s); }
+  };
+}
+// The money side of a refund: lines at their price, less the sale's discount in proportion.
+function refundFigures(s, picks, method){
+  const items=picks.map(p=>{ const it=s.items[p.i]; return {sku:it.sku, name:it.name, price:it.price, qty:-p.q, line:p.i}; });
+  const gross=round2(items.reduce((a,it)=>a+it.price*it.qty, 0));            // negative
+  const ratio = s.gross ? (Number(s.total)||0)/Number(s.gross) : 1;           // after discount
+  const total=round2(gross*ratio);
+  const rate=Number(s.rate)||10;
+  const gst=round2(total*rate/(100+rate));
+  let paid=total, rounding=0;
+  if(method==='cash'){ paid=round5(total); rounding=round2(paid-total); }
+  return {items, gross, discount:round2(total-gross), total, gst, sub:round2(total-gst), rate, paid, rounding};
+}
+async function refundSale(ref, picks, method, by){
+  if(!currentStore){ alert('Pick a store first.'); return null; }
+  if(!picks.length) return null;
+  const sales=load(LS.sales,[]);
+  let orig=sales.find(x=>sameSale(x,ref));
+  if(!orig){
+    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to refund it from here.'); return null; }
+    // Adopt the site's copy so the refund can be noted on it. Its stock was already handled where it was sold.
+    orig=JSON.parse(JSON.stringify(ref)); orig.stockItems=[]; orig.stockAdjusted=true; orig.restocked=true; orig.synced=true;
+    sales.push(orig);
+  }
+  const done=orig.refunded||{};
+  for(const p of picks){
+    const left=(Number(orig.items[p.i].qty)||0)-(Number(done[p.i])||0);
+    if(p.q>left){ alert('Only '+left+' of '+orig.items[p.i].name+' left to refund.'); return null; }
+  }
+  const f=refundFigures(orig, picks, method);
+  if(!confirm('Refund '+money(-f.paid)+' to '+method+' for '+orig.no+'?\nThe items go back into stock.')) return null;
+  const n=(orig.refunds||[]).length+1;
+  const store=currentStore;
+  const stockItems=f.items.filter(it=>it.sku && !/^MISC-/.test(it.sku)).map(it=>{
+    const p=catItem(it.sku); return {variantId:(p&&p.variantId)||null, sku:it.sku, quantity:-it.qty};
+  }).filter(x=>x.variantId || x.sku);
+  const refund={
+    no:'CR-'+orig.no+(n>1?'-'+n:''), kind:'refund', refundOf:orig.no, refundOfDay:orig.day,
+    day:todayKey(), ts:new Date().toISOString(), store:store.id, storeName:store.name,
+    method, servedBy:by||orig.servedBy, customer:orig.customer||'', contact:orig.contact||'', order:'now', device:settings.device||'',
+    items:f.items.map(({sku,name,price,qty})=>({sku,name,price,qty})),
+    gross:f.gross, discount:0, discountPct:0, sub:f.sub, gst:f.gst, total:f.total, rate:f.rate,
+    paid:f.paid, tendered:null, change:null, rounding:f.rounding, synced:false,
+    stockItems, stockAdjusted:true, restocked:!stockItems.length
+  };
+  orig.refunded=Object.assign({}, done);
+  picks.forEach(p=>{ orig.refunded[p.i]=(Number(orig.refunded[p.i])||0)+p.q; });
+  orig.refunds=(orig.refunds||[]).concat(refund.no);
+  orig.synced=false;
+  sales.push(refund); save(LS.sales, sales);
+  applyLocalStock(stockItems, +1);
+  syncSale(orig);
+  syncSale(refund);
+  if(!refund.restocked) restockInventory(refund);
+  refreshToday();
+  suppressClearOnPrint=true;      // keep whatever's in the basket
+  printSale(refund, true);
+  toast('Refunded '+money(-f.paid)+' · '+refund.no);
+  return refund;
 }
 
 /* ---------------- day takings ---------------- */
@@ -3709,6 +3866,8 @@ function bind(){
   // payment
   $('payCash').onclick=()=>{ method='cash'; render(); setTimeout(()=>$('tender').focus(),30); };
   $('payCard').onclick=()=>{ method='card'; render(); };
+  $('paySplit').onclick=()=>{ method='split'; render(); setTimeout(()=>$('splitCard').focus(),30); };
+  $('splitCard').addEventListener('input', ()=>render());
   $('tender').addEventListener('input', ()=>render());
   $('servedBy').addEventListener('change', ()=>{ updateFinalizeState(); });
   $('customer').addEventListener('input', ()=>updateFinalizeState());

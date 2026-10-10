@@ -183,7 +183,9 @@ sub build_receipt {
     doc_header(\$out, $store);
 
     $out .= rule() . "\n";
-    $out .= $CMD{align_mid} . $CMD{bold_on} . "TAX INVOICE\n" . $CMD{bold_off} . $CMD{align_left};
+    my $refund = (($sale->{kind} // '') eq 'refund');
+    $out .= $CMD{align_mid} . $CMD{bold_on} . ($refund ? "REFUND - ADJUSTMENT NOTE\n" : "TAX INVOICE\n") . $CMD{bold_off} . $CMD{align_left};
+    $out .= 'Refund of: ' . ascii($sale->{refundOf} // '') . "\n" if $refund;
 
     my $ts = sale_epoch($sale->{ts});
     $out .= pair($sale->{no} // '', strftime('%d/%m/%Y %I:%M %p', localtime($ts))) . "\n";
@@ -212,8 +214,17 @@ sub build_receipt {
     $out .= $CMD{bold_on} . pair('TOTAL', money($sale->{total})) . "\n" . $CMD{bold_off};
     $out .= 'Total price includes GST ' . money($sale->{gst}) . "\n\n";
 
-    my $cash = (($sale->{method} // '') eq 'cash');
-    if ($cash) {
+    my $m    = $sale->{method} // '';
+    my $cash = ($m eq 'cash' || $m eq 'split');
+    if ($refund) {
+        $out .= pair('Rounding', ($sale->{rounding} > 0 ? '+' : '') . money($sale->{rounding})) . "\n" if $sale->{rounding};
+        $out .= $CMD{bold_on} . pair('REFUNDED TO ' . ($m eq 'cash' ? 'CASH' : 'CARD'), money(-($sale->{paid} // 0))) . "\n" . $CMD{bold_off};
+    } elsif ($m eq 'split') {
+        $out .= pair('CARD', money($sale->{cardPaid})) . "\n";
+        $out .= pair('Cash rounding', ($sale->{rounding} > 0 ? '+' : '') . money($sale->{rounding})) . "\n" if $sale->{rounding};
+        $out .= pair('CASH', money(defined $sale->{tendered} ? $sale->{tendered} : $sale->{cashPaid})) . "\n";
+        $out .= pair('Change', money($sale->{change})) . "\n" if defined $sale->{change};
+    } elsif ($cash) {
         if ($sale->{rounding}) {
             $out .= pair('Rounding', ($sale->{rounding} > 0 ? '+' : '') . money($sale->{rounding})) . "\n";
         }
@@ -322,7 +333,7 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact', 'pickupCode'] }));
+                                 fields => ['order', 'contact', 'pickupCode', 'split', 'refund'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';
