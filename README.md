@@ -136,12 +136,20 @@ Requires a **Business** or **Commerce** Squarespace plan.
   and hits Enter automatically. Scan again to add another; quantities merge.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
 - Pick **Cash** or **Card**. Cash shows the **5¢-rounded** total, quick-tender buttons,
-  and **change**. Card is charged exact.
+  and **change**. Card is charged exact. **Split** takes part by card and the rest in cash:
+  type the card amount and the cash part (5¢-rounded) shows with its change. Takings count each
+  part under Cash and Card.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
   **Finalise — no print** to record the sale without printing (still numbered & logged).
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
   open one to **reprint** it.
+- **Refund some of a sale** — open the invoice → **Refund items…**, choose how many of each line
+  come back, cash or card, and who did it → **Refund & print**. It prints a **REFUND —
+  ADJUSTMENT NOTE** numbered `CR-<invoice>`, takes the amount off **today's** takings (any
+  discount on the sale comes off in proportion), and puts the stock back. Each line can only be
+  refunded up to what was sold. **Exchange** = refund the item, then ring up the replacement.
+  **Void whole sale** still cancels the lot (only while nothing on it has been refunded).
 - **Admin ▾ → Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin ▾ → Admin dashboard** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
@@ -333,6 +341,15 @@ fixed internal id, so history follows the rename.
 > **South Melbourne**, so that's where they're filed: the site moves any old *Unassigned* sales
 > across the first time their day is read (Takings, Invoices, Admin or the sheet script), and a
 > sale that still arrives with no store is filed under South Melbourne too.
+
+### Weekly backup to Google Drive (Sundays)
+A separate spreadsheet, **Till Backup**, in your Google Drive holds a full copy of the till. Its
+own script (`google-sheet/backup.gs`) rewrites it every **Sunday night** with everything the
+site holds: every sale and refund (both stores, since `BACKUP_FROM`), each item sold, expenses,
+money added, website cost prices, the box → pack list and a copy of the main sheet's Products
+tab. Paste the script into Till Backup → **Extensions → Apps Script**, type in `ADMIN_PIN`, and
+run **setup()** once. **🧾 Backup → Back up now** runs it any time; the **About** tab shows
+when it last ran.
 
 ### Daily total into a Google Sheet (hourly)
 `google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
