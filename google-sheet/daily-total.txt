@@ -38,6 +38,11 @@
  *  each refresh copies them into the Products tab's Cost column, and from then
  *  on the sheet holds them. Costs typed there for Miscellaneous sales stay on
  *  the site, and the Profit tab counts them.
+ *
+ *  Cost prices are never guessed. When a product's SKU or price changes, the
+ *  site lists it as a new line; each refresh copies the cost from the older
+ *  line of the same product (matched by name) into the new line's empty Cost
+ *  cell. A cost already in a cell is never overwritten.
  * ------------------------------------------------------------------ */
 
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
@@ -127,7 +132,7 @@ function refreshProducts() {
     updateProducts();
     let copied = [];
     try { copied = fillSiteCosts(); } catch (e) { console.log('Website costs skipped: ' + e.message); }
-    fillInvoiceCosts();
+    carryOverCosts();
     try {
       pushCosts();
       if (copied.length) clearSiteCosts(copied); // only once the site has the sheet's copy
@@ -255,8 +260,7 @@ function updateProducts() {
         if (g !== b) reBrand.push([rowOf[sku] + 2, g]);
       }
     } else {
-      const cost = invoiceCostFor(it.name);
-      fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
+      fresh.push([sku, it.name, guessBrand(it.name), price, '', stock]); // cost: carried over from the same product, never guessed
     }
   });
   vals.forEach(r => {
@@ -444,249 +448,47 @@ function authHeaders() {
   return h;
 }
 
-/* ---------------- cost prices from supplier invoices ---------------- */
+/* ---------------- carry a cost over to the same product's new line ---------------- */
 
-// Cost prices from the Banter Toys invoices (Feb–Sep 2026): the invoice unit
-// price (ex GST) plus $0.50 per item to cover delivery — delivery is folded
-// into each item's cost, never counted separately. Booster boxes are 36 x the
-// booster price + $0.50. fillInvoiceCosts() writes these into any EMPTY Cost
-// cell in the Products tab whose name contains every word in the first list
-// and none in the second; a cost you've typed yourself is never overwritten.
-// First match wins, so the more specific rules come first.
-const INVOICE_COSTS = [
-  // [all words, words that must NOT appear, cost incl. delivery]  — invoice item
-  [["one touch", " x "], [], 3.57], // Ultra Pro UP16401 35PT UV One-Touch X Magnetic Card Holder — $3.25 + $0.32 (Tax Invoice 388075)
-  [["pitch black", "elite"], [], 59.00], // ME5 Pitch Black Elite Trainer Box — $58.50 + $0.50 (13.07.2026)
-  [["pitch black", "bundle"], [], 29.60], // ME5 Pitch Black Booster Bundle — $29.10 + $0.50 (13.07.2026)
-  [["pitch black", "blister"], [], 15.70], // ME5 Pitch Black Three Booster Blister — $15.20 + $0.50 (13.07.2026)
-  [["pitch black", "booster", "box"], ["bundle", "elite"], 169.70], // ME5 Pitch Black Booster Box (36 x booster) — $4.70 x 36 + $0.50 (13.07.2026)
-  [["pitch black", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.20], // ME5 Pitch Black Booster pack — $4.70 + $0.50 (13.07.2026)
-  [["chaos rising", "elite"], [], 59.00], // ME4 Chaos Rising Elite Trainer Box — $58.50 + $0.50 (15.05.2026)
-  [["chaos rising", "bundle"], [], 29.60], // ME4 Chaos Rising Booster Bundle — $29.10 + $0.50 (15.05.2026)
-  [["chaos rising", "blister"], [], 15.70], // ME4 Chaos Rising Three Booster Blister — $15.20 + $0.50 (15.05.2026)
-  [["chaos rising", "booster", "box"], ["bundle", "elite"], 178.70], // ME4 Chaos Rising Booster Box (36 x booster) — $4.95 x 36 + $0.50 (16.06.2026)
-  [["chaos rising", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.45], // ME4 Chaos Rising Booster pack — $4.95 + $0.50 (16.06.2026)
-  [["perfect order", "elite"], [], 59.00], // ME3 Perfect Order Elite Trainer Box — $58.50 + $0.50 (23.03.2026)
-  [["perfect order", "bundle"], [], 29.60], // ME3 Perfect Order Booster Bundle — $29.10 + $0.50 (23.03.2026)
-  [["perfect order", "blister"], [], 15.70], // ME3 Perfect Order Three Booster Blister — $15.20 + $0.50 (23.03.2026)
-  [["perfect order", "booster", "box"], ["bundle", "elite"], 178.70], // ME3 Perfect Order Booster Box (36 x booster) — $4.95 x 36 + $0.50 (23.03.2026)
-  [["perfect order", "booster"], ["bundle", "blister", "elite", "etb", "box", "display", "36", "tin", "collection"], 5.45], // ME3 Perfect Order Booster pack — $4.95 + $0.50 (23.03.2026)
-  [["ascended heroes", "elite"], [], 59.00], // ME2.5 Ascended Heroes Elite Trainer Box — $58.50 + $0.50 (16.02.2026)
-  [["ascended heroes", "bundle"], [], 32.00], // ME2.5 Ascended Heroes Booster Bundle — $31.50 + $0.50 (17.04.2026)
-  [["ascended heroes", "sticker"], [], 19.20], // ME2.5 Ascended Heroes Tech Sticker Blister — $18.70 + $0.50 (10.02.2026)
-  [["ascended heroes", "poster"], [], 59.00], // ME2.5 Ascended Heroes Premium Poster Collection — $58.50 + $0.50 (14.03.2026)
-  [["ascended heroes", "pin"], [], 29.60], // ME2.5 Ascended Heroes Deluxe Pin Collection — $29.10 + $0.50 (16.02.2026)
-  [["ascended heroes", "tin"], [], 12.20], // ME2.5 Ascended Heroes Mini Tin — $11.70 + $0.50 (16.02.2026)
-  [["ascended heroes", "blister"], [], 12.20], // ME2.5 Ascended Heroes 2pk Blister — $11.70 + $0.50 (16.02.2026)
-  [["30th", "elite"], [], 59.00], // 30th Celebration Elite Trainer Box — $58.50 + $0.50 (10.09.2026)
-  [["30th", "sticker"], [], 18.00], // 30th Celebration Tech Sticker Blister — $17.50 + $0.50 (10.09.2026)
-  [["30th", "binder"], [], 38.30], // 30th Celebration Binder Box — $37.80 + $0.50 (10.09.2026)
-  [["30th", "poster"], [], 18.00], // 30th Celebration Poster Box — $17.50 + $0.50 (10.09.2026)
-  [["30th", "knock out"], [], 12.20], // 30th Celebration Knock Out Collection — $11.70 + $0.50 (10.09.2026)
-  [["30th", " ex ", "box"], [], 27.00], // 30th Celebration ex Box — $26.50 + $0.50 (10.09.2026)
-  [["pokemon", "knock out"], [], 12.20], // Pokemon Knock Out Collection — $11.70 + $0.50 (10.02.2026)
-  [["pokemon", "binder"], ["30th"], 28.40], // Pokemon Premium Red Snap Binder — $27.90 + $0.50 (10.02.2026)
-  [["charizard", "tin"], [], 26.10], // Pokemon Mega Charizard ex Tin — $25.60 + $0.50 (16.02.2026)
-  [["pokemon", "enhanced", "blister"], [], 13.30], // Pokemon Enhanced 2PK Blister — $12.80 + $0.50 (01.04.2026)
-  [["pokemon", "blister"], ["three", "3 booster", "sticker", "enhanced"], 12.20], // Pokemon 2PK Blister 26Q1 — $11.70 + $0.50 (16.02.2026)
-  [["first partner"], [], 18.00], // Pokemon First Partner Illustration Collection — $17.50 + $0.50 (31.07.2026)
-  [["pokemon", "portfolio"], [], 6.90], // Pokemon Mini Portfolio — $6.40 + $0.50 (23.03.2026)
-  [["zygarde"], [], 47.10], // Pokemon Mega Zygarde ex Premium Collection — $46.60 + $0.50 (15.05.2026)
-  [["greninja"], [], 47.10], // Pokemon Mega Greninja ex Premium Collection — $46.60 + $0.50 (26.06.2026)
-  [["lumiose", "tin"], [], 12.20], // Pokemon Lumiose City Mini Tin — $11.70 + $0.50 (01.06.2026)
-  [["moonlight", "tin"], [], 26.10], // Pokemon Mega Moonlight Tin — $25.60 + $0.50 (01.06.2026)
-  [["triple whammy"], [], 18.00], // Pokemon Triple Whammy Collector Tin — $17.50 + $0.50 (16.06.2026)
-  [["world championship"], [], 23.80], // Pokemon 2025 World Championships Deck — $23.30 + $0.50 (16.06.2026)
-  [["pokeball"], [], 6.90], // Pokemon Pokeball Magnetic Card Holder — $6.40 + $0.50 (06.07.2026)
-  [["one touch", " s "], [], 13.50], // Ultra Pro One Touch S (5 count retail pack) — $13.00 + $0.50 (31.07.2026)
-  [["one touch", "black"], [], 10.50], // One Touch 35PT Black Border Magnetic 5PK — $10.00 + $0.50 (06.07.2026)
-  [["one touch", "35"], [], 2.90], // One Touch 35PT Magnetic Closure — $2.40 + $0.50 (06.07.2026)
-  [["chaos origins"], [], 4.75], // YuGiOh Chaos Origins 9 Card Blister — $4.25 + $0.50 (06.07.2026)
-  [["arc v"], [], 39.50], // YuGiOh Legendary Arc-V Decks — $39.00 + $0.50 (31.07.2026)
-  [["magnificent monster"], [], 49.10], // YuGiOh Magnificent Monster Boxset — $48.60 + $0.50 (17.09.2026)
-  [["tennis", "chrome"], [], 15.20], // Topps 2025 Tennis Chrome Hobby pack — $14.70 + $0.50 (24.02.2026)
-  [["premier league", "2026", "starter"], ["adrenalyn"], 20.30], // Topps 2026 Premier League Starter Pack — $19.80 + $0.50 (01.04.2026)
-  [["premier league", "2026"], ["adrenalyn", "album", "starter", "box", "tin"], 3.40], // Topps 2026 Premier League Cards pack — $2.90 + $0.50 (01.04.2026)
-  [["hanger"], [], 13.30], // UEFA Champions League 25/26 ECO Hanger Box — $12.80 + $0.50 (24.02.2026)
-  [["gladiators"], [], 16.80], // UEFA Champions League 25/26 Gladiators Mega Tin — $16.30 + $0.50 (24.02.2026)
-  [["champions league", "starter"], [], 18.00], // UEFA Champions League 25/26 Starter Pack — $17.50 + $0.50 (24.02.2026)
-  [["optic", "fat pack"], [], 21.20], // Panini Donruss Optic Football Fat Pack — $20.70 + $0.50 (01.04.2026)
-  [["wwe"], [], 38.70], // Topps 2025 WWE Universe Hobby Value Box — $38.20 + $0.50 (01.04.2026)
-  [["teenymates"], [], 32.30], // Teenymates 2026 NBA Collector Tin — $31.80 + $0.50 (01.04.2026)
-  [["adrenalyn", "world cup", "classic tin"], [], 30.80], // FIFA World Cup 2026 Adrenalyn Classic Tin — $30.30 + $0.50 (06.07.2026)
-  [["adrenalyn", "world cup", "pocket tin"], [], 20.30], // FIFA World Cup 2026 Adrenalyn Pocket Tin — $19.80 + $0.50 (11.05.2026)
-  [["adrenalyn", "world cup", "starter"], [], 23.20], // FIFA World Cup 2026 Adrenalyn Starter Pack Deluxe — $22.70 + $0.50 (08.04.2026)
-  [["adrenalyn", "world cup"], ["tin", "starter", "album", "box", "binder", "blister"], 3.40], // FIFA World Cup 2026 Adrenalyn booster pack — $2.90 + $0.50 (08.04.2026)
-  [["world cup", "update set"], [], 20.30], // FIFA World Cup 2026 Sticker Update Set — $19.80 + $0.50 (31.07.2026)
-  [["world cup", "1970"], [], 96.50], // FIFA World Cup 1970-2026 Book — $96.00 + $0.50 (31.07.2026)
-  [["world cup", "sticker"], ["album", "update", "book", "box"], 2.90], // FIFA World Cup 2026 Sticker pack — $2.40 + $0.50 (31.07.2026)
-  [["turbo attax", "starter"], [], 9.50], // F1 Turbo Attax 2025 Starter Pack — $9.00 + $0.50 (11.05.2026)
-  [["harry potter", "blaster"], [], 47.10], // Kakawow Harry Potter 25th Blaster — $46.60 + $0.50 (31.07.2026)
-  [["harry potter"], ["blaster"], 20.85], // Kakawow Harry Potter 25th Regular pack — $20.35 + $0.50 (31.07.2026)
-  [["tom and jerry"], [], 17.40], // Kakawow Phantom Tom and Jerry pack — $16.90 + $0.50 (26.08.2026)
-  [["road to", "world cup", "mega"], [], 70.30], // Panini Select Road to World Cup Mega Box — $69.80 + $0.50 (17.09.2026)
-  [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
-  [["chrome", "uefa", "value"], [], 41.85], // Topps Chrome UEFA Club Competitions 25/26 Value Box — $41.35 + $0.50 (27.06.2026)
-  // Tax Invoice 388075: invoice unit price (ex GST) + $0.32 each — the $8.00 delivery split over the 25 units on the order
-  [["marvel", "jumpstart"], ["pack"], 164.96], // Magic Marvel Super Heroes Jumpstart Booster Display — $164.64 + $0.32
-  [["marvel", "collector"], ["pack"], 494.24], // Magic Marvel Super Heroes Collector Booster Display — $493.92 + $0.32
-  [["marvel", "play", "booster"], ["jumpstart", "collector", "pack"], 206.12], // Magic Marvel Super Heroes Play Booster Display — $205.80 + $0.32
-  [["poker chip"], [], 19.81], // Bicycle 8 Gram Clay Poker Chip Set 100 Count — $19.49 + $0.32
-  [["dp 12"], [], 109.63], // One Piece Double Pack Display DP-12 — $109.31 + $0.32
-  [["op 17", "dash"], [], 0.32], // One Piece OP-17 Dash Pack (free with the order) — $0.00 + $0.32
-  [["op 17", "booster"], ["dash", "pack", "case"], 127.36], // One Piece OP-17 Booster Display — $127.04 + $0.32
-];
-
-/* ---- Japanese products (different rules from the Banter Toys items) ----
- * Cost of one PACK   = box price / packs in the box, + 5% commission + 1.75%
- *                      card-processing fee (both charged on the goods), then
- *                      + $0.50 delivery.
- * Cost of a whole BOX = packs in the box x the cost of one pack.
- * The 1.75% is worked out from the invoices' "Additional fees" line: it is
- * 6.75% of the goods in all six orders that have it, i.e. the 5% commission
- * plus 1.75% card processing. Box prices are the latest invoice (ex fees,
- * ex shipping); the packs-per-box counts are the standard Japanese boxes, so
- * fix any that don't match what's actually in your boxes. A Japanese product
- * only matches if its name says Japan / Japanese / JP / JPN, same as the
- * Pokémon (Japanese) brand rule. */
-const JP_COMMISSION = 0.05;
-const JP_CARD_FEE  = 0.0175;
-const JP_DELIVERY  = 0.50; // per pack
-const JAPAN_SETS = [
-  // [name in the set, regex on the tidied-up product name, packs per box, latest box price]
-  ['Pokemon 151 sv2a',                /\b151\b|\bsv2a\b/,                          20, 492.07],
-  ['Shiny Treasure ex sv4a',          /shiny treasure|\bsv4a\b/,                   10, 171.35],
-  ['Battle Partners sv9',             /battle partners|\bsv9\b/,                   30,  96.33],
-  ['Vstar Universe s12a',             /vstar universe|\bs12a\b/,                   10, 278.55],
-  ['Shiny Star V s4a',                /shiny star|\bs4a\b/,                        10, 196.83],
-  ['Terastal Fest ex sv8a',           /terastal|\bsv8a\b/,                         10, 174.86],
-  ['Super Electric Breaker sv8',      /super electric|\bsv8\b/,                    30, 298.94],
-  ['White Flare sv11w',               /white flare|\bsv11w\b/,                     20, 199.46],
-  ['Storm Emeralda M6',               /storm emeralda|\bm6\b/,                     30, 134.44],
-  ['One Piece PRB-01 The Best',       /\bprb ?01\b|the best/,                      10, 214.69],
-  ['One Piece OP-16 Decisive Battle', /\bop ?16\b|decisive battle/,                24, 109.84],
-];
-const JP_RANDOM_PACK_PRICE = 1.58; // Random Packs bulk sale, per pack (latest invoice)
-
-function round2(x) { return Math.round(x * 100) / 100; }
-
-// Cost of one pack, and of the box that holds `packs` of them.
-function japanCosts(boxPrice, packs) {
-  const pack = round2(boxPrice / packs * (1 + JP_COMMISSION + JP_CARD_FEE) + JP_DELIVERY);
-  return { pack: pack, box: round2(pack * packs) };
+// Same product, ignoring case, spacing, punctuation and accents — and the
+// "(no longer in catalog)" tag the sheet puts on a line that has been replaced.
+function productKey(name) {
+  return String(name || '').replace(/^\(no longer in catalog\)\s*/i, '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function japanCostFor(n) {
-  if (!/\b(japan|japanese|jp|jpn)\b/.test(n)) return null;
-  const isBox = /\bbox\b|display|carton/.test(n);
-  const isPack = !isBox && /\bpacks?\b|booster|random/.test(n);
-  if (!isBox && !isPack) return null;
-  if (/\brandom\b/.test(n)) return isPack ? japanCosts(JP_RANDOM_PACK_PRICE, 1).pack : null;
-  for (const [, re, packs, boxPrice] of JAPAN_SETS) {
-    if (re.test(n)) { const c = japanCosts(boxPrice, packs); return isBox ? c.box : c.pack; }
-  }
-  return null;
-}
-
-/* ---- Footy items (AFL Footy Stars / Luminous, NRL League Heroes, AFL Team Coach) ----
- * Prices are what the supplier invoices / price list show (GST included, same
- * as the Cost column). Footy Stars, Luminous and NRL League Heroes are free
- * shipping, so NO $0.50 delivery is added. Team Coach adds $0.10 per pack.
- * Per-unit costs are worked out from the case / box price:
- *   Footy Stars: case of 12 boxes $1,611.00 -> box $134.25; blaster case of 12
- *                $419.88 -> $34.99; vinyl album case of 10 $240.00; binder
- *                album case of 10 $118.90.
- *   Luminous:    album case of 10 $220.00.
- *   NRL League Heroes: box (36 packs) $107.64 -> $2.99 a pack.
- *   Team Coach:  case of 12 display boxes $1,620.00 (36 packs a box, $3.75 a
- *                pack) + $0.10 a pack; collector albums $123.20 for 14 = $8.80.
- * FOOTY_STARS_PACKS is a guess (36 a box) — fix it if your boxes differ. */
-const FOOTY_STARS_CASE_PRICE    = 1611.00; // case of 12 boxes
-const FOOTY_STARS_BOXES         = 12;
-const FOOTY_STARS_PACKS         = 36;      // packs per box (check)
-const FOOTY_STARS_BLASTER_CASE  = 419.88;  // case of 12 blasters
-const FOOTY_STARS_VINYL_CASE    = 240.00;  // case of 10 vinyl albums
-const FOOTY_STARS_BINDER_CASE   = 118.90;  // case of 10 binder albums
-const LUMINOUS_ALBUM_CASE       = 220.00;  // case of 10 albums
-const NRL_HEROES_BOX_PRICE      = 107.64;  // box of 36 packs
-const NRL_HEROES_PACKS          = 36;
-const TC_CASE_PRICE             = 1620.00; // case of 12 display boxes
-const TC_BOXES                  = 12;
-const TC_PACKS                  = 36;      // packs per display box
-const TC_PACK_EXTRA             = 0.10;    // per pack
-const TC_ALBUM_BOX_PRICE        = 123.20;  // box of 14 collector albums
-const TC_ALBUMS                 = 14;
-
-function footyCostFor(n) {
-  const isCase    = /\bcase\b|\bcarton\b/.test(n);
-  const isAlbum   = /\b(albums?|binders?)\b/.test(n);
-  const isBlaster = /\bblasters?\b/.test(n);
-  const isBox     = /\bbox\b|display/.test(n);
-  const isPack    = /\bpacks?\b|booster/.test(n);
-
-  if (/\bfooty ?stars\b/.test(n)) {
-    const box = FOOTY_STARS_CASE_PRICE / FOOTY_STARS_BOXES;
-    if (isAlbum) {
-      const unit = /\bvinyl\b/.test(n) ? FOOTY_STARS_VINYL_CASE / 10
-                 : /\bbinder\b/.test(n) ? FOOTY_STARS_BINDER_CASE / 10 : null;
-      return unit === null ? null : round2(isCase ? unit * 10 : unit);
-    }
-    if (isBlaster) return round2(isCase ? FOOTY_STARS_BLASTER_CASE : FOOTY_STARS_BLASTER_CASE / 12);
-    if (isCase) return round2(FOOTY_STARS_CASE_PRICE);
-    if (isBox) return round2(box);
-    if (isPack) return round2(box / FOOTY_STARS_PACKS);
-    return null;
-  }
-  if (/\bluminous\b/.test(n) && isAlbum) {
-    return round2(isCase ? LUMINOUS_ALBUM_CASE : LUMINOUS_ALBUM_CASE / 10);
-  }
-  if (/\bleague heroes\b/.test(n)) {
-    if (isBox) return round2(NRL_HEROES_BOX_PRICE);
-    if (isPack) return round2(NRL_HEROES_BOX_PRICE / NRL_HEROES_PACKS);
-    return null;
-  }
-  if (/\bteam ?coach\b/.test(n)) {
-    const pack = round2(TC_CASE_PRICE / TC_BOXES / TC_PACKS + TC_PACK_EXTRA);
-    if (isAlbum) return round2(TC_ALBUM_BOX_PRICE / TC_ALBUMS);
-    if (isCase) return round2(pack * TC_PACKS * TC_BOXES);
-    if (isBox) return round2(pack * TC_PACKS);
-    if (isPack) return pack;
-    return null;
-  }
-  return null;
-}
-
-function invoiceCostFor(name) {
-  const n = ' ' + String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
-  const jp = japanCostFor(n);
-  if (jp !== null) return jp;
-  const footy = footyCostFor(n);
-  if (footy !== null) return footy;
-  for (const [all, none, cost] of INVOICE_COSTS) {
-    if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
-  }
-  return null;
-}
-
-// Run once from the editor (or it runs after each Products refresh).
-function fillInvoiceCosts() {
+// When a product's SKU or price changes, the site lists it as a new line and
+// the old line is left behind with the cost you typed. This copies that cost
+// onto the new line: any line with an EMPTY Cost cell gets the cost of another
+// line with the same product name. A cost already in a cell is never changed,
+// and nothing is guessed — a product with no costed line stays blank (red).
+// Costs are per product, so lines are matched by name only.
+function carryOverCosts() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
   const last = sheet ? lastDataRow(sheet) : 0;
-  if (last < 2) return;
+  if (last < 2) return 0;
   const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
   const heads = vals[0].map(h => String(h).trim().toLowerCase());
   const cName = heads.indexOf('name'), cCost = heads.indexOf('cost');
-  if (cName < 0 || cCost < 0) return;
+  if (cName < 0 || cCost < 0) return 0;
+  const has = c => c !== '' && c !== null && isFinite(Number(c));
+  const costOf = {};
+  // Oldest lines are at the bottom, so go bottom-up: the newest costed line wins.
+  for (let i = vals.length - 1; i >= 1; i--) {
+    const k = productKey(vals[i][cName]);
+    if (k && has(vals[i][cCost])) costOf[k] = Number(vals[i][cCost]);
+  }
   let filled = 0;
   vals.slice(1).forEach((r, i) => {
-    if (r[cCost] !== '' && r[cCost] !== null) return;
-    const cost = invoiceCostFor(r[cName]);
-    if (cost === null) return;
-    sheet.getRange(i + 2, cCost + 1).setValue(cost).setNumberFormat('$#,##0.00');
+    if (has(r[cCost])) return;
+    const k = productKey(r[cName]);
+    if (!k || !(k in costOf)) return;
+    sheet.getRange(i + 2, cCost + 1).setValue(costOf[k]).setNumberFormat('$#,##0.00');
     filled++;
   });
-  console.log('Invoice costs filled: ' + filled);
+  console.log('Costs carried over to new lines: ' + filled);
+  return filled;
 }
 
 // For the last EXPENSE_LOOKBACK days: one row per day in the Profit tab.
