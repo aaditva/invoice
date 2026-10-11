@@ -44,7 +44,22 @@
   @media (max-width:1150px){ header .pill{display:none} }
 
   main{flex:1;display:grid;grid-template-columns:1fr 380px;gap:16px;padding:16px;overflow:hidden}
-  @media (max-width:900px){ main{grid-template-columns:1fr} }
+  /* Phones and portrait tablets: one column that scrolls as a page, the header
+     scrolls sideways on its own instead of widening the page, and the scan box
+     gets a full row so the buttons beside it can't squash it to nothing. */
+  @media (max-width:900px){
+    .app{height:auto;min-height:100vh}
+    main{grid-template-columns:1fr;overflow:visible}
+    .app > header{overflow-x:auto;position:sticky;top:0;z-index:5}
+    main .scanbar{flex-wrap:wrap}
+    main .scanbar .scanwrap{flex:1 1 100%}
+    main .scanbar > button{flex:1}
+  }
+  /* Phones: drop the line-total column (price and the misc amount box stay) so the basket fits. */
+  @media (max-width:600px){
+    .basket th:nth-child(4),.basket td:nth-child(4){display:none}
+    .basket th:nth-child(2){width:120px!important}
+  }
   .panel{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
 
   /* Scan + basket (left) */
@@ -924,10 +939,15 @@ const ADMIN_KEY = 'inv_admin_pin';
 try{ localStorage.removeItem('inv_admin'); }catch(e){}   // the old "logged in" flag — log in once more
 function adminPin(){ try{ return localStorage.getItem(ADMIN_KEY)||''; }catch(e){ return ''; } }
 function isAdmin(){ return !!adminPin(); }
-function adminUrl(){
-  let u='/api/admin';
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  return u;
+// A site endpoint (/api/…). Relative works when the till is hosted on Netlify; if
+// catUrl is a full URL (a till hosted elsewhere), resolve against that origin.
+function apiUrl(path, params){
+  let u=path;
+  if(!/^https?:\/\//i.test(u)){
+    try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
+  }
+  const q=new URLSearchParams(params||{}).toString();
+  return q ? u+(u.indexOf('?')>=0?'&':'?')+q : u;
 }
 // true when already logged in. Otherwise shows the login box and returns false;
 // `then` runs once the site accepts the password (e.g. re-open what was tapped).
@@ -943,7 +963,7 @@ function requireAdmin(then){
 // Ask the site: { ok } | { bad:'message' } (wrong / not set) | throws when the site can't be reached.
 async function checkAdminPin(pin){
   const h=shareHeaders(true); h['x-admin-pin']=pin;
-  const res=await fetch(adminUrl(), {method:'POST', headers:h, body:'{}'});
+  const res=await fetch(apiUrl('/api/admin'), {method:'POST', headers:h, body:'{}'});
   const d=await res.json().catch(()=>({}));
   if(res.ok && d.ok) return {ok:true};
   // wrong = the site rejected this password (or has none set) — not a token or network problem
@@ -1096,9 +1116,9 @@ function deviceId(){
 // Ask the site for this store's next invoice number. Every device draws from
 // the same sequence, so a number is only ever printed for one sale. null =
 // couldn't reach the site in time.
-async function nextServerNumber(){
+async function nextServerNumber(waitMs){
   const url=salesUrl({counter:'next'}); if(!url || !currentStore) return null;
-  const c=new AbortController(); const t=setTimeout(()=>c.abort(), 5000);
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(), waitMs||5000);
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
       body:JSON.stringify({store:currentStore.id, min:readCounter()})});
@@ -1108,6 +1128,23 @@ async function nextServerNumber(){
     return n>0 ? n : null;
   }catch(e){ return null; }
   finally{ clearTimeout(t); }
+}
+// The next number is fetched ahead of time (when the store opens, and after
+// each sale) and kept on the device, so Finalise never waits on the wifi for it.
+// It's held until a sale uses it — a cleared basket doesn't waste it.
+function reservedKey(){ return 'inv_reserved:'+(currentStore ? currentStore.id : ''); }
+function takeReserved(){
+  let n=NaN; try{ n=parseInt(localStorage.getItem(reservedKey())||'', 10); localStorage.removeItem(reservedKey()); }catch(e){}
+  return n>0 ? n : null;
+}
+let reserving=false;
+async function reserveNumber(){
+  if(!currentStore || reserving) return;
+  try{ if(localStorage.getItem(reservedKey())) return; }catch(e){ return; }
+  reserving=true;
+  const key=reservedKey();
+  try{ const n=await nextServerNumber(); if(n) localStorage.setItem(key, String(n)); }catch(e){}
+  finally{ reserving=false; }
 }
 // Supplier details for the docket: the business, with the store's own address
 // and phone when it has them, and the location named so the two differ. Pass the
@@ -1151,6 +1188,7 @@ function selectStore(id){
   refreshToday();                 // pull this store's day from the site's record
   refreshPickupCount();
   flushUnsynced();
+  reserveNumber();
   focusScan();
 }
 function switchStore(){
@@ -1418,7 +1456,7 @@ function render(){
     const ct=round5(cashDue(t));
     $('cashTotal').textContent=money(ct);
     const adj=round2(ct-cashDue(t));
-    $('roundLbl').textContent = adj===0?'Rounding':'Rounding ('+(adj>0?'+':'')+money(adj).replace(settings.currency,settings.currency)+')';
+    $('roundLbl').textContent = adj===0?'Rounding':'Rounding ('+(adj>0?'+':'')+money(adj)+')';
     $('roundAdj').textContent = (adj>0?'+':'')+money(adj);
     const tender=parseFloat($('tender').value);
     const change = (isFinite(tender)? tender-ct : NaN);
@@ -1557,7 +1595,9 @@ async function commitSale(){
   // the number, so a scan during the wait can't slip into this sale.
   // The store tag keeps the two locations' numbers apart; the device tag is optional.
   const tag = store.tag + (settings.device||'').trim() + '-';
-  const fromSite = await nextServerNumber();
+  // A number fetched in advance is used at once; without one, wait a moment for
+  // the site, then fall back to an offline (device-tagged) number.
+  const fromSite = takeReserved() || await nextServerNumber(1500);
   const counter = fromSite || readCounter();
   // Offline the number can't come from the shared sequence, so it carries this
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
@@ -1569,6 +1609,7 @@ async function commitSale(){
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
   refreshToday();                 // re-read the day from the site so both tills agree
   if(order==='pickup') refreshPickupCount();
+  reserveNumber();                // ready for the next sale
   return sale;
 }
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
@@ -1639,15 +1680,7 @@ function renderUnsent(){
 }
 
 /* ---------------- live stock (decrement Squarespace on each sale) ---------------- */
-// Resolve the inventory endpoint. Relative '/api/inventory' works when the till is
-// hosted on Netlify; if catUrl is a full URL (a second till), resolve against its origin.
-function inventoryUrl(){
-  const u=(settings.invUrl||'').trim();
-  if(!u) return '';
-  if(/^https?:\/\//i.test(u)) return u;
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) return new URL(u, settings.catUrl).href; }catch(e){}
-  return u;
-}
+function inventoryUrl(){ const u=(settings.invUrl||'').trim(); return u ? apiUrl(u) : ''; }
 function markStockAdjusted(no){
   const sales=load(LS.sales,[]); const s=sales.find(x=>x.no===no);
   if(s && !s.stockAdjusted){ s.stockAdjusted=true; save(LS.sales, sales); }
@@ -1753,18 +1786,7 @@ function reconcileStock(inv){
    Sales live on the site, not in this browser. These read them back: one store's
    day for the till's own views, or a date range across stores for Admin. */
 
-// Resolve the sales-log endpoint. A relative '/api/sales' works when the till is
-// hosted on Netlify; if catUrl is a full URL (a till hosted elsewhere), resolve
-// against its origin, the same way inventoryUrl() does.
-function salesUrl(params){
-  let u=(settings.shareUrl||'').trim();
-  if(!u) return '';
-  if(!/^https?:\/\//i.test(u)){
-    try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  }
-  const q=new URLSearchParams(params||{}).toString();
-  return q ? (u+(u.indexOf('?')>=0?'&':'?')+q) : u;
-}
+function salesUrl(params){ const u=(settings.shareUrl||'').trim(); return u ? apiUrl(u, params) : ''; }
 // null = couldn't reach it at all. An {error} object = it answered and said why
 // (range too long, wrong token), which is worth showing instead of "offline".
 async function fetchServerSales(params){
@@ -1806,8 +1828,8 @@ function aggregate(sales){
   // Split sales count their cash and card parts; refunds (kind:'refund') are negative and take away.
   live.forEach(s=>{
     if(s.method==='split'){ cash+=Number(s.cashPaid)||0; card+=Number(s.cardPaid)||0; }
-    else if(s.method==='cash') cash+=(s.paid!=null?s.paid:s.total); else card+=s.total;
-    gst+=s.gst; sub+=s.sub;
+    else if(s.method==='cash') cash+=Number(s.paid!=null?s.paid:s.total)||0; else card+=Number(s.total)||0;
+    gst+=Number(s.gst)||0; sub+=Number(s.sub)||0;
   });
   cash=round2(cash); card=round2(card);
   return {count:live.filter(s=>s.kind!=='refund').length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
@@ -1988,8 +2010,7 @@ function orderLabel(s){ return s.order==='pickup' ? 'PICK UP LATER' : 'Served on
 function contactLabel(c){ return (/@/.test(c) ? 'Email: ' : 'Phone: ') + c; }
 
 function buildReceipt(s){
-  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
-  document.documentElement.style.setProperty('--rwidth', w);
+  setReceiptWidth();
   const d=new Date(s.ts);
   const dt = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   const st=receiptStore(s);
@@ -2439,45 +2460,37 @@ async function printTakings(){
   const dayLabel=(currentStore?currentStore.name+' · ':'')+
     d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
+  await printReport('DAILY TAKINGS', dayLabel, [
+    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)],
+    '-', ['TOTAL', money(t.total), true], '-',
+    ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]
+  ], 'Takings printed');
+}
+// A short report (takings, sales summary): the ESC/POS bridge when it's there,
+// the print dialog when it isn't. rows: [label, value, bold?] or '-' for a rule.
+async function printReport(title, subtitle, rows, done){
   if(await bridgeReady()){
     try{
-      await bridgeSend({type:'report', store:storeForBridge(),
-        report:{title:'DAILY TAKINGS', subtitle:dayLabel, rows:[
-          ['Sales', String(t.count)],
-          ['Cash', money(t.cash)],
-          ['Card', money(t.card)],
-          '-',
-          ['TOTAL', money(t.total), true],
-          '-',
-          ['Subtotal ex GST', money(t.sub)],
-          ['GST collected', money(t.gst)],
-        ]}, options:{cut:true, drawer:false}});
-      toast('Takings printed');
+      await bridgeSend({type:'report', store:storeForBridge(), report:{title, subtitle, rows}, options:{cut:true, drawer:false}});
+      toast(done);
       return;
     }catch(e){
       console.error('[bridge] falling back to print dialog:', e);
       toast('Printer bridge error - using print dialog');
     }
   }
-
-  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
-  document.documentElement.style.setProperty('--rwidth', w);
-  let h='';
-  h+='<div class="c b big">'+esc(settings.name)+'</div>';
-  if(currentStore) h+='<div class="c b">'+esc(currentStore.name)+'</div>';
+  setReceiptWidth();
+  let h='<div class="c b big">'+esc(settings.name)+'</div>';
   if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
-  h+='<hr><div class="c b">DAILY TAKINGS</div>';
-  h+='<div class="c">'+esc(dayLabel)+'</div><hr>';
-  h+='<div class="tot"><span>Sales</span><span>'+t.count+'</span></div>';
-  h+='<div class="tot"><span>Cash</span><span>'+money(t.cash)+'</span></div>';
-  h+='<div class="tot"><span>Card</span><span>'+money(t.card)+'</span></div>';
-  h+='<div class="tot g"><span>TOTAL</span><span>'+money(t.total)+'</span></div>';
-  h+='<hr><div class="tot"><span>Subtotal ex GST</span><span>'+money(t.sub)+'</span></div>';
-  h+='<div class="tot"><span>GST collected</span><span>'+money(t.gst)+'</span></div>';
+  h+='<hr><div class="c b">'+esc(title)+'</div><div class="c">'+esc(subtitle)+'</div><hr>';
+  rows.forEach(r=>{ h+= r==='-' ? '<hr>' : '<div class="tot'+(r[2]?' g':'')+'"><span>'+esc(r[0])+'</span><span>'+esc(r[1])+'</span></div>'; });
   h+='<hr><div class="c" style="font-size:11px">Printed '+new Date().toLocaleString('en-AU')+'</div>';
   $('receipt').innerHTML=h;
   applyPageSize();
   suppressClearOnPrint=true; window.print();
+}
+function setReceiptWidth(){
+  document.documentElement.style.setProperty('--rwidth', settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm'));
 }
 
 /* ---------------- boxes — open a sealed box into single packs ---------------- *
@@ -2486,15 +2499,10 @@ async function printTakings(){
    Squarespace can never end up with one half done. Anyone can open a box;
    adding or removing boxes from the list needs the Admin login. */
 let boxes = [];
-function boxesUrl(){
-  let u='/api/boxes';
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  return u;
-}
 async function loadBoxes(){
   $('bxStatus').textContent='Loading…';
   try{
-    const res=await fetch(boxesUrl(), {headers:shareHeaders(false)});
+    const res=await fetch(apiUrl('/api/boxes'), {headers:shareHeaders(false)});
     const d=await res.json();
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     boxes=d.boxes||[];
@@ -2504,7 +2512,7 @@ async function loadBoxes(){
 }
 async function saveBoxes(list){
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
-  const res=await fetch(boxesUrl(), {method:'POST', headers:h, body:JSON.stringify({boxes:list})});
+  const res=await fetch(apiUrl('/api/boxes'), {method:'POST', headers:h, body:JSON.stringify({boxes:list})});
   const d=await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
   boxes=d.boxes||list; $('bxStatus').textContent='Saved.'; renderBoxes();
@@ -2583,7 +2591,7 @@ function openAdmin(){
     alert('Admin reads the sales record kept on the site, so it needs that address.\n\nSettings → Sales memory → Sales log URL = /api/sales');
     return;
   }
-  if(!adState.from) setAdminPreset('today');
+  if(!adState.from || adState.preset) setAdminPreset(adState.preset || 'today');   // "Today" means today, even after midnight
   $('adFrom').value=adState.from; $('adTo').value=adState.to;
   renderAdminStores(); markAdminPreset();
   $('adminModal').classList.add('show');
@@ -2596,18 +2604,12 @@ function openAdmin(){
    each day's total into the sheet's Expenses column every hour. */
 const CASH = [100,50,20,10,5,2,1,0.5,0.2,0.1,0.05];
 let exTaps = [];
-function expensesUrl(params){
-  let u='/api/expenses';
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  const q=new URLSearchParams(params||{}).toString();
-  return q ? u+'?'+q : u;
-}
 function cashLabel(v){ return v>=1 ? '$'+v : Math.round(v*100)+'c'; }
 function openExpenses(){
   if(!requireAdmin(openExpenses)) return;
   $('exStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
   if(currentStore) $('exStore').value=currentStore.id;
-  if(!$('exDate').value) $('exDate').value=todayKey();
+  $('exDate').value=todayKey();   // a till left open overnight must not file today's expense under yesterday
   exTaps=[]; $('exNote').value=''; $('exStatus').textContent='';
   renderExpPad();
   $('expModal').classList.add('show');
@@ -2632,7 +2634,7 @@ async function saveExpense(){
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   $('exDone').disabled=true; $('exStatus').textContent='Saving…';
   try{
-    const res=await fetch(expensesUrl(), {method:'POST', headers:h,
+    const res=await fetch(apiUrl('/api/expenses'), {method:'POST', headers:h,
       body:JSON.stringify({day, store, amount, counts, note:$('exNote').value})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
@@ -2648,7 +2650,7 @@ async function loadExpenses(){
   if(!day) return;
   $('exListLbl').textContent='Expenses on '+day+' — '+storeLabel(store);
   try{
-    const res=await fetch(expensesUrl({from:day, to:day, store}), {headers:shareHeaders(false)});
+    const res=await fetch(apiUrl('/api/expenses', {from:day, to:day, store}), {headers:shareHeaders(false)});
     const d=await res.json();
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     const rows=d.entries||[];
@@ -2664,7 +2666,7 @@ async function deleteExpense(id){
   if(!confirm('Delete this expense?')) return;
   const h=shareHeaders(false); h['x-admin-pin']=adminPin();
   try{
-    const res=await fetch(expensesUrl({day:$('exDate').value, store:$('exStore').value, id}), {method:'DELETE', headers:h});
+    const res=await fetch(apiUrl('/api/expenses', {day:$('exDate').value, store:$('exStore').value, id}), {method:'DELETE', headers:h});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     loadExpenses();
@@ -2677,16 +2679,10 @@ async function deleteExpense(id){
    script pulls each day's total into the sheet's Money Added column. */
 const ADD_AMTS = [2,4,10,20,50];
 let maTaps = [];
-function moneyAddedUrl(params){
-  let u='/api/money-added';
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  const q=new URLSearchParams(params||{}).toString();
-  return q ? u+'?'+q : u;
-}
 function openMoneyAdded(){
   $('maStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
   if(currentStore) $('maStore').value=currentStore.id;
-  if(!$('maDate').value) $('maDate').value=todayKey();
+  $('maDate').value=todayKey();
   maTaps=[]; $('maOther').value=''; $('maStatus').textContent='';
   renderAddPad();
   $('addModal').classList.add('show');
@@ -2717,7 +2713,7 @@ async function saveMoneyAdded(){
   const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
   $('maDone').disabled=true; $('maStatus').textContent='Saving…';
   try{
-    const res=await fetch(moneyAddedUrl(), {method:'POST', headers:shareHeaders(true),
+    const res=await fetch(apiUrl('/api/money-added'), {method:'POST', headers:shareHeaders(true),
       body:JSON.stringify({day, store, amount, counts})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
@@ -2733,7 +2729,7 @@ async function loadMoneyAdded(){
   if(!day) return;
   $('maListLbl').textContent='Money added on '+day+' — '+storeLabel(store);
   try{
-    const res=await fetch(moneyAddedUrl({from:day, to:day, store}), {headers:shareHeaders(false)});
+    const res=await fetch(apiUrl('/api/money-added', {from:day, to:day, store}), {headers:shareHeaders(false)});
     const d=await res.json();
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     const rows=d.entries||[];
@@ -2748,7 +2744,7 @@ async function loadMoneyAdded(){
 async function deleteMoneyAdded(id){
   if(!confirm('Delete this entry?')) return;
   try{
-    const res=await fetch(moneyAddedUrl({day:$('maDate').value, store:$('maStore').value, id}), {method:'DELETE', headers:shareHeaders(false)});
+    const res=await fetch(apiUrl('/api/money-added', {day:$('maDate').value, store:$('maStore').value, id}), {method:'DELETE', headers:shareHeaders(false)});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     loadMoneyAdded();
@@ -2804,9 +2800,7 @@ async function loadAdmin(){
 function renderAdmin(){
   const d=adState.data; if(!d) return;
   const t=d.totals;
-  const period = adState.from===adState.to ? niceDay(adState.from)
-    : niceDay(adState.from)+' → '+niceDay(adState.to);
-  $('adStatus').textContent = (adState.store? storeLabel(adState.store) : 'All stores')+' · '+period+
+  $('adStatus').textContent = (adState.store? storeLabel(adState.store) : 'All stores')+' · '+adPeriod()+
     ' · '+t.count+' sale'+(t.count===1?'':'s');
 
   $('adSummary').innerHTML='<div class="cards" style="margin-bottom:14px">'+
@@ -2848,8 +2842,11 @@ function adCard(lbl,val,sub){
 }
 function niceDay(key){
   const d=new Date(key+'T00:00:00');
-  return d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  const o={weekday:'short',day:'numeric',month:'short'};
+  if(d.getFullYear()!==new Date().getFullYear()) o.year='numeric';   // "1 Oct" alone is ambiguous on an All-time range
+  return d.toLocaleDateString('en-AU',o);
 }
+function adPeriod(){ return adState.from===adState.to ? niceDay(adState.from) : niceDay(adState.from)+' → '+niceDay(adState.to); }
 /* ---------------- admin tabs: Takings | Insights ---------------- */
 let adTab = 'takings';
 function adKey(){ return (adState.store||'')+'|'+adState.from+'|'+adState.to; }
@@ -3054,15 +3051,10 @@ function brandColor(b){
   return 'hsl('+Math.round((slot*137.508)%360)+',62%,'+(slot%2?46:58)+'%)';
 }
 
-function costsUrl(){
-  let u='/api/costs';
-  try{ if(/^https?:\/\//i.test(settings.catUrl)) u=new URL(u, settings.catUrl).href; }catch(e){}
-  return u;
-}
 async function fetchCosts(){
   const h=shareHeaders(false); h['x-admin-pin']=adminPin();
   try{
-    const res=await fetch(costsUrl(), {headers:h});
+    const res=await fetch(apiUrl('/api/costs'), {headers:h});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) return {error:d.error||('HTTP '+res.status)};
     return d;
@@ -3224,8 +3216,7 @@ function renderInsights(anim){
 
   // Status chips: where the costs came from and what's missing.
   const chips=[];
-  const scope=(adState.store ? storeLabel(adState.store) : 'All stores')+' · '+
-    (adState.from===adState.to ? niceDay(adState.from) : niceDay(adState.from)+' → '+niceDay(adState.to));
+  const scope=(adState.store ? storeLabel(adState.store) : 'All stores')+' · '+adPeriod();
   chips.push('<span>'+esc(scope)+'</span>');
   if(!hasCost) chips.push('<span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+') — profit can’t be worked out. Re-run setup in the Google Sheet script.</span>');
   else{
@@ -3390,7 +3381,7 @@ async function saveNoCost(input){
   st.className='ncst'; st.textContent='Saving…';
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   try{
-    const res=await fetch(costsUrl(), {method:'POST', headers:h, body:JSON.stringify({set:[row]})});
+    const res=await fetch(apiUrl('/api/costs'), {method:'POST', headers:h, body:JSON.stringify({set:[row]})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
     gx.misc=d.misc || gx.misc;
@@ -3630,62 +3621,19 @@ async function printAdminSummary(){
   if(!d){ $('adStatus').textContent='Nothing loaded yet — hit Refresh first.'; return; }
   const t=d.totals;
   const scope = adState.store ? storeLabel(adState.store) : 'All stores';
-  const period = adState.from===adState.to ? niceDay(adState.from)
-    : niceDay(adState.from)+' \u2192 '+niceDay(adState.to);
-  const sub = scope+' \u00b7 '+period;
+  const sub = scope+' · '+adPeriod();
   const ids = Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
 
-  if(await bridgeReady()){
-    try{
-      const rows=[
-        ['Sales', String(t.count)],
-        ['Cash', money(t.cash)],
-        ['Card', money(t.card)],
-        '-',
-        ['TOTAL', money(t.total), true],
-        '-',
-        ['Subtotal ex GST', money(t.sub)],
-        ['GST collected', money(t.gst)],
-      ];
-      if(ids.length>1){
-        rows.push('-');
-        rows.push(['BY STORE','']);
-        ids.forEach(id=>{ const a=d.byStore[id];
-          rows.push([storeLabel(id)+' ('+a.count+')', money(a.total)]); });
-      }
-      await bridgeSend({type:'report', store:storeForBridge(),
-        report:{title:'SALES SUMMARY', subtitle:sub, rows:rows},
-        options:{cut:true, drawer:false}});
-      toast('Sales summary printed');
-      return;
-    }catch(e){
-      console.error('[bridge] falling back to print dialog:', e);
-      toast('Printer bridge error - using print dialog');
-    }
-  }
-
-  const w = settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm');
-  document.documentElement.style.setProperty('--rwidth', w);
-  let h='';
-  h+='<div class="c b big">'+esc(settings.name)+'</div>';
-  if(settings.abn) h+='<div class="c">ABN '+esc(settings.abn)+'</div>';
-  h+='<hr><div class="c b">SALES SUMMARY</div>';
-  h+='<div class="c">'+esc(sub)+'</div><hr>';
-  h+='<div class="tot"><span>Sales</span><span>'+t.count+'</span></div>';
-  h+='<div class="tot"><span>Cash</span><span>'+money(t.cash)+'</span></div>';
-  h+='<div class="tot"><span>Card</span><span>'+money(t.card)+'</span></div>';
-  h+='<div class="tot g"><span>TOTAL</span><span>'+money(t.total)+'</span></div>';
-  h+='<hr><div class="tot"><span>Subtotal ex GST</span><span>'+money(t.sub)+'</span></div>';
-  h+='<div class="tot"><span>GST collected</span><span>'+money(t.gst)+'</span></div>';
+  const rows=[
+    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)],
+    '-', ['TOTAL', money(t.total), true], '-',
+    ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]
+  ];
   if(ids.length>1){
-    h+='<hr><div class="c b">BY STORE</div>';
-    ids.forEach(id=>{ const a=d.byStore[id];
-      h+='<div class="tot"><span>'+esc(storeLabel(id))+' ('+a.count+')</span><span>'+money(a.total)+'</span></div>'; });
+    rows.push('-', ['BY STORE','']);
+    ids.forEach(id=>{ const a=d.byStore[id]; rows.push([storeLabel(id)+' ('+a.count+')', money(a.total)]); });
   }
-  h+='<hr><div class="c" style="font-size:11px">Printed '+new Date().toLocaleString('en-AU')+'</div>';
-  $('receipt').innerHTML=h;
-  applyPageSize();
-  suppressClearOnPrint=true; window.print();
+  await printReport('SALES SUMMARY', sub, rows, 'Sales summary printed');
 }
 
 // Every sale in the shown period, straight from the site — the file to hand the
@@ -3697,25 +3645,27 @@ async function exportAdminCsv(){
     $('adStatus').textContent=(d && d.error) || 'Could not read the sales record.';
     return;
   }
-  const live=d.sales.filter(s=>!s.voided);
-  if(!live.length){ $('adStatus').textContent='No sales in this period to export.'; return; }
+  const n=downloadSalesCsv(d.sales, 'sales-'+(adState.store||'all-stores')+'-'+adState.from+'-to-'+adState.to+'.csv');
+  $('adStatus').textContent = n ? n+' sale'+(n===1?'':'s')+' exported.' : 'No sales in this period to export.';
+}
+// Voided sales are left out. Returns how many rows went in (0 = nothing downloaded).
+function downloadSalesCsv(sales, filename){
+  const live=(sales||[]).filter(s=>s && !s.voided);
+  if(!live.length) return 0;
+  const f2=v=>v!=null && v!=='' && isFinite(v) ? Number(v).toFixed(2) : '';
   const head=['Store','Invoice','Date','Time','Served by','Customer','Phone / email','Order','Method','Discount',
               'Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=live.map(s=>{ const dt=new Date(s.ts);
-    const items=(s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ');
     return [storeLabel(s.store), s.no, dt.toLocaleDateString('en-AU'), dt.toLocaleTimeString('en-AU'),
-      s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, (s.discount||0).toFixed(2),
-      Number(s.sub||0).toFixed(2), Number(s.gst||0).toFixed(2), Number(s.total||0).toFixed(2),
-      Number(s.paid!=null?s.paid:s.total||0).toFixed(2),
-      s.tendered!=null?Number(s.tendered).toFixed(2):'', s.change!=null?Number(s.change).toFixed(2):'', items]
-      .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');
+      s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, f2(s.discount||0),
+      f2(s.sub), f2(s.gst), f2(s.total), f2(s.paid!=null?s.paid:s.total), f2(s.tendered), f2(s.change),
+      (s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ')]
+      .map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',');
   });
-  const csv=[head.join(','),...rows].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='sales-'+(adState.store||'all-stores')+'-'+adState.from+'-to-'+adState.to+'.csv';
-  a.click();
-  $('adStatus').textContent=live.length+' sale'+(live.length===1?'':'s')+' exported.';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([[head.join(','),...rows].join('\n')],{type:'text/csv'}));
+  a.download=filename; a.click();
+  return live.length;
 }
 
 /* ---------------- settings UI ---------------- */
@@ -3796,7 +3746,10 @@ function saveSettingsUI(){
   const c=parseInt($('sCounter').value,10);
   if(!isNaN(c) && c>0){
     localStorage.setItem(counterKey(),String(c));
-    if(String(c)!==$('sCounter').dataset.was) setSiteCounter(c);   // changed by hand → every device follows
+    if(String(c)!==$('sCounter').dataset.was){                     // changed by hand → every device follows
+      try{ localStorage.removeItem(reservedKey()); }catch(e){}      // a number held from the old sequence is stale
+      setSiteCounter(c).then(reserveNumber);
+    }
   }
   save(LS.settings, settings);
   if(currentStore) currentStore=storeById(currentStore.id);   // pick up a rename
@@ -3821,20 +3774,7 @@ function applySettings(){
 
 /* ---------------- export ---------------- */
 function exportCsv(){
-  const sales=load(LS.sales,[]).filter(s=>!s.voided);   // voided/refunded sales are excluded
-  if(!sales.length){ alert('No sales to export.'); return; }
-  const head=['Store','Invoice','Date','Time','Served by','Customer','Phone / email','Order','Method','Discount','Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
-  const rows=sales.map(s=>{ const d=new Date(s.ts);
-    const items=s.items.map(i=>i.qty+'x '+i.name).join(' | ');
-    return [storeLabel(s.store), s.no, d.toLocaleDateString('en-AU'), d.toLocaleTimeString('en-AU'), s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, (s.discount||0).toFixed(2),
-      s.sub.toFixed(2), s.gst.toFixed(2), s.total.toFixed(2), (s.paid||s.total).toFixed(2),
-      s.tendered!=null?s.tendered.toFixed(2):'', s.change!=null?s.change.toFixed(2):'', items]
-      .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',');
-  });
-  const csv=[head.join(','),...rows].join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='sales-'+todayKey()+'.csv'; a.click();
+  if(!downloadSalesCsv(load(LS.sales,[]), 'sales-'+todayKey()+'.csv')) alert('No sales to export.');
 }
 
 /* ---------------- focus management ---------------- */
@@ -3865,7 +3805,7 @@ function bind(){
     else if(b.dataset.act==='rm') removeItem(i);
   });
   $('basketBody').addEventListener('change', e=>{
-    const q=e.target.closest('[data-act="qty"]'); if(q){ setQty(+q.dataset.i, parseInt(q.value,10)); return; }
+    const q=e.target.closest('[data-act="qty"]'); if(q){ const n=parseInt(q.value,10); if(isNaN(n)) render(); else setQty(+q.dataset.i, n); return; }   // junk typed = keep the old qty, not delete the line
     const p=e.target.closest('[data-act="price"]'); if(p){ setMiscPrice(+p.dataset.i, p.value); return; }
   });
 
@@ -3893,7 +3833,7 @@ function bind(){
   $('btnUnsent').onclick=async()=>{ const b=$('btnUnsent'); b.textContent='Sending…'; await flushUnsynced(); focusScan();
     if(b.classList.contains('on')) toast('Still can\'t reach the site — they\'ll send when the wifi is back'); else toast('All sales sent'); };
   // Wifi back → send the queue straight away rather than waiting for the next minute.
-  window.addEventListener('online', ()=>{ flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
+  window.addEventListener('online', ()=>{ reserveNumber(); flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
   $('btnSync').onclick=()=>syncCatalog(false);
   $('btnReprint').onclick=reprintLast;
   $('btnInvoices').onclick=e=>{ e.stopPropagation(); toggleInvMenu(); };
@@ -4091,7 +4031,7 @@ function bind(){
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  setInterval(()=>{ reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
   renderUnsent();
   recheckAdmin();
 

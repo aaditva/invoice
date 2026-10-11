@@ -16,21 +16,14 @@
  *    ALLOW_ORIGIN  optional, locks CORS to your site URL (default *)
  * ------------------------------------------------------------------ */
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { corsHeaders, preflight, json, tokenOk, same } from '../lib/http.mjs';
 
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token, x-admin-pin',
-    'Cache-Control': 'no-store',
-    'Content-Type': 'application/json',
-  };
-  if (req.method === 'OPTIONS') return new Response('{}', { status: 200, headers });
+  const headers = corsHeaders('POST');
+  if (req.method === 'OPTIONS') return preflight(headers);
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, headers);
 
-  const tok = process.env.SALES_TOKEN;
-  if (tok && req.headers.get('x-sales-token') !== tok) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
 
   const pin = process.env.ADMIN_PIN;
   if (!pin) {
@@ -44,13 +37,3 @@ export default async (req) => {
 };
 
 export const config = { path: '/api/admin' };
-
-// Compare without leaking how many characters matched.
-function same(a, b) {
-  const h = s => createHash('sha256').update(String(s)).digest();
-  return timingSafeEqual(h(a), h(b));
-}
-
-function json(obj, status, headers) {
-  return new Response(JSON.stringify(obj), { status, headers });
-}
