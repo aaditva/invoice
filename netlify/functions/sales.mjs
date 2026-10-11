@@ -72,6 +72,7 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
+import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -93,18 +94,9 @@ const LOCAL_ONLY = ['synced', 'stockAdjusted', 'restocked', 'stockItems'];
 const PICKUP_STATE = ['pickedUp', 'pickedUpAt', 'pickedUpDay', 'pickedUpBy'];
 
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token',
-    'Cache-Control': 'no-store',
-  };
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-
-  const want = process.env.SALES_TOKEN;
-  if (want && !sameToken(req.headers.get('x-sales-token') || '', want)) {
-    return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
-  }
+  const headers = corsHeaders('GET, POST');
+  if (req.method === 'OPTIONS') return preflight(headers);
+  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
 
   try {
     if (req.method === 'POST') return await handlePost(req, headers);
@@ -619,19 +611,3 @@ function byTs(a, b) { return String(a && a.ts).localeCompare(String(b && b.ts));
 function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
 function r2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
-
-// Length-independent compare, so a wrong token can't be probed byte by byte.
-function sameToken(got, want) {
-  const a = String(got), b = String(want);
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    diff |= (a.charCodeAt(i % (a.length || 1)) || 0) ^ (b.charCodeAt(i % (b.length || 1)) || 0);
-  }
-  return diff === 0;
-}
-
-function json(obj, status, headers) {
-  return new Response(JSON.stringify(obj), {
-    status, headers: { ...headers, 'Content-Type': 'application/json' },
-  });
-}

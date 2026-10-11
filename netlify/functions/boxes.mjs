@@ -19,6 +19,7 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
+import { corsHeaders, preflight, json, tokenOk, pinOk } from '../lib/http.mjs';
 
 const KEY = 'boxes';
 const MAX = 500;
@@ -36,17 +37,10 @@ const SEED = [
 ];
 
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token, x-admin-pin',
-    'Cache-Control': 'no-store',
-    'Content-Type': 'application/json',
-  };
-  if (req.method === 'OPTIONS') return new Response('{}', { status: 200, headers });
+  const headers = corsHeaders('GET, POST');
+  if (req.method === 'OPTIONS') return preflight(headers);
 
-  const tok = process.env.SALES_TOKEN;
-  if (tok && req.headers.get('x-sales-token') !== tok) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
 
   const st = getStore({ name: 'boxes', consistency: 'strong' });
   try {
@@ -55,8 +49,7 @@ export default async (req) => {
       return json({ boxes: saved && Array.isArray(saved.boxes) ? saved.boxes : SEED, seeded: !saved }, 200, headers);
     }
     if (req.method === 'POST') {
-      const pin = process.env.ADMIN_PIN;
-      if (pin && req.headers.get('x-admin-pin') !== pin) return json({ error: 'Admin password required.' }, 401, headers);
+      if (!pinOk(req)) return json({ error: 'Admin password required.' }, 401, headers);
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
       const boxes = clean(body && body.boxes);
@@ -83,7 +76,5 @@ function clean(list) {
   }
   return [...seen.values()];
 }
-
-function json(obj, status, headers) { return new Response(JSON.stringify(obj), { status, headers }); }
 
 export const config = { path: '/api/boxes' };

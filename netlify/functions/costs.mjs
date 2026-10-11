@@ -32,6 +32,7 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
+import { corsHeaders, preflight, json, tokenOk, pinOk } from '../lib/http.mjs';
 
 const KEY = 'costs';
 const MANUAL = 'manual';
@@ -39,19 +40,11 @@ const MAX = 20000;
 const MISC_RE = /^[^#]{1,80}#\d{1,4}$/;
 
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token, x-admin-pin',
-    'Cache-Control': 'no-store',
-    'Content-Type': 'application/json',
-  };
-  if (req.method === 'OPTIONS') return new Response('{}', { status: 200, headers });
+  const headers = corsHeaders('GET, POST');
+  if (req.method === 'OPTIONS') return preflight(headers);
 
-  const tok = process.env.SALES_TOKEN;
-  if (tok && req.headers.get('x-sales-token') !== tok) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
-  const pin = process.env.ADMIN_PIN;
-  if (pin && req.headers.get('x-admin-pin') !== pin) return json({ error: 'Admin password required.' }, 401, headers);
+  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  if (!pinOk(req)) return json({ error: 'Admin password required.' }, 401, headers);
 
   const st = getStore({ name: 'costs', consistency: 'strong' });
   try {
@@ -133,7 +126,3 @@ async function editManual(st, body, headers) {
 
 // Barcodes are matched the way the till matches them: trimmed, upper-case, no spaces.
 function norm(v) { return String(v == null ? '' : v).trim().toUpperCase().replace(/\s+/g, ''); }
-
-function json(obj, status, headers) {
-  return new Response(JSON.stringify(obj), { status, headers });
-}

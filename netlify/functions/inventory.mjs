@@ -21,21 +21,15 @@
  *    ALLOW_ORIGIN          optional, locks CORS to your site URL
  * ------------------------------------------------------------------ */
 
+import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+
 const SQ = 'https://api.squarespace.com/1.0/commerce';
 const UA = 'StoreTill/1.0 (+inventory)';
 
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token',
-    'Cache-Control': 'no-store',
-    'Content-Type': 'application/json',
-  };
-  if (req.method === 'OPTIONS') return new Response('{}', { status: 200, headers });  // non-empty body: Netlify's lambda decoder 502s on an empty 204
-
-  const need = process.env.SALES_TOKEN;
-  if (need && req.headers.get('x-sales-token') !== need) return json({ error: 'Unauthorized' }, 401, headers);
+  const headers = corsHeaders('POST');
+  if (req.method === 'OPTIONS') return preflight(headers);
+  if (!tokenOk(req)) return json({ error: 'Unauthorized' }, 401, headers);
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, headers);
 
   const key = process.env.SQUARESPACE_API_KEY;
@@ -131,7 +125,5 @@ async function skuToVariant(key) {
   }
   return map;
 }
-
-function json(obj, status, headers) { return new Response(JSON.stringify(obj), { status, headers }); }
 
 export const config = { path: '/api/inventory' };
