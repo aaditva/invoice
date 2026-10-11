@@ -1116,9 +1116,9 @@ function deviceId(){
 // Ask the site for this store's next invoice number. Every device draws from
 // the same sequence, so a number is only ever printed for one sale. null =
 // couldn't reach the site in time.
-async function nextServerNumber(){
+async function nextServerNumber(waitMs){
   const url=salesUrl({counter:'next'}); if(!url || !currentStore) return null;
-  const c=new AbortController(); const t=setTimeout(()=>c.abort(), 5000);
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(), waitMs||5000);
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
       body:JSON.stringify({store:currentStore.id, min:readCounter()})});
@@ -1128,6 +1128,23 @@ async function nextServerNumber(){
     return n>0 ? n : null;
   }catch(e){ return null; }
   finally{ clearTimeout(t); }
+}
+// The next number is fetched ahead of time (when the store opens, and after
+// each sale) and kept on the device, so Finalise never waits on the wifi for it.
+// It's held until a sale uses it — a cleared basket doesn't waste it.
+function reservedKey(){ return 'inv_reserved:'+(currentStore ? currentStore.id : ''); }
+function takeReserved(){
+  let n=NaN; try{ n=parseInt(localStorage.getItem(reservedKey())||'', 10); localStorage.removeItem(reservedKey()); }catch(e){}
+  return n>0 ? n : null;
+}
+let reserving=false;
+async function reserveNumber(){
+  if(!currentStore || reserving) return;
+  try{ if(localStorage.getItem(reservedKey())) return; }catch(e){ return; }
+  reserving=true;
+  const key=reservedKey();
+  try{ const n=await nextServerNumber(); if(n) localStorage.setItem(key, String(n)); }catch(e){}
+  finally{ reserving=false; }
 }
 // Supplier details for the docket: the business, with the store's own address
 // and phone when it has them, and the location named so the two differ. Pass the
@@ -1171,6 +1188,7 @@ function selectStore(id){
   refreshToday();                 // pull this store's day from the site's record
   refreshPickupCount();
   flushUnsynced();
+  reserveNumber();
   focusScan();
 }
 function switchStore(){
@@ -1577,7 +1595,9 @@ async function commitSale(){
   // the number, so a scan during the wait can't slip into this sale.
   // The store tag keeps the two locations' numbers apart; the device tag is optional.
   const tag = store.tag + (settings.device||'').trim() + '-';
-  const fromSite = await nextServerNumber();
+  // A number fetched in advance is used at once; without one, wait a moment for
+  // the site, then fall back to an offline (device-tagged) number.
+  const fromSite = takeReserved() || await nextServerNumber(1500);
   const counter = fromSite || readCounter();
   // Offline the number can't come from the shared sequence, so it carries this
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
@@ -1589,6 +1609,7 @@ async function commitSale(){
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
   refreshToday();                 // re-read the day from the site so both tills agree
   if(order==='pickup') refreshPickupCount();
+  reserveNumber();                // ready for the next sale
   return sale;
 }
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
@@ -3725,7 +3746,10 @@ function saveSettingsUI(){
   const c=parseInt($('sCounter').value,10);
   if(!isNaN(c) && c>0){
     localStorage.setItem(counterKey(),String(c));
-    if(String(c)!==$('sCounter').dataset.was) setSiteCounter(c);   // changed by hand → every device follows
+    if(String(c)!==$('sCounter').dataset.was){                     // changed by hand → every device follows
+      try{ localStorage.removeItem(reservedKey()); }catch(e){}      // a number held from the old sequence is stale
+      setSiteCounter(c).then(reserveNumber);
+    }
   }
   save(LS.settings, settings);
   if(currentStore) currentStore=storeById(currentStore.id);   // pick up a rename
@@ -3809,7 +3833,7 @@ function bind(){
   $('btnUnsent').onclick=async()=>{ const b=$('btnUnsent'); b.textContent='Sending…'; await flushUnsynced(); focusScan();
     if(b.classList.contains('on')) toast('Still can\'t reach the site — they\'ll send when the wifi is back'); else toast('All sales sent'); };
   // Wifi back → send the queue straight away rather than waiting for the next minute.
-  window.addEventListener('online', ()=>{ flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
+  window.addEventListener('online', ()=>{ reserveNumber(); flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
   $('btnSync').onclick=()=>syncCatalog(false);
   $('btnReprint').onclick=reprintLast;
   $('btnInvoices').onclick=e=>{ e.stopPropagation(); toggleInvMenu(); };
@@ -4007,7 +4031,7 @@ function bind(){
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  setInterval(()=>{ reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
   renderUnsent();
   recheckAdmin();
 
