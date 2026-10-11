@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Store Till &amp; Tax Invoice</title>
+<script>try{if(localStorage.getItem('theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <style>
   :root{
     --bg:#f5f5f7; --panel:#ffffff; --ink:#1d1d1f; --muted:#6e6e73;
@@ -381,6 +382,70 @@
   #invoicesModal.single .invbrowse,#invoicesModal.single #invList{display:none}
   #invoicesModal.single #invDetail fieldset{margin-top:0 !important}
 
+  /* ---------- Dark mode (toggle in the header; choice saved per device) ----------
+     Soft warm greys, not pitch black. Screen only — receipts always print black on white. */
+  .themetog{display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:7px 11px;white-space:nowrap}
+  .gatetheme{position:absolute;top:14px;right:18px}
+  .themetog .tk{width:30px;height:18px;border-radius:999px;background:var(--line);position:relative;transition:background .2s}
+  .themetog .tk::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
+  [data-theme="dark"] .themetog .tk{background:var(--accent)}
+  [data-theme="dark"] .themetog .tk::after{transform:translateX(12px)}
+  @media screen{
+  [data-theme="dark"]{color-scheme:dark;
+    --bg:#262624; --panel:#30302e; --ink:#ecebe7; --muted:#a3a19b;
+    --line:#43423f; --accent:#4b9cff; --accent-ink:#fff;
+    --cash:#4cc38a; --card:#6aaeff; --danger:#ff6b6b; --ok:#4cc38a;
+    --shadow:0 1px 3px rgba(0,0,0,.25),0 8px 24px rgba(0,0,0,.2);
+    --soft:#3a3936; --soft2:#353432}
+  [data-theme="dark"] button{background:var(--soft);color:var(--ink)}
+  [data-theme="dark"] button.primary{background:var(--accent);color:var(--accent-ink)}
+  [data-theme="dark"] button.ghost{background:transparent}
+  [data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:#2b2b29;color:var(--ink)}
+  [data-theme="dark"] .pill,[data-theme="dark"] .qty button,[data-theme="dark"] .seg button{background:var(--soft)}
+  [data-theme="dark"] .seg button.sel{background:var(--accent);color:var(--accent-ink)}
+  [data-theme="dark"] thead th{background:var(--soft2)}
+  [data-theme="dark"] .rm{background:transparent}
+  [data-theme="dark"] .sheet,[data-theme="dark"] .sheet .foot,[data-theme="dark"] .ddmenu{background:var(--panel)}
+  [data-theme="dark"] .modal{background:rgba(0,0,0,.55)}
+  [data-theme="dark"] .gate{background:var(--bg)}
+  [data-theme="dark"] .card,[data-theme="dark"] .cashbox{background:var(--soft2)}
+  [data-theme="dark"] .quicktender button{background:var(--panel)}
+  [data-theme="dark"] .searchlist .r:hover,[data-theme="dark"] .ddmenu > button:hover,
+  [data-theme="dark"] .dtable tr.day:hover td,[data-theme="dark"] .pulist .pr:hover{background:var(--soft)}
+  [data-theme="dark"] .ddmenu > button{background:none}
+  [data-theme="dark"] .storechip,[data-theme="dark"] .dd .ddtag,[data-theme="dark"] .ddmenu > button.storechip,
+  [data-theme="dark"] .paybtns button.card{background:rgba(75,156,255,.16)}
+  [data-theme="dark"] .ddmenu > button.storechip:hover{background:rgba(75,156,255,.24)}
+  [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
+  [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
+  [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
+  [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
+    background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
+  [data-theme="dark"] .cashpad button.coin,[data-theme="dark"] .unsent{background:rgba(237,161,0,.16);color:#f0c050;border-color:rgba(237,161,0,.35)}
+  [data-theme="dark"] .tick{background:var(--soft)}
+  [data-theme="dark"] .tick.on{background:var(--ok)}
+  [data-theme="dark"] .pulist .pr.hl{background:rgba(237,161,0,.14)}
+  [data-theme="dark"] .redact{background:#111}
+  [data-theme="dark"] #adminModal{--g-blue:#6aaeff;--g-ink:var(--ink);--g-ink2:var(--muted);--g-line:var(--line);--g-soft:var(--soft2)}
+  [data-theme="dark"] .gtabs button{background:none}
+  [data-theme="dark"] .gtabs button:hover,[data-theme="dark"] #adminModal .seg button:hover,
+  [data-theme="dark"] .gx .dlist .dr:hover,[data-theme="dark"] .gx .dlist .dr.hl,[data-theme="dark"] .gx table.gt tbody tr:hover{background:var(--soft)}
+  [data-theme="dark"] .gbar.on{background:rgba(75,156,255,.25)}
+  [data-theme="dark"] #adminModal .seg button,[data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi,
+  [data-theme="dark"] .gx .gtip,[data-theme="dark"] .gx table.gt th,[data-theme="dark"] .gx .gseg button{background:var(--panel);color:var(--ink)}
+  [data-theme="dark"] #adminModal .seg button.sel,[data-theme="dark"] .gx .gseg button.sel{background:rgba(75,156,255,.18);border-color:transparent;color:#9cc8ff}
+  [data-theme="dark"] .gx .gchip{background:rgba(237,161,0,.16);color:#f0c050}
+  [data-theme="dark"] .gx .gchip.ok{background:rgba(76,195,138,.16);color:#7fd9a9}
+  [data-theme="dark"] .gx .gchip.bad{background:rgba(255,107,107,.16);color:#ff9b9b}
+  [data-theme="dark"] .gx .ncst.ok{color:#7fd9a9} [data-theme="dark"] .gx .ncst.bad{color:#ff9b9b}
+  [data-theme="dark"] .gx .band.on{fill:var(--soft)}
+  [data-theme="dark"] .gx .grid line{stroke:#3e3d3a}
+  [data-theme="dark"] .gx .grid.bold line{stroke:#55534f}
+  [data-theme="dark"] .gx .grid.bold line.zero{stroke:#8a8883}
+  [data-theme="dark"] .gx table.gt td{border-bottom-color:var(--line)}
+  }
+
   .receipt{display:none}
   @media print{
     /* The real @page rule is injected at print time by applyPageSize() into
@@ -412,6 +477,7 @@
 <div class="app">
   <header>
     <span class="store" id="hStore">Store Till</span>
+    <button class="ghost themetog" title="Switch light / dark mode" aria-pressed="false"><span class="themeLbl">☀️ Light</span><span class="tk"></span></button>
     <span class="pill" id="catPill" title="Products in the catalog"><span class="dot" id="catDot"></span><b id="catCount">0</b><span id="catWhen" class="muted"></span></span>
     <button class="unsent" id="btnUnsent"></button>
     <button class="ghost" id="btnSync" title="Sync catalog">⟳ Sync</button>
@@ -560,6 +626,7 @@
 
 <!-- STORE GATE — shown before the till opens; nothing else is reachable until a store is picked -->
 <div class="modal gate" id="gateModal">
+  <button class="ghost themetog gatetheme" title="Switch light / dark mode" aria-pressed="false"><span class="themeLbl">☀️ Light</span><span class="tk"></span></button>
   <div class="gatebox">
     <h1 id="gateTitle">Which store?</h1>
     <p class="gsub">Pick the location this till is ringing up for. Its sales are kept on the site, so either store can be opened from any device.</p>
@@ -4046,6 +4113,20 @@ function bind(){
   renderAuth();
 }
 bind();
+
+/* ---------- Light / dark toggle (saved on this device) ---------- */
+(function(){
+  const btns=document.querySelectorAll('.themetog');
+  const paint=()=>{ const d=document.documentElement.getAttribute('data-theme')==='dark';
+    btns.forEach(b=>{ b.querySelector('.themeLbl').textContent=d?'🌙 Dark':'☀️ Light'; b.setAttribute('aria-pressed',d); }); };
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    const d=document.documentElement.getAttribute('data-theme')!=='dark';
+    if(d) document.documentElement.setAttribute('data-theme','dark'); else document.documentElement.removeAttribute('data-theme');
+    try{ localStorage.setItem('theme', d?'dark':'light'); }catch(e){}
+    paint();
+  }));
+  paint();
+})();
 </script>
 </body>
 </html>
