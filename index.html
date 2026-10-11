@@ -208,7 +208,9 @@
 
   /* ---------- Admin tabs + Insights (Google-style dashboard) ---------- */
   #adminModal{--g-blue:#1a73e8;--g-ink:#202124;--g-ink2:#5f6368;--g-line:#dadce0;--g-soft:#f8f9fa;
-    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6}
+    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
+    --s9:#0097a7;--s10:#8e24aa;--s11:#795548;--s12:#c0ca33;--s13:#3949ab;--s14:#f06292;--s15:#00695c;--s16:#ff7043;
+    --s17:#5c6bc0;--s18:#9e9d24;--s19:#ad1457;--s20:#26a69a;--s21:#6d4c41;--s22:#ffb300;--s23:#1e88e5;--s24:#7cb342}
   #adminModal .sheet{transition:max-width .35s cubic-bezier(.2,0,0,1)}
   #adminModal .sheet.xl{max-width:1200px}
   #adminModal header{flex-wrap:wrap;row-gap:0;padding-bottom:0}
@@ -3035,18 +3037,21 @@ function guessBrand(name){
   return 'Other';
 }
 // A brand keeps its colour for good (saved on this device), whatever the
-// filter, so "One Piece is aqua" stays true. Eight colours; after that, grey.
+// filter, so "One Piece is aqua" stays true. 24 set colours, then generated
+// hues, so no two brands ever share a colour (only "Other" is grey).
 const OTHERISH = new Set(['Other','Misc','Other & rest']);
+const BRAND_SLOTS = 24;
 function brandColor(b){
   if(OTHERISH.has(b)) return 'var(--s0)';
   const m=load('inv_brand_colors', {}) || {};
   if(!m[b]){
     const used=new Set(Object.values(m));
-    let slot=0; for(let i=1;i<=8;i++){ if(!used.has(i)){ slot=i; break; } }
-    if(!slot) return 'var(--s0)';
+    let slot=1; while(used.has(slot)) slot++;
     m[b]=slot; try{ save('inv_brand_colors', m); }catch(e){}
   }
-  return 'var(--s'+m[b]+')';
+  const slot=m[b];
+  if(slot<=BRAND_SLOTS) return 'var(--s'+slot+')';
+  return 'hsl('+Math.round((slot*137.508)%360)+',62%,'+(slot%2?46:58)+'%)';
 }
 
 function costsUrl(){
