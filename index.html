@@ -272,6 +272,39 @@
   .gx .kpis{grid-column:span 12;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px}
   @media (max-width:560px){ .gx .kpis{grid-template-columns:1fr 1fr;gap:10px} .gx .kpis .kpi{padding:12px 14px} .gx .kpis .kpi .kv{font-size:21px}
     .gx .gcard{padding:14px} .gx .ggrid{gap:12px} .gx .donut{width:160px;height:160px} }
+  /* Phones: every modal (Admin especially) goes full-screen, the Admin tabs get
+     their own row, period presets scroll sideways in one line, date inputs can
+     shrink, and wide tables/charts scroll inside their card instead of the page. */
+  @media (max-width:600px){
+    .app > header{flex-wrap:wrap;overflow-x:visible;white-space:normal;row-gap:8px;padding:10px 12px;position:static}
+    .ddmenu{max-width:calc(100vw - 24px)}
+    .app > header .dd .ddmenu{left:auto;right:0}
+    .app > header button{padding:9px 11px;font-size:14px}
+    .app > header .today{flex-basis:100%;order:9;overflow-x:auto}
+    .modal{padding:0;align-items:stretch}
+    .sheet,.sheet.wide,#adminModal .sheet.xl{max-width:none;max-height:none;height:100%;height:100dvh;border-radius:0}
+    .sheet > header{padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top));white-space:normal}
+    .sheet .body{padding:14px 12px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
+    .grid2{gap:8px}
+    .grid2 > *{min-width:0}
+    input[type=date]{min-width:0;font-size:16px}
+    input,select{font-size:16px}
+    #adminModal header > .store{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+    #adminModal header .spacer{display:none}
+    #adminModal .gtabs{order:5;flex-basis:100%;margin-left:-12px;margin-right:-12px}
+    #adminModal .gtabs button{flex:1;padding:12px 8px 14px}
+    #adminModal #adPresets{flex-wrap:nowrap;overflow-x:auto;margin:0 -12px;padding:2px 12px;scrollbar-width:none}
+    #adminModal #adPresets::-webkit-scrollbar{display:none}
+    #adminModal .seg button{flex-shrink:0;white-space:nowrap}
+    #adminModal .scroller{max-height:none;overflow-x:auto}
+    #adminModal .dtable{min-width:420px}
+    #adminModal #adTakings > div[style*="flex-wrap"] > button{flex:1 1 auto}
+    .cards{grid-template-columns:1fr 1fr;gap:8px}
+    .card .cval{font-size:20px}
+    .gx .hb{grid-template-columns:minmax(70px,100px) 1fr auto;gap:8px;font-size:12.5px}
+    .gx .dlist{min-width:0}
+    .gx .gtip{white-space:normal;max-width:70vw}
+  }
   .gx .colbar{transform-box:fill-box;transform-origin:50% 100%;transition:transform .8s cubic-bezier(.2,0,0,1)}
   .gx .colbar.neg{transform-origin:50% 0}
   .gx .band{fill:transparent}
