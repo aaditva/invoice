@@ -14,6 +14,9 @@
  *    3. Your endpoint is  https://<your-site>.netlify.app/api/catalog
  *       Put that in the till's Settings → "Catalog proxy URL".
  *  Netlify runs Node 18+, which provides global fetch.
+ *
+ *  Products deleted from Squarespace are remembered and still returned
+ *  (removed:true), so they keep scanning at the till — see withRemembered().
  * ------------------------------------------------------------------ */
 
 const API_VERSIONS = ['1.0', 'v2', 'v1', '1.1'];
@@ -34,7 +37,7 @@ exports.handler = async function (event) {
 
   try {
     const products = await fetchAllProducts(key);
-    const items = flatten(products);
+    const items = await withRemembered(flatten(products), event);
     return { statusCode: 200, headers, body: JSON.stringify({ count: items.length, syncedAt: new Date().toISOString(), items }) };
   } catch (e) {
     return { statusCode: 502, headers, body: JSON.stringify({ error: String((e && e.message) || e) }) };
@@ -101,4 +104,38 @@ function flatten(products) {
     }
   }
   return items;
+}
+
+// Every product the site has ever seen is remembered (Netlify Blobs), so one
+// deleted from Squarespace still scans at the till at its last price. Those
+// come back with removed:true, no stock (so no "over stock" warning) and no
+// variantId (Squarespace has nothing to adjust). If the store can't be
+// reached, the live list is returned as it is.
+async function withRemembered(items, event) {
+  try {
+    const { getStore, connectLambda } = await import('@netlify/blobs');
+    if (connectLambda && event && event.blobs) connectLambda(event);
+    const st = getStore({ name: 'catalog', consistency: 'strong' });
+    const seen = (await st.get('seen', { type: 'json' }).catch(() => null)) || {};
+    const live = new Set();
+    let changed = false;
+    for (const it of items) {
+      const k = it.sku.toUpperCase().replace(/\s+/g, '');
+      live.add(k);
+      const prev = seen[k];
+      if (!prev || prev.name !== it.name || prev.price !== it.price) {
+        seen[k] = { sku: it.sku, name: it.name, price: it.price, currency: it.currency };
+        changed = true;
+      }
+    }
+    if (changed) await st.setJSON('seen', seen);
+    const gone = Object.keys(seen).filter(k => !live.has(k)).map(k => ({
+      sku: seen[k].sku, name: seen[k].name, price: Number(seen[k].price) || 0,
+      currency: seen[k].currency || 'AUD', stock: null, variantId: null, removed: true,
+    }));
+    return items.concat(gone);
+  } catch (e) {
+    console.log('Remembered products skipped: ' + ((e && e.message) || e));
+    return items;
+  }
 }
