@@ -26,6 +26,12 @@
  *  rewritten, so the Cost and Brand you type are never touched. Margin and
  *  stock value are formulas and update the moment you type.
  *
+ *  A product is never removed from the tab — even if you delete it from
+ *  Squarespace. Its row stays with its name, last price, cost and brand
+ *  (so the site's profit and brand charts keep counting its past sales);
+ *  only its Stock is blanked and the "Squarespace" column says when it
+ *  went. Put it back on Squarespace and that note clears by itself.
+ *
  *  Profit tab — one row per trading day (newest first): takings, cost of
  *  goods sold, gross profit, margin and how many items sold had no cost yet,
  *  with a summary box for today / this week / this month / last 30 days.
@@ -138,8 +144,9 @@ function refreshProducts() {
 /* ---------------- products, cost price & brands ---------------- */
 
 const PRODUCT_HEADS = ['Barcode', 'Name', 'Brand', 'Price', 'Cost', 'Stock',
-  'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)', 'Added'];
-const STYLE_VERSION = '2'; // bump to re-apply the tab styling
+  'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)', 'Added', 'Squarespace'];
+const GONE = '(no longer in catalog) '; // the old script put this in front of the name
+const STYLE_VERSION = '3'; // bump to re-apply the tab styling
 const HEAD_BG = '#1a73e8', HEAD_INK = '#ffffff', INK = '#202124';
 
 // Brand guessed from the product name when the Brand cell is empty or
@@ -211,7 +218,7 @@ function readProducts() {
     if (!sku) return;
     const c = cCost < 0 ? '' : r[cCost];
     out[sku] = {
-      name: cName < 0 ? '' : String(r[cName]),
+      name: cName < 0 ? '' : String(r[cName]).replace(GONE, ''),
       cost: c !== '' && c !== null && isFinite(Number(c)) ? Number(c) : null,
       brand: cBrand < 0 ? '' : String(r[cBrand]).trim(),
     };
@@ -223,7 +230,9 @@ function readProducts() {
 // whole tab: existing rows get their Name, Price and Stock updated in place
 // (Cost and Brand are never written, so typing while it runs is safe), and
 // new products are added at the top. Products that disappear from the
-// catalog stay, marked "(no longer in catalog)", so nothing you typed is lost.
+// catalog are NEVER removed: the row keeps its name, price, cost and brand,
+// its stock goes blank and column L says "Removed <date>", so its sales
+// still count for profit. If it comes back, column L clears.
 function updateProducts() {
   const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/catalog', { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error('catalog fetch failed (' + res.getResponseCode() + ')');
@@ -234,6 +243,8 @@ function updateProducts() {
   styleProducts(sheet);
   const last = lastDataRow(sheet);
   const vals = last > 1 ? sheet.getRange(2, 1, last - 1, 6).getValues() : [];
+  const gone = last > 1 ? sheet.getRange(2, 12, last - 1, 1).getValues() : [];
+  const today = Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
   const rowOf = {};
   vals.forEach((r, i) => { const s = String(r[0]).trim(); if (s && !(s in rowOf)) rowOf[s] = i; });
 
@@ -247,6 +258,7 @@ function updateProducts() {
     if (sku in rowOf) {
       const r = vals[rowOf[sku]];
       r[1] = it.name; r[3] = price; r[5] = stock;
+      gone[rowOf[sku]][0] = '';
       // A blank or "Other" brand gets another guess, so new brand rules reach
       // products already in the tab. A brand you've typed is never changed.
       const b = String(r[2]).trim();
@@ -259,11 +271,12 @@ function updateProducts() {
       fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
     }
   });
-  vals.forEach(r => {
+  vals.forEach((r, i) => {
     const s = String(r[0]).trim();
     if (!s || seen[s]) return;
-    r[5] = '';
-    if (String(r[1]).indexOf('(no longer in catalog)') !== 0) r[1] = '(no longer in catalog) ' + r[1];
+    r[5] = '';                                      // not for sale any more → no stock value
+    r[1] = String(r[1]).replace(GONE, '');          // keep its real name (old rows had a prefix)
+    if (!String(gone[i][0]).trim()) gone[i][0] = 'Removed ' + today;
   });
 
   // Existing rows first (before inserting shifts them): three narrow columns.
@@ -272,6 +285,7 @@ function updateProducts() {
     sheet.getRange(2, 2, n, 1).setValues(vals.map(r => [r[1]]));
     sheet.getRange(2, 4, n, 1).setValues(vals.map(r => [r[3]]));
     sheet.getRange(2, 6, n, 1).setValues(vals.map(r => [r[5]]));
+    sheet.getRange(2, 12, n, 1).setValues(gone);
     // Brand is only written cell by cell, and only where it was blank or "Other".
     reBrand.forEach(([row, brand]) => sheet.getRange(row, 3).setValue(brand));
     if (reBrand.length) console.log('Brands re-guessed: ' + reBrand.length);
@@ -289,7 +303,7 @@ function updateProducts() {
     sheet.getRange(2, 11, k, 1).setNumberFormat('@');
     sheet.getRange(2, 1, k, 6).setValues(fresh);
     // The first fill of an empty tab isn't "new", so it gets no Added date.
-    const added = n ? Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd') : '';
+    const added = n ? today : '';
     sheet.getRange(2, 11, k, 1).setValues(fresh.map(() => [added]));
     console.log('New products: ' + k);
   }
@@ -321,7 +335,7 @@ function styleProducts(sheet) {
   const last = lastDataRow(sheet);
   if (last > 1) sheet.getRange(2, 7, last - 1, 4).clearContent();
   sheet.getRange(1, 1, 1, 6).setValues([PRODUCT_HEADS.slice(0, 6)]);
-  sheet.getRange(1, 11).setValue(PRODUCT_HEADS[10]);
+  sheet.getRange(1, 11, 1, 2).setValues([PRODUCT_HEADS.slice(10, 12)]);
   sheet.getRange(1, 7, 1, 4).setFormulas([[
     '={"Margin $";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(E2:E=""),"",D2:D-E2:E))}',
     '={"Margin %";ARRAYFORMULA(IFERROR(IF((A2:A="")+(D2:D="")+(E2:E="")+(D2:D=0),"",(D2:D-E2:E)/D2:D),""))}',
@@ -337,7 +351,7 @@ function styleProducts(sheet) {
   sheet.setRowHeight(1, 36);
   sheet.setFrozenRows(1);
   sheet.setFrozenColumns(2);
-  [130, 340, 160, 90, 90, 70, 90, 85, 120, 125, 95].forEach((px, i) => sheet.setColumnWidth(i + 1, px));
+  [130, 340, 160, 90, 90, 70, 90, 85, 120, 125, 95, 140].forEach((px, i) => sheet.setColumnWidth(i + 1, px));
   sheet.getRange(1, 4, sheet.getMaxRows(), 8).setHorizontalAlignment('right');
   sheet.getRange(1, 1, 1, w).setHorizontalAlignment('center');
 
@@ -361,8 +375,8 @@ function styleProducts(sheet) {
       .setFontColor('#137333').setRanges([all('G'), all('H')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($F2<>"",$F2<=0)')
       .setFontColor('#c5221f').setRanges([all('F')]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=LEFT($B2,22)="(no longer in catalog)"')
-      .setFontColor('#9aa0a6').setItalic(true).setRanges([all('A'), all('B'), all('C')]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$L2<>""')
+      .setFontColor('#9aa0a6').setItalic(true).setRanges([all('A'), all('B'), all('C'), all('L')]).build(),
   ];
   sheet.setConditionalFormatRules(rules);
 
