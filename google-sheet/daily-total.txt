@@ -236,7 +236,9 @@ function readProducts() {
 function updateProducts() {
   const res = UrlFetchApp.fetch(SITE_URL.replace(/\/$/, '') + '/api/catalog', { muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error('catalog fetch failed (' + res.getResponseCode() + ')');
-  const items = JSON.parse(res.getContentText()).items || [];
+  // Products deleted from Squarespace still come back (removed:true) so they
+  // keep scanning at the till — here they count as gone.
+  const items = (JSON.parse(res.getContentText()).items || []).filter(it => !it.removed);
   if (!items.length) throw new Error('catalog came back empty — not touching the Products tab');
 
   const sheet = tabNamed(PRODUCTS_TAB);
