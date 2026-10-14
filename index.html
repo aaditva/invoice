@@ -304,6 +304,44 @@
     .gx .hb{grid-template-columns:minmax(70px,100px) 1fr auto;gap:8px;font-size:12.5px}
     .gx .dlist{min-width:0}
     .gx .gtip{white-space:normal;max-width:70vw}
+    /* Nothing may push the Admin page sideways: the period presets are a block
+       flex row (inline-flex grew to fit every button), and the body never pans. */
+    .sheet > .body{overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    #adminModal #adPresets{display:flex}
+    #adminModal .seg{display:flex}
+    #adminModal header > #closeAdmin{margin-left:auto}
+    /* Store gate: scrolls from the top, the theme switch sits above the title */
+    .gate{padding:0;overflow-y:auto;align-items:flex-start}
+    .gate .gatebox{padding:68px 16px max(24px,env(safe-area-inset-bottom))}
+    .gate h1{font-size:26px}
+    .gate .gsub{margin-bottom:20px}
+    .gatetheme{top:max(14px,env(safe-area-inset-top));right:14px;font-size:14px;padding:8px 12px}
+    .tile{padding:22px 18px}
+    .gatefoot > button{flex:1 1 100%}
+    /* Insights: charts and cards sit edge to edge-ish, KPI subtitles stay short */
+    .gx .ghead > div:first-child{min-width:0;flex-basis:100%}
+    .gx .legend{gap:12px;font-size:12.5px}
+    .gx .donutwrap{flex-direction:column;align-items:stretch;gap:12px}
+    .gx .donut{align-self:center}
+    .gx .gstatus{font-size:12.5px}
+    #adInsights > div:first-child{flex-wrap:wrap}
+    /* Top products / no-cost lists: each row becomes a small card — name on top,
+       figures in a row underneath — instead of a squashed 5-column table. */
+    .gx #gxTop table.gt thead{display:none}
+    .gx #gxTop table.gt,.gx #gxTop table.gt tbody{display:block}
+    .gx #gxTop table.gt tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px 8px;padding:10px 2px;border-bottom:1px solid var(--g-line)}
+    .gx #gxTop table.gt td{display:block;padding:0;border:0}
+    .gx #gxTop table.gt td:first-child{grid-column:1/-1;margin-bottom:6px;font-weight:550}
+    .gx #gxTop table.gt td:first-child .muted{font-weight:400}
+    .gx #gxTop table.gt td.num{text-align:left;font-size:13.5px}
+    .gx #gxTop table.gt td.num::before{display:block;font-size:11px;color:var(--g-ink2);font-weight:500}
+    .gx #gxTop table.gt td:nth-child(2)::before{content:"Qty"}
+    .gx #gxTop table.gt td:nth-child(3)::before{content:"Revenue"}
+    .gx #gxTop table.gt td:nth-child(4)::before{content:"Profit"}
+    .gx #gxTop table.gt td:nth-child(5)::before{content:"Margin"}
+    .gx .ncwrap{margin:0 -14px;padding:0 14px}
+    .gx .ncwrap table.gt{min-width:560px}
+    #adInsights #ncPanel > div:first-child > button{margin-left:auto}
   }
   .gx .colbar{transform-box:fill-box;transform-origin:50% 100%;transition:transform .8s cubic-bezier(.2,0,0,1)}
   .gx .colbar.neg{transform-origin:50% 0}
