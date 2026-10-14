@@ -146,7 +146,7 @@ function refreshProducts() {
 const PRODUCT_HEADS = ['Barcode', 'Name', 'Brand', 'Price', 'Cost', 'Stock',
   'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)', 'Added', 'Squarespace'];
 const GONE = '(no longer in catalog) '; // the old script put this in front of the name
-const STYLE_VERSION = '3'; // bump to re-apply the tab styling
+const STYLE_VERSION = '4'; // bump to re-apply the tab styling
 const HEAD_BG = '#1a73e8', HEAD_INK = '#ffffff', INK = '#202124';
 
 // Brand guessed from the product name when the Brand cell is empty or
@@ -307,6 +307,7 @@ function updateProducts() {
     // The first fill of an empty tab isn't "new", so it gets no Added date.
     const added = n ? today : '';
     sheet.getRange(2, 11, k, 1).setValues(fresh.map(() => [added]));
+    productRules(sheet);
     console.log('New products: ' + k);
   }
   productFormats(sheet);
@@ -338,11 +339,14 @@ function styleProducts(sheet) {
   if (last > 1) sheet.getRange(2, 7, last - 1, 4).clearContent();
   sheet.getRange(1, 1, 1, 6).setValues([PRODUCT_HEADS.slice(0, 6)]);
   sheet.getRange(1, 11, 1, 2).setValues([PRODUCT_HEADS.slice(10, 12)]);
+  // Whole-column references (A:A, not A2:A): new products are inserted at
+  // row 2, and Sheets shifts an "A2:A" reference down to "A3:A" when rows go
+  // in above it — that put every G:J value one row out per insert.
   sheet.getRange(1, 7, 1, 4).setFormulas([[
-    '={"Margin $";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(E2:E=""),"",D2:D-E2:E))}',
-    '={"Margin %";ARRAYFORMULA(IFERROR(IF((A2:A="")+(D2:D="")+(E2:E="")+(D2:D=0),"",(D2:D-E2:E)/D2:D),""))}',
-    '={"Stock value (cost)";ARRAYFORMULA(IF((A2:A="")+(E2:E="")+(F2:F=""),"",E2:E*F2:F))}',
-    '={"Stock value (retail)";ARRAYFORMULA(IF((A2:A="")+(D2:D="")+(F2:F=""),"",D2:D*F2:F))}',
+    '=ARRAYFORMULA(IF(ROW(A:A)=1,"Margin $",IF((A:A="")+(D:D="")+(E:E=""),"",D:D-E:E)))',
+    '=ARRAYFORMULA(IF(ROW(A:A)=1,"Margin %",IFERROR(IF((A:A="")+(D:D="")+(E:E="")+(D:D=0),"",(D:D-E:E)/D:D),"")))',
+    '=ARRAYFORMULA(IF(ROW(A:A)=1,"Stock value (cost)",IF((A:A="")+(E:E="")+(F:F=""),"",E:E*F:F)))',
+    '=ARRAYFORMULA(IF(ROW(A:A)=1,"Stock value (retail)",IF((A:A="")+(D:D="")+(F:F=""),"",D:D*F:F)))',
   ]]);
 
   const head = sheet.getRange(1, 1, 1, w);
@@ -362,6 +366,16 @@ function styleProducts(sheet) {
     .applyRowBanding(SpreadsheetApp.BandingTheme.BLUE, true, false)
     .setHeaderRowColor(HEAD_BG).setFirstRowColor('#ffffff').setSecondRowColor('#f1f6fe');
 
+  productRules(sheet);
+
+  if (!sheet.getFilter()) sheet.getRange(1, 1, sheet.getMaxRows(), w).createFilter();
+  productFormats(sheet);
+  props.setProperty('productsStyle', STYLE_VERSION);
+}
+
+// Colour rules for the Products tab. Re-applied after new rows are inserted
+// at row 2, because the insert shifts the rule ranges down off row 2.
+function productRules(sheet) {
   const all = r => sheet.getRange(r + '2:' + r + sheet.getMaxRows());
   const rules = [
     // Cost still to type: red. Filled in: soft yellow, so the typing column stands out.
@@ -381,10 +395,6 @@ function styleProducts(sheet) {
       .setFontColor('#9aa0a6').setItalic(true).setRanges([all('A'), all('B'), all('C'), all('L')]).build(),
   ];
   sheet.setConditionalFormatRules(rules);
-
-  if (!sheet.getFilter()) sheet.getRange(1, 1, sheet.getMaxRows(), w).createFilter();
-  productFormats(sheet);
-  props.setProperty('productsStyle', STYLE_VERSION);
 }
 
 // Sends every product's cost and brand to the site (Admin → Insights reads it).
