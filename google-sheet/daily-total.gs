@@ -146,7 +146,7 @@ function refreshProducts() {
 const PRODUCT_HEADS = ['Barcode', 'Name', 'Brand', 'Price', 'Cost', 'Stock',
   'Margin $', 'Margin %', 'Stock value (cost)', 'Stock value (retail)', 'Added', 'Squarespace'];
 const GONE = '(no longer in catalog) '; // the old script put this in front of the name
-const STYLE_VERSION = '4'; // bump to re-apply the tab styling
+const STYLE_VERSION = '5'; // bump to re-apply the tab styling
 const HEAD_BG = '#1a73e8', HEAD_INK = '#ffffff', INK = '#202124';
 
 // Brand guessed from the product name when the Brand cell is empty or
@@ -269,7 +269,7 @@ function updateProducts() {
         if (g !== b) reBrand.push([rowOf[sku] + 2, g]);
       }
     } else {
-      const cost = invoiceCostFor(it.name);
+      const cost = autoCostFor(it.name, price);
       fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
     }
   });
@@ -304,6 +304,7 @@ function updateProducts() {
     sheet.getRange(2, 1, k, 1).setNumberFormat('@'); // keep long barcodes as text
     sheet.getRange(2, 11, k, 1).setNumberFormat('@');
     sheet.getRange(2, 1, k, 6).setValues(fresh);
+    sheet.getRange(2, 5, k, 1).setNotes(fresh.map(r => [r[4] === '' ? '' : AUTO_NOTE]));
     // The first fill of an empty tab isn't "new", so it gets no Added date.
     const added = n ? today : '';
     sheet.getRange(2, 11, k, 1).setValues(fresh.map(() => [added]));
@@ -385,6 +386,9 @@ function productRules(sheet) {
       .setBackground('#fef7e0').setRanges([all('E')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2<0)')
       .setFontColor('#c5221f').setBold(true).setRanges([all('G'), all('H')]).build(),
+    // A margin this high almost always means the cost is for one pack of a set/box — check it.
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2>=' + AUTO_MAX_MARGIN + ')')
+      .setFontColor('#9334e6').setBold(true).setBackground('#f3e8fd').setRanges([all('G'), all('H')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2<0.15)')
       .setFontColor('#b06000').setRanges([all('G'), all('H')]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H2<>"",$H2>=0.15)')
@@ -439,7 +443,7 @@ function fillSiteCosts() {
     const m = k && manual[k];
     if (!m || m.cost === null || m.cost === undefined) return;
     if (Number(r[cCost]) !== Number(m.cost) || r[cCost] === '') {
-      sheet.getRange(i + 2, cCost + 1).setValue(Number(m.cost)).setNumberFormat('$#,##0.00');
+      sheet.getRange(i + 2, cCost + 1).setValue(Number(m.cost)).setNumberFormat('$#,##0.00').setNote('');
     }
     done.push(k);
   });
@@ -546,13 +550,13 @@ const INVOICE_COSTS = [
   [["road to", "world cup", "blaster"], [], 41.25], // Panini Select Road to World Cup Blaster — $40.75 + $0.50 (26.08.2026)
   [["chrome", "uefa", "value"], [], 41.85], // Topps Chrome UEFA Club Competitions 25/26 Value Box — $41.35 + $0.50 (27.06.2026)
   // Tax Invoice 388075: invoice unit price (ex GST) + $0.32 each — the $8.00 delivery split over the 25 units on the order
-  [["marvel", "jumpstart"], ["pack"], 164.96], // Magic Marvel Super Heroes Jumpstart Booster Display — $164.64 + $0.32
-  [["marvel", "collector"], ["pack"], 494.24], // Magic Marvel Super Heroes Collector Booster Display — $493.92 + $0.32
-  [["marvel", "play", "booster"], ["jumpstart", "collector", "pack"], 206.12], // Magic Marvel Super Heroes Play Booster Display — $205.80 + $0.32
+  [["marvel", "jumpstart", "display"], ["pack"], 164.96], // Magic Marvel Super Heroes Jumpstart Booster Display — $164.64 + $0.32
+  [["marvel", "collector", "display"], ["pack"], 494.24], // Magic Marvel Super Heroes Collector Booster Display — $493.92 + $0.32
+  [["marvel", "play", "booster", "display"], ["jumpstart", "collector", "pack"], 206.12], // Magic Marvel Super Heroes Play Booster Display — $205.80 + $0.32
   [["poker chip"], [], 19.81], // Bicycle 8 Gram Clay Poker Chip Set 100 Count — $19.49 + $0.32
-  [["dp 12"], [], 109.63], // One Piece Double Pack Display DP-12 — $109.31 + $0.32
+  [["dp 12", "display"], [], 109.63], // One Piece Double Pack Display DP-12 — $109.31 + $0.32
   [["op 17", "dash"], [], 0.32], // One Piece OP-17 Dash Pack (free with the order) — $0.00 + $0.32
-  [["op 17", "booster"], ["dash", "pack", "case"], 127.36], // One Piece OP-17 Booster Display — $127.04 + $0.32
+  [["op 17", "booster", "display"], ["dash", "pack", "case"], 127.36], // One Piece OP-17 Booster Display — $127.04 + $0.32
 ];
 
 /* ---- Japanese products (different rules from the Banter Toys items) ----
@@ -674,6 +678,11 @@ function footyCostFor(n) {
   return null;
 }
 
+// Words that mean "more than one of the thing on the invoice". A rule only
+// matches a name with one of these if the rule names it too — otherwise a new
+// "Booster Pack Set" or "Mega Multipack" gets costed as a single pack.
+const MULTI_UNIT = ['set', 'sets', 'multipack', 'multi pack', 'case', 'bundle', 'carton', 'lot'];
+
 function invoiceCostFor(name) {
   const n = ' ' + String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
@@ -681,10 +690,31 @@ function invoiceCostFor(name) {
   if (jp !== null) return jp;
   const footy = footyCostFor(n);
   if (footy !== null) return footy;
+  const multi = MULTI_UNIT.filter(w => n.includes(' ' + w + ' '));
   for (const [all, none, cost] of INVOICE_COSTS) {
-    if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
+    if (!all.every(w => n.includes(w)) || none.some(w => n.includes(w))) continue;
+    if (multi.some(m => !all.some(w => w.includes(m)))) continue;
+    return cost;
   }
   return null;
+}
+
+// The auto cost for a product, but only if it's believable at the price it
+// sells for: no loss, and no more than AUTO_MAX_MARGIN margin. Anything else is
+// left blank (red) for you to type — a missing cost shows up everywhere, a
+// wrong one quietly skews every margin. No price yet → wait for one.
+const AUTO_MAX_MARGIN = 0.8;
+const AUTO_NOTE = 'Auto-filled from a supplier invoice rule. Type over it if it is wrong.';
+function autoCostFor(name, price) {
+  const cost = invoiceCostFor(name);
+  if (cost === null) return null;
+  const p = Number(price);
+  if (!(p > 0)) return null;
+  if (cost > p || cost < p * (1 - AUTO_MAX_MARGIN)) {
+    console.log('Auto cost skipped (doesn\'t fit the price $' + p + '): ' + name + ' → $' + cost);
+    return null;
+  }
+  return cost;
 }
 
 // Run once from the editor (or it runs after each Products refresh).
@@ -694,14 +724,14 @@ function fillInvoiceCosts() {
   if (last < 2) return;
   const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
   const heads = vals[0].map(h => String(h).trim().toLowerCase());
-  const cName = heads.indexOf('name'), cCost = heads.indexOf('cost');
-  if (cName < 0 || cCost < 0) return;
+  const cName = heads.indexOf('name'), cCost = heads.indexOf('cost'), cPrice = heads.indexOf('price');
+  if (cName < 0 || cCost < 0 || cPrice < 0) return;
   let filled = 0;
   vals.slice(1).forEach((r, i) => {
     if (r[cCost] !== '' && r[cCost] !== null) return;
-    const cost = invoiceCostFor(r[cName]);
+    const cost = autoCostFor(r[cName], r[cPrice]);
     if (cost === null) return;
-    sheet.getRange(i + 2, cCost + 1).setValue(cost).setNumberFormat('$#,##0.00');
+    sheet.getRange(i + 2, cCost + 1).setValue(cost).setNumberFormat('$#,##0.00').setNote(AUTO_NOTE);
     filled++;
   });
   console.log('Invoice costs filled: ' + filled);
@@ -720,9 +750,13 @@ function updateProfit(now) {
     siteItems[String(k).trim().toUpperCase().replace(/\s+/g, '')] = site.items[k];
   });
   const miscCosts = (site && site.misc) || {};
+  const manual = (site && site.manual) || {};
+  // A cost typed on the website wins (it's the newest), same as Admin → Insights.
   const costOf = sku => {
+    const k = sku.toUpperCase().replace(/\s+/g, '');
+    if (manual[k] && manual[k].cost !== null && manual[k].cost !== undefined) return Number(manual[k].cost);
     if (prods[sku] && prods[sku].cost !== null) return prods[sku].cost;
-    const s = siteItems[sku.toUpperCase().replace(/\s+/g, '')];
+    const s = siteItems[k];
     return s && s.cost !== null && s.cost !== undefined ? Number(s.cost) : null;
   };
   const isMisc = it => !String(it.sku || '').trim() || /^MISC-/i.test(String(it.sku));

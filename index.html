@@ -767,7 +767,7 @@
           <div class="gstatus" id="gxStatus" style="flex:1"></div>
           <button class="ghost" id="gxRefresh">⟳ Refresh</button>
         </div>
-        <!-- NO COST — opened from the yellow "sold with no cost" chip above: type the missing costs in -->
+        <!-- FIX COSTS — opened from the "sold with no cost" / "cost looks wrong" chips above: type the costs in -->
         <div id="ncPanel" style="display:none;flex-direction:column;gap:14px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <div class="gstatus" id="ncStatus" style="flex:1"></div>
@@ -3072,7 +3072,7 @@ function addAgg(a, b){
    from the Google Sheet's Products tab, which the sheet script sends to
    /api/costs. Profit only counts items that have a cost, and says how many
    don't, so a half-filled sheet never passes off as a real margin. */
-let gx = { key:'', sales:null, costs:null, costsErr:'', costsAt:null, misc:{}, sort:'profit' };
+let gx = { key:'', sales:null, costs:null, costsErr:'', costsAt:null, misc:{}, checked:{}, sort:'profit' };
 // A Miscellaneous line has no barcode, so its cost is kept per line sold: "<invoice no>#<line>".
 function isMiscLine(it){ return !it || !String(it.sku||'').trim() || /^MISC-/i.test(String(it.sku)); }
 function miscKey(s, i){ return String(s.no)+'#'+i; }
@@ -3081,6 +3081,22 @@ function lineCost(s, it, i){
   if(isMiscLine(it)){ const m=gx.misc[miscKey(s,i)]; return m && m.cost!=null ? Number(m.cost) : null; }
   const info=gx.costs ? gx.costs.get(normSku(it.sku)) : null;
   return info && info.cost!=null ? Number(info.cost) : null;
+}
+/* A cost that can't be right poisons the margin without anyone noticing — the
+   classic is a new product auto-costed at one pack's price when it's a set,
+   bundle or box. So a product's cost is only trusted if, at the price it was
+   rung up at, it makes neither a loss nor more than COST_MAX_MARGIN. Anything
+   else is left out of profit (like an item with no cost) and listed to fix,
+   until the cost is corrected or someone presses "It's right" — that is kept
+   per cost, so changing the cost later gets it checked again. */
+const COST_MAX_MARGIN = 0.8;
+function costLooksWrong(it, cost){
+  if(cost==null || isMiscLine(it)) return false;
+  const price=Math.abs(Number(it.price)||0);
+  if(!(price>0)) return false;                          // a freebie costing something is a real loss
+  const c=round2(cost);
+  if(gx.checked[normSku(it.sku)]===c) return false;     // someone checked this exact cost
+  return c>price || c<price*(1-COST_MAX_MARGIN)-0.005;
 }
 
 /* ---------------- Games takings from before the till ----------------
@@ -3205,7 +3221,7 @@ async function fetchCosts(){
 function renderGx(anim){
   renderInsights(anim);
   if(!ncOpen()) return;
-  if($('gxNoCostBtn')) renderNoCost(); else setNcOpen(false);   // nothing without a cost in this period
+  if($('gxNoCostBtn') || $('gxBadCostBtn')) renderNoCost(); else setNcOpen(false);   // nothing left to fix in this period
 }
 async function loadInsights(){
   readAdminRange();
@@ -3227,12 +3243,13 @@ async function loadInsights(){
       return;
     }
     gx.sales=(d.sales||[]).filter(s=>s && !s.voided);
-    gx.costs=null; gx.costsErr=''; gx.costsAt=null; gx.misc={};
+    gx.costs=null; gx.costsErr=''; gx.costsAt=null; gx.misc={}; gx.checked={};
     if(c && !c.error){
       gx.costs=new Map();
       Object.keys(c.items||{}).forEach(k=>gx.costs.set(normSku(k), c.items[k]));
       gx.costsAt=c.updated;
       gx.misc=c.misc||{};
+      gx.checked=c.checked||{};
     }else gx.costsErr=(c && c.error) || 'unavailable';
     ncSaved.clear();
     renderGx(true);
@@ -3245,7 +3262,7 @@ function computeInsights(){
   const from=adState.from, to=adState.to;
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
-  const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
+  const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, suspect:0, count:sales.length,
     histDays:0, histRev:0,
     brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
   // Time buckets, so quiet days still show as zero.
@@ -3279,11 +3296,14 @@ function computeInsights(){
       const q=Number(it.qty)||0, sku=normSku(it.sku);
       const rev=(Number(it.price)||0)*q*share;
       const info=sku && costs ? costs.get(sku) : null;
-      const cost=costs ? lineCost(s, it, idx) : null;
+      let cost=costs ? lineCost(s, it, idx) : null;
+      const bad=costLooksWrong(it, cost);
+      if(bad) cost=null;                                // left out of profit until it's fixed or checked
       const brand=!sku ? 'Misc' : ((info && info.brand && info.brand!=='Other') ? info.brand : guessBrand(it.name));
       const profit=cost!=null ? rev-cost*q : null;
       r.items+=q;
       if(profit!=null){ r.revKnown+=rev; r.profit+=profit; bk.profit+=profit; st.profit+=profit; }
+      else if(bad) r.suspect+=q;
       else r.missing+=q;
       const br=r.brands.get(brand) || {name:brand, rev:0, revKnown:0, profit:0, qty:0};
       br.rev+=rev; br.qty+=q; if(profit!=null){ br.revKnown+=rev; br.profit+=profit; }
@@ -3363,6 +3383,8 @@ function renderInsights(anim){
     if(gx.costsAt) chips.push('<span class="gchip ok">Cost prices from the Google Sheet · updated '+esc(agoText(gx.costsAt))+'</span>');
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
+    if(r.suspect) chips.push('<button class="gchip bad" id="gxBadCostBtn" title="Show them and fix or confirm the costs">'+r.suspect+' item'+(r.suspect===1?'':'s')+
+      ' sold with a cost that looks wrong — left out of profit · '+(ncOpen()?'hide ▲':'check ▼')+'</button>');
   }
   if(r.histDays){
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(TILL_FROM))+
@@ -3427,8 +3449,14 @@ function setNcOpen(on){
   $('ncPanel').style.display = on ? 'flex' : 'none';
   if(on) renderNoCost();
   else if(ncSaved.size){ ncSaved.clear(); renderInsights(false); }   // profit has moved — redraw it
-  else{ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('hide ▲','show ▼'); }
-  if(on){ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('show ▼','hide ▲'); }
+  else{
+    const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('hide ▲','show ▼');
+    const w=$('gxBadCostBtn'); if(w) w.innerHTML=w.innerHTML.replace('hide ▲','check ▼');
+  }
+  if(on){
+    const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('show ▼','hide ▲');
+    const w=$('gxBadCostBtn'); if(w) w.innerHTML=w.innerHTML.replace('check ▼','hide ▲');
+  }
 }
 function noCostRows(){
   const prods=new Map(), misc=[];
@@ -3455,6 +3483,27 @@ function noCostRows(){
   });
   return {prods:[...prods.values()].sort((a,b)=>b.rev-a.rev), misc:misc.sort((a,b)=>String(b.s.ts).localeCompare(String(a.s.ts)))};
 }
+// Products sold in the period whose cost looks wrong (see costLooksWrong), one row each.
+function badCostRows(){
+  const prods=new Map();
+  (gx.sales||[]).forEach(s=>{
+    if(beforeTill(s)) return;
+    (s.items||[]).forEach((it, i)=>{
+      if(isMiscLine(it)) return;
+      const sku=normSku(it.sku), cost=lineCost(s, it, i);
+      const saved=ncSaved.has('b:'+sku);
+      if(!saved && !costLooksWrong(it, cost)) return;
+      const info=gx.costs.get(sku), q=Number(it.qty)||0, price=Number(it.price)||0;
+      const p=prods.get(sku) || {k:sku, sku:String(it.sku).trim(), name:(info && info.name) || it.name || sku,
+        qty:0, list:0, last:'', cost, ok:false};
+      p.qty+=q; p.list+=price*Math.abs(q); p.n=(p.n||0)+Math.abs(q);
+      if(String(s.ts)>p.last) p.last=String(s.ts);
+      prods.set(sku, p);
+    });
+  });
+  return [...prods.values()].map(p=>Object.assign(p, {price:p.n ? p.list/p.n : 0}))
+    .sort((a,b)=>b.price*b.qty-a.price*a.qty);
+}
 function whenSold(ts, day){
   const d=new Date(ts);
   if(isNaN(d)) return niceDay(day);
@@ -3473,8 +3522,8 @@ function renderNoCost(){
   const all=$('ncShowAll').checked;
   const keep=(kind, r)=>r.cost==null || all || ncSaved.has(kind+':'+r.k);
   const {prods, misc}=noCostRows();
-  const P=prods.filter(r=>keep('p', r)), M=misc.filter(r=>keep('m', r));
-  renderNcStatus(prods, misc);
+  const P=prods.filter(r=>keep('p', r)), M=misc.filter(r=>keep('m', r)), B=badCostRows();
+  renderNcStatus(prods, misc, B);
 
   let i=0; const card=inner=>'<div class="gcard" style="--i:'+(i++)+'">'+inner+'</div>';
   let h=card('<div class="gtitle">Products with no cost</div>'+
@@ -3486,6 +3535,17 @@ function renderNoCost(){
         '<td>'+esc(whenSold(r.last, ''))+'</td><td class="num" style="white-space:nowrap">'+ncInput('p', r.k, r.cost)+'</td></tr>').join('')+
       '</tbody></table></div>'
       : '<div class="gempty">No products without a cost in this period.</div>'));
+  if(B.length) h+=card('<div class="gtitle">Costs that look wrong</div>'+
+    '<div class="gsub">At what these sold for, their cost makes a loss or more than '+Math.round(COST_MAX_MARGIN*100)+'% margin — '+
+    'usually a new product auto-costed as one pack when it’s a set, bundle or box. They’re left out of profit until fixed: '+
+    'type the right cost each (GST included), or press “It’s right” if it really is.</div>'+
+    '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sold at</th><th class="num">Margin</th><th class="num">Cost each</th><th></th></tr></thead><tbody>'+
+    B.map(r=>'<tr><td><div>'+esc(r.name)+'</div><div class="muted">'+esc(r.sku)+'</div></td>'+
+      '<td class="num">'+r.qty+'</td><td class="num">'+moneySigned(r.price)+'</td>'+
+      '<td class="num">'+(r.cost!=null && r.price ? pct((r.price-r.cost)/r.price) : '—')+'</td>'+
+      '<td class="num" style="white-space:nowrap">'+ncInput('b', r.k, r.cost)+'</td>'+
+      '<td><button class="ghost" data-costok="'+esc(r.k)+'" style="white-space:nowrap">It’s right</button></td></tr>').join('')+
+    '</tbody></table></div>');
   h+=card('<div class="gtitle">Miscellaneous sales</div>'+
     '<div class="gsub">Custom-priced “+ Misc $” lines have no barcode, so each one is listed by when it was sold. Type what it cost you.</div>'+
     (M.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th>Sold</th>'+(adState.store?'':'<th>Store</th>')+
@@ -3498,15 +3558,19 @@ function renderNoCost(){
       : '<div class="gempty">No miscellaneous sales without a cost in this period.</div>'));
   grid.innerHTML=h;
 }
-function renderNcStatus(prods, misc){
+function renderNcStatus(prods, misc, bad){
   if(!prods){ const r=noCostRows(); prods=r.prods; misc=r.misc; }
+  if(!bad) bad=badCostRows();
   const missP=prods.filter(r=>r.cost==null), missM=misc.filter(r=>r.cost==null);
+  const missB=bad.filter(r=>!ncSaved.has('b:'+r.k));
   const missRev=missP.reduce((a,r)=>a+r.rev, 0)+missM.reduce((a,r)=>a+r.rev, 0);
   const chips=[];
   if(missP.length || missM.length){
     chips.push('<span>'+missP.length+' product'+(missP.length===1?'':'s')+' and '+missM.length+
       ' misc sale'+(missM.length===1?'':'s')+' still to cost · '+esc(moneySigned(missRev))+' of sales left out of profit</span>');
-  }else chips.push('<span class="gchip ok">All costed — press Done to update the profit figures</span>');
+  }
+  if(missB.length) chips.push('<span>'+missB.length+' cost'+(missB.length===1?'':'s')+' to check</span>');
+  if(!missP.length && !missM.length && !missB.length) chips.push('<span class="gchip ok">All costed — press Done to update the profit figures</span>');
   $('ncStatus').innerHTML=chips.join('');
 }
 async function saveNoCost(input){
@@ -3517,7 +3581,10 @@ async function saveNoCost(input){
   if(cost!==null && !(cost>=0)){ st.className='ncst bad'; st.textContent='Not a number'; return; }
   let row;
   if(kind==='m') row={misc:k, cost};
-  else{ const r=noCostRows().prods.find(x=>x.k===k); row={sku:r ? r.sku : k, name:r ? r.name : '', cost}; }
+  else{
+    const r=(kind==='b' ? badCostRows() : noCostRows().prods).find(x=>x.k===k);
+    row={sku:r ? r.sku : k, name:r ? r.name : '', cost};
+  }
   st.className='ncst'; st.textContent='Saving…';
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   try{
@@ -3525,7 +3592,7 @@ async function saveNoCost(input){
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
     gx.misc=d.misc || gx.misc;
-    if(kind==='p'){
+    if(kind!=='m'){
       const info=gx.costs.get(k) || {brand:'', name:row.name};
       gx.costs.set(k, Object.assign({}, info, {cost, src:cost===null ? undefined : 'site'}));
     }
@@ -3533,6 +3600,23 @@ async function saveNoCost(input){
     st.className='ncst ok'; st.textContent=cost===null ? '✓ Cleared' : '✓ Saved';
     if(cost!==null) input.value=cost.toFixed(2);
     renderNcStatus();            // the counts move with each save; the rows stay put so typing carries on
+  }catch(e){ st.className='ncst bad'; st.textContent='Not saved — '+e.message; }
+}
+// "It's right": keep this exact cost for this product, and count it in profit again.
+async function confirmCost(btn){
+  const k=btn.dataset.costok, input=btn.closest('tr').querySelector('input.nc'), st=input.nextElementSibling;
+  const info=gx.costs.get(k), cost=info && info.cost!=null ? round2(Number(info.cost)) : null;
+  if(cost===null){ st.className='ncst bad'; st.textContent='No cost to keep'; return; }
+  st.className='ncst'; st.textContent='Saving…';
+  const h=shareHeaders(true); h['x-admin-pin']=adminPin();
+  try{
+    const res=await fetch(apiUrl('/api/costs'), {method:'POST', headers:h, body:JSON.stringify({ok:[{sku:k, cost}]})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+    gx.checked=d.checked || Object.assign({}, gx.checked, {[k]:cost});
+    ncSaved.add('b:'+k);
+    st.className='ncst ok'; st.textContent='✓ Kept';
+    renderNcStatus();
   }catch(e){ st.className='ncst bad'; st.textContent='Not saved — '+e.message; }
 }
 function fmtVal(v, fmt){
@@ -4063,12 +4147,13 @@ function bind(){
   $('adTo').addEventListener('change', ()=>{ adState.preset=''; markAdminPreset(); reloadAdmin(false); });
   $('adRefresh').onclick=()=>reloadAdmin(false);
   $('gxRefresh').onclick=()=>reloadAdmin(false);
-  // The yellow "sold with no cost" chip opens the list to type them in.
-  $('gxStatus').addEventListener('click', e=>{ if(e.target.closest('#gxNoCostBtn')) setNcOpen(!ncOpen()); });
+  // The yellow "sold with no cost" chip, and the red "cost looks wrong" one, open the list to fix them.
+  $('gxStatus').addEventListener('click', e=>{ if(e.target.closest('#gxNoCostBtn,#gxBadCostBtn')) setNcOpen(!ncOpen()); });
   $('ncClose').onclick=()=>setNcOpen(false);
   $('ncShowAll').onchange=()=>renderNoCost();
   // A cost is saved as soon as it's typed (Enter or moving off the box). Blank = remove it.
   $('ncGrid').addEventListener('change', e=>{ const i=e.target.closest('input.nc'); if(i) saveNoCost(i); });
+  $('ncGrid').addEventListener('click', e=>{ const b=e.target.closest('[data-costok]'); if(b) confirmCost(b); });
   $('ncGrid').addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.matches('input.nc')){ e.preventDefault(); e.target.blur(); } });
   $('adTabs').addEventListener('click', e=>{
     const b=e.target.closest('[data-tab]'); if(b && b.dataset.tab!==adTab) setAdminTab(b.dataset.tab);

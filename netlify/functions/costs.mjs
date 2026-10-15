@@ -7,22 +7,29 @@
  *  can work out profit. The till never reads this — cost prices are not
  *  shown at the counter or printed anywhere.
  *
- *  Costs can also be typed on the website (Admin → 🏷️ No cost) for things
- *  sold with no cost yet. Those are kept apart from the sheet's list (so the
- *  sheet's next push can't wipe them):
- *    - products, by barcode — used until the sheet has a cost of its own.
- *      The sheet script copies them into its Cost column, then clears them here.
+ *  Costs can also be typed on the website (Admin → Insights → fix costs) for
+ *  things sold with no cost yet, or with a cost that looks wrong. Those are
+ *  kept apart from the sheet's list (so the sheet's next push can't wipe them):
+ *    - products, by barcode — the newest thing typed, so they win over the
+ *      sheet's cost. The sheet script copies them into its Cost column, then
+ *      clears them here.
  *    - Miscellaneous lines, by "<invoice no>#<line>" — these have no barcode,
  *      so each one sold gets its own cost. They stay here.
  *
+ *    - "this cost is right", by barcode → the cost it was checked at. Insights
+ *      leaves a cost that looks wrong (a loss, or a very high margin) out of
+ *      profit until it's fixed or checked here; changing the cost re-opens it.
+ *
  *  Routes (all on /api/costs):
  *    GET  /api/costs     → { updated, count, items:{ <barcode>:{ cost, brand, name, src? } },
- *                            manual:{ <barcode>:{ cost, name, at } }, misc:{ <no#line>:{ cost, at } } }
+ *                            manual:{ <barcode>:{ cost, name, at } }, misc:{ <no#line>:{ cost, at } },
+ *                            checked:{ <barcode>:<cost checked> } }
  *                          items already has the website's costs filled in (src:'site').
  *    POST /api/costs     body = { items:[{ sku, cost, brand, name }] } — replaces the sheet's list
  *    POST /api/costs     body = { set:[{ sku, cost, name } | { misc, cost }] } — website edits;
  *                          cost '' or null removes the entry
  *    POST /api/costs     body = { clear:[<barcode>, …] } — the sheet has these now
+ *    POST /api/costs     body = { ok:[{ sku, cost }] } — "this cost is right"; cost null un-checks it
  *
  *  Env vars:
  *    SALES_TOKEN   optional; if set, every request needs a matching x-sales-token
@@ -52,20 +59,21 @@ export default async (req) => {
       const saved = await st.get(KEY, { type: 'json' }).catch(() => null);
       const items = { ...(saved && saved.items && typeof saved.items === 'object' ? saved.items : {}) };
       const man = await readManual(st);
-      // A website cost fills in until the sheet has one of its own.
+      // A website cost is the newest thing typed, so it wins until the sheet
+      // has copied it in (the sheet script then clears it here).
       const byNorm = new Map(Object.keys(items).map(k => [norm(k), k]));
       for (const [sku, m] of Object.entries(man.items)) {
         const k = byNorm.get(sku);
         if (k === undefined) items[sku] = { cost: m.cost, brand: '', name: m.name || '', src: 'site' };
-        else if (items[k].cost === null || items[k].cost === undefined) items[k] = { ...items[k], cost: m.cost, src: 'site' };
+        else items[k] = { ...items[k], cost: m.cost, src: 'site' };
       }
       return json({ updated: (saved && saved.updated) || null, count: Object.keys(items).length, items,
-        manual: man.items, misc: man.misc }, 200, headers);
+        manual: man.items, misc: man.misc, checked: man.ok }, 200, headers);
     }
     if (req.method === 'POST') {
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
-      if (body && (Array.isArray(body.set) || Array.isArray(body.clear))) return await editManual(st, body, headers);
+      if (body && (Array.isArray(body.set) || Array.isArray(body.clear) || Array.isArray(body.ok))) return await editManual(st, body, headers);
       if (!body || !Array.isArray(body.items)) return json({ error: 'Body must be { items:[{ sku, cost, brand }] }.' }, 400, headers);
       const items = {};
       for (const r of body.items.slice(0, MAX)) {
@@ -95,6 +103,7 @@ async function readManual(st) {
   return {
     items: v && v.items && typeof v.items === 'object' ? v.items : {},
     misc: v && v.misc && typeof v.misc === 'object' ? v.misc : {},
+    ok: v && v.ok && typeof v.ok === 'object' ? v.ok : {},
   };
 }
 
@@ -119,9 +128,17 @@ async function editManual(st, body, headers) {
     }
     changed++;
   }
+  for (const r of (body.ok || []).slice(0, 500)) {
+    const k = norm(r && r.sku);
+    if (!k || k.length > 64) return json({ error: 'Bad barcode.' }, 400, headers);
+    const c = r.cost === '' || r.cost === null || r.cost === undefined ? null : Number(r.cost);
+    if (c !== null && !(isFinite(c) && c >= 0 && c < 1e6)) return json({ error: 'Cost must be a number, 0 or more.' }, 400, headers);
+    if (c === null) delete man.ok[k]; else man.ok[k] = Math.round(c * 100) / 100;
+    changed++;
+  }
   for (const sku of (body.clear || []).slice(0, MAX)) { if (man.items[norm(sku)]) { delete man.items[norm(sku)]; changed++; } }
   await st.setJSON(MANUAL, { ...man, updated: at });
-  return json({ ok: true, changed, manual: man.items, misc: man.misc }, 200, headers);
+  return json({ ok: true, changed, manual: man.items, misc: man.misc, checked: man.ok }, 200, headers);
 }
 
 // Barcodes are matched the way the till matches them: trimmed, upper-case, no spaces.
