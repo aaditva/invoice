@@ -105,6 +105,8 @@
   .quicktender button{padding:8px 10px;font-size:13px;background:#fff;border:1px solid var(--line)}
   .finalize{padding:18px;font-size:18px;font-weight:700}
   .finalize:disabled{opacity:.45;cursor:not-allowed}
+  /* Finalise, no print: indigo, a sibling of the blue Finalise & Print (green/red mean cash/danger) */
+  #btnFinalizeNoPrint{background:#5e5ce6;color:#fff;border-color:#5e5ce6}
   .warn{color:var(--danger);font-size:13px}
   .muted{color:var(--muted);font-size:12.5px}
 
@@ -501,6 +503,7 @@
   [data-theme="dark"] .ddmenu > button.storechip:hover{background:rgba(75,156,255,.24)}
   [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
   [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
+  [data-theme="dark"] #btnFinalizeNoPrint{background:#7d7aff;border-color:#7d7aff;color:#fff}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
@@ -1733,7 +1736,10 @@ function updateFinalizeState(){
   }
   warn.textContent=msg;
   $('btnFinalize').disabled=!ok;
-  $('btnFinalizeNoPrint').disabled=!ok;
+  // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
+  const pickup=$('orderType').value==='pickup';
+  $('btnFinalizeNoPrint').style.display=pickup?'none':'';
+  $('btnFinalizeNoPrint').disabled=!ok || pickup;
 }
 
 /* ---------------- today summary ---------------- */
@@ -2067,7 +2073,7 @@ async function finalizeSale(doPrint){
   let sale=null;
   try{ sale=await commitSale(); }finally{ finalizing=false; }
   if(!sale) return;
-  if(doPrint){
+  if(doPrint || sale.order==='pickup'){
     printSale(sale, false);       // bridge, or window.print() -> afterPrint()
   }else{
     toast('Saved '+sale.no+' · '+money(sale.total));
@@ -4246,6 +4252,7 @@ function bind(){
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
+  $('orderType').addEventListener('change', ()=>updateFinalizeState());
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
   window.addEventListener('afterprint', afterPrint);
 
