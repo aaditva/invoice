@@ -178,6 +178,14 @@
   .tile.last{border-color:var(--accent)}
   .tile.last .tsub{color:var(--accent)}
   .gatefoot{margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  /* Training: a small dashed tile pinned bottom-right, clear of the two store tiles */
+  .gatetrain{position:absolute;right:24px;bottom:24px}
+  .tile.training{padding:12px 16px;gap:2px;border-style:dashed;box-shadow:none;max-width:220px}
+  .tile.training .tname{font-size:15px}
+  .tile.training .tsub{font-size:11.5px}
+  @media (max-width:640px){ .gate{padding-bottom:110px} .gatetrain{right:16px;bottom:16px} }
+  .trainflag{background:#f5a623;color:#1d1d1f;font-weight:700;border-radius:8px;padding:2px 10px}
+  body.training .app > header{box-shadow:inset 0 -4px 0 #f5a623}
 
   /* ---------- Admin ---------- */
   .sheet.wide{max-width:860px}
@@ -709,6 +717,7 @@
       <button class="ghost" id="gateSettings">⚙︎ Settings</button>
     </div>
   </div>
+  <div class="gatetrain" id="gateTraining"></div>
 </div>
 
 <!-- ADMIN MODAL — takings and invoices for any store, any day -->
@@ -1081,7 +1090,9 @@
 
 const LS = {
   settings:'inv_settings', catalog:'inv_catalog', catalogAt:'inv_catalog_at',
-  counter:'inv_counter', sales:'inv_sales', store:'inv_store'
+  counter:'inv_counter', store:'inv_store',
+  // Training keeps its own log on the device, so a practice sale can never be sent to the site
+  get sales(){ return isTraining() ? 'inv_training_sales' : 'inv_sales'; }
 };
 
 /* The two shop locations. Pick one on the opening screen; every sale is stamped
@@ -1093,6 +1104,14 @@ const STORE_DEFS = [
   { id:'south-melbourne', name:'South Melbourne', tag:'SM' },
   { id:'roxy',            name:'Roxy',            tag:'RX' }
 ];
+/* Training: the same till, for practice. Not in STORE_DEFS, so it never shows in
+   Admin, Insights, Expenses or the store lists. Its sales live only in this
+   browser (LS.sales → inv_training_sales): nothing is sent to the site's sales
+   log, Squarespace stock isn't touched, and invoice numbers come from a local
+   counter (INV-TR-…), so the real sequence doesn't move. */
+const TRAINING = { id:'training', name:'Training', tag:'TR' };
+function isTraining(){ return !!currentStore && currentStore.id===TRAINING.id; }
+function isTrainingSale(s){ return !!s && String(s.store||'')===TRAINING.id; }
 
 const DEFAULTS = {
   name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
@@ -1243,6 +1262,7 @@ function shiftDay(key, n){ const d=new Date(key+'T00:00:00'); d.setDate(d.getDat
    Settings → Stores overrides. The id is what the server files sales under, so
    renaming a store in Settings never orphans its history. */
 function storeById(id){
+  if(id===TRAINING.id) return { id:TRAINING.id, tag:TRAINING.tag, name:TRAINING.name, address:'', phone:'', training:true };
   const def = STORE_DEFS.find(s=>s.id===id);
   if(!def) return null;
   const ov = (settings.stores && settings.stores[id]) || {};
@@ -1294,7 +1314,7 @@ function deviceId(){
 // the same sequence, so a number is only ever printed for one sale. null =
 // couldn't reach the site in time.
 async function nextServerNumber(waitMs){
-  const url=salesUrl({counter:'next'}); if(!url || !currentStore) return null;
+  const url=salesUrl({counter:'next'}); if(!url || !currentStore || isTraining()) return null;
   const c=new AbortController(); const t=setTimeout(()=>c.abort(), waitMs||5000);
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
@@ -1329,6 +1349,8 @@ async function reserveNumber(){
 // it's re-printed from the South Melbourne till.
 function receiptStore(sale){
   const st = (sale && sale.store ? storeById(sale.store) : null) || currentStore;
+  if(isTrainingSale(sale) || (!sale && isTraining()))
+    return { name: settings.name, location: '*** TRAINING — NOT A REAL SALE ***', address:'', phone:'', abn:'', footer: 'Practice receipt — no money taken' };
   return {
     name: settings.name,
     location: st ? st.name : ((sale && sale.storeName) || ''),
@@ -1353,11 +1375,18 @@ function renderGate(){
       '<span class="tsub">'+(s.id===last?'Last used on this device':'Open the till here')+'</span>'+
       '<span class="ttag">'+esc(settings.prefix+s.tag+'-')+'…</span>'+
     '</button>').join('');
+  // Training sits in the corner, away from the two real stores
+  $('gateTraining').innerHTML =
+    '<button class="tile training'+(last===TRAINING.id?' last':'')+'" data-store="'+TRAINING.id+'">'+
+      '<span class="tname">🎓 '+esc(TRAINING.name)+'</span>'+
+      '<span class="tsub">Practice only — sales and stock aren\'t kept</span>'+
+    '</button>';
 }
 function selectStore(id){
   const s = storeById(id); if(!s) return;
   currentStore = s;
   localStorage.setItem(LS.store, s.id);
+  document.body.classList.toggle('training', isTraining());
   $('gateModal').classList.remove('show');
   clearSale();                    // a basket belongs to one store, never both
   applySettings();
@@ -1719,7 +1748,7 @@ function renderToday(){
     '<span>Today: <b>'+t.count+'</b> sales</span>'+
     '<span>This store '+m(t.total)+'</span>'+
     '<span>All stores '+(on && !allTally ? '<b>…</b>' : m(allTally ? allTally.total : 0))+'</span>'+
-    (t.local ? '<span class="muted">this device only</span>' : '');
+    (isTraining() ? '<span class="trainflag">🎓 TRAINING — practice only</span>' : t.local ? '<span class="muted">this device only</span>' : '');
 }
 // Does this locally-stored sale belong to the store that's open? (Sales from before
 // the store selector are filed under South Melbourne by adoptStorelessSales.)
@@ -1796,7 +1825,7 @@ async function commitSale(){
   const counter = fromSite || readCounter();
   // Offline the number can't come from the shared sequence, so it carries this
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
-  sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite ? '' : '-'+deviceId());
+  sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite || isTraining() ? '' : '-'+deviceId());
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
   localStorage.setItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
@@ -1810,6 +1839,7 @@ async function commitSale(){
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
 // dir = -1 for a sale (lower), +1 for a void/refund (put back).
 function applyLocalStock(stockItems, dir){
+  if(isTraining()) return;        // practice sales leave the stock counts alone
   dir = dir || -1;
   let changed=false;
   for(const it of (stockItems||[])){
@@ -1830,7 +1860,7 @@ function markSynced(no){
   if(s && !s.synced){ s.synced=true; save(LS.sales, sales); }
 }
 async function syncSale(sale){
-  const url=salesUrl(); if(!url) return;
+  const url=salesUrl(); if(!url || isTrainingSale(sale)) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
     if(!res.ok) return;
@@ -1868,7 +1898,7 @@ async function flushUnsynced(){
 // or catching up. Tapping it retries now.
 function renderUnsent(){
   const b=$('btnUnsent'); if(!b) return;
-  const n = settings.shareUrl ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
+  const n = settings.shareUrl && !isTraining() ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
   b.classList.toggle('on', n>0);
   b.textContent='⚠ '+n+' unsent';
   b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet — tap to send now' : '';
@@ -1883,7 +1913,7 @@ function markStockAdjusted(no){
 // POST the sold lines so Squarespace decrements. Idempotent per invoice (server uses the
 // invoice no as the Idempotency-Key), and only fires while stockAdjusted===false → exactly once.
 async function adjustStock(sale){
-  if(!sale || sale.stockAdjusted) return;
+  if(!sale || sale.stockAdjusted || isTrainingSale(sale)) return;
   const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
   if(!items.length){ markStockAdjusted(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
@@ -1910,7 +1940,7 @@ function markRestocked(no){
 // PUT the stock back in Squarespace for a voided sale (increment). Distinct idemKey from the sale's
 // decrement, and only while restocked===false → exactly once.
 async function restockInventory(sale){
-  if(!sale || !(sale.voided || sale.kind==='refund') || sale.restocked) return;
+  if(!sale || !(sale.voided || sale.kind==='refund') || sale.restocked || isTrainingSale(sale)) return;
   const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
   if(!items.length){ markRestocked(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
@@ -1999,6 +2029,7 @@ async function fetchServerSales(params){
 async function storeDaySales(day, storeId){
   const store = storeId!==undefined ? storeId : (currentStore && currentStore.id) || '';
   const mine = s => !store || String(s.store||'')===store;
+  if(store===TRAINING.id) return {sales: load(LS.sales,[]).filter(s=>s.day===day && mine(s)), combined:true, training:true};
   const d = await fetchServerSales(store ? {day, store} : {day});
   if(d && Array.isArray(d.sales)){
     const map=new Map(); d.sales.forEach(s=>map.set(String(s.no), s));
@@ -2216,7 +2247,7 @@ function buildReceipt(s){
   if(st.phone)    h+='<div class="c">'+esc(st.phone)+'</div>';
   if(st.abn)      h+='<div class="c">ABN '+esc(st.abn)+'</div>';
   h+='<hr>';
-  h+='<div class="c b">'+(s.kind==='refund'?'REFUND — ADJUSTMENT NOTE':'TAX INVOICE')+'</div>';
+  h+='<div class="c b">'+(isTrainingSale(s)?'TRAINING — NOT A TAX INVOICE':s.kind==='refund'?'REFUND — ADJUSTMENT NOTE':'TAX INVOICE')+'</div>';
   if(s.kind==='refund') h+='<div>Refund of: '+esc(s.refundOf)+'</div>';
   h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
   h+='<div>Served by: '+esc(s.servedBy)+'</div>';
@@ -2317,6 +2348,10 @@ function localPickups(storeId){
     (!storeId || String(s.store||'')===storeId));
 }
 async function fetchPickups(storeId){
+  if(storeId===TRAINING.id){
+    const all=load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && isTrainingSale(s));
+    return { open: all.filter(s=>!s.pickedUp), done: all.filter(s=>s.pickedUp), online:true };
+  }
   const d = await fetchServerSales(salesPickupParams(storeId));
   const local = localPickups(storeId);
   if(d && Array.isArray(d.open)){
@@ -2326,7 +2361,7 @@ async function fetchPickups(storeId){
   return { open: local, done: [], online:false, error: d && d.error };
 }
 async function refreshPickupCount(){
-  if(!currentStore || !settings.shareUrl) return renderPickupBadge(localPickups(currentStore && currentStore.id).length);
+  if(!currentStore || (!settings.shareUrl && !isTraining())) return renderPickupBadge(localPickups(currentStore && currentStore.id).length);
   const d = await fetchPickups(currentStore.id);
   renderPickupBadge(d.open.length);
 }
@@ -2401,6 +2436,13 @@ async function tickPickup(code, btn){
   const s=puFind(code); if(!s) return;
   const undo=!!s.pickedUp;
   if(undo && !confirm('Mark '+s.no+(s.customer?' ('+s.customer+')':'')+' as NOT picked up?')) return;
+  if(isTrainingSale(s)){                               // practice pick-up — tick it on this device only
+    const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);
+    if(x){ x.pickedUp=!undo; x.pickedUpDay=undo ? '' : todayKey(); save(LS.sales, sales); }
+    savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
+    puHighlight=''; await loadPickups(); refreshPickupCount();
+    return;
+  }
   if(s.synced===false){                                // still only on this device — send it first
     await syncSale(s);
     if(!load(LS.sales,[]).some(x=>x.pickupCode===code && x.synced)){ alert('Can\'t reach the site — try again when back online.'); return; }
@@ -2468,7 +2510,7 @@ async function loadInvoices(){
   invCache=sales;
   const where = invScopeStore===undefined ? (currentStore ? currentStore.name : 'All stores')
               : (invScopeStore ? storeLabel(invScopeStore) : 'All stores');
-  $('invScope').textContent = where+' · '+(combined?'from the site — every device':'this device only (site unreachable)')+
+  $('invScope').textContent = where+' · '+(isTrainingSale({store: invScopeStore===undefined && currentStore ? currentStore.id : invScopeStore}) ? 'practice sales on this device only' : combined?'from the site — every device':'this device only (site unreachable)')+
     ' · '+sales.length+' invoice'+(sales.length===1?'':'s');
   renderInvList($('invSearch').value);
 }
@@ -2749,6 +2791,7 @@ async function openBox(i, scanned){
   if(!bp||!pp){ alert('Both the box and the single pack must be in the product catalog. Sync catalog and try again.'); return; }
   const bs=stockOf(b.box);
   if(!scanned && !confirm('Open 1 × '+bp.name+'?\n\nBox stock −1'+(bs!==null?' ('+bs+' → '+(bs-1)+')':'')+'\n'+pp.name+' +'+b.packs)) return;
+  if(isTraining()){ alert('Training mode — opening a box changes real stock, so it\'s switched off here.'); return; }
   const url=inventoryUrl();
   if(!url){ alert('Live stock is off (Settings → Inventory update URL).'); return; }
   const idemKey='openbox|'+b.box+'|'+new Date().toISOString();
@@ -2831,6 +2874,7 @@ async function saveExpense(){
   if(!(amount>0)){ toast('Tap some notes or coins first'); return; }
   const day=$('exDate').value, store=$('exStore').value;
   if(!day){ toast('Pick a date'); return; }
+  if(isTraining()){ exTaps=[]; $('exNote').value=''; renderExpPad(); savedPill('Training — expense of '+money(amount)+' not saved'); return; }
   const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   $('exDone').disabled=true; $('exStatus').textContent='Saving…';
@@ -2911,6 +2955,7 @@ async function saveMoneyAdded(){
   if(!(amount>0)){ toast('Tap or type an amount first'); return; }
   const day=$('maDate').value, store=$('maStore').value;
   if(!day){ toast('Pick a date'); return; }
+  if(isTraining()){ maTaps=[]; renderAddPad(); savedPill('Training — '+money(amount)+' not saved'); return; }
   const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
   $('maDone').disabled=true; $('maStatus').textContent='Saving…';
   try{
@@ -4081,7 +4126,7 @@ function renderStoreFields(){
 // Show the store's shared next number (the site's) rather than this device's guess.
 async function loadSiteCounter(){
   const url=salesUrl({counter:'1', store: currentStore ? currentStore.id : ''});
-  if(!url || !currentStore) return;
+  if(!url || !currentStore || isTraining()) return;
   try{
     const res=await fetch(url, {headers:shareHeaders(false)});
     const d=res.ok ? await res.json() : null;
@@ -4094,7 +4139,7 @@ async function loadSiteCounter(){
   }catch(e){}
 }
 async function setSiteCounter(n){
-  const url=salesUrl({counter:'set'}); if(!url || !currentStore) return;
+  const url=salesUrl({counter:'set'}); if(!url || !currentStore || isTraining()) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({store:currentStore.id, next:n})});
     if(!res.ok) toast('Couldn\'t update the shared invoice number — try again online');
@@ -4279,6 +4324,9 @@ function bind(){
 
   // the opening screen
   $('gateTiles').addEventListener('click', e=>{
+    const b=e.target.closest('[data-store]'); if(b) selectStore(b.dataset.store);
+  });
+  $('gateTraining').addEventListener('click', e=>{
     const b=e.target.closest('[data-store]'); if(b) selectStore(b.dataset.store);
   });
   $('gateAdmin').onclick=openAdmin;
