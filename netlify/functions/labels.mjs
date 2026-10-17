@@ -118,7 +118,7 @@ async function newCode(items) {
     const code = body + checkDigit(body);
     if (!used.has(code)) return code;
   }
-  throw new Error('Could not find a free barcode — try again.');
+  throw new Error('Could not find a free barcode. Try again.');
 }
 
 function checkDigit(digits) {

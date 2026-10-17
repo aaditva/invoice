@@ -112,7 +112,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 ## 4. Point the till at the proxy
 
 1. Open **`index.html`** (double-click it, or host it — see below).
-2. Click **⚙︎ Settings** and fill in:
+2. Click **⚙︎ Settings** (it asks for the Admin password, the `ADMIN_PIN` env var on Netlify) and fill in:
    - **Business name, ABN, address, phone** — printed on every tax invoice (ABN is legally required).
    - **Catalog proxy URL** — the address from step 3.
    - **Staff names** — one per line; these populate the "Served by" list.
@@ -141,7 +141,9 @@ Requires a **Business** or **Commerce** Squarespace plan.
   part under Cash and Card.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
-  **Finalise — no print** to record the sale without printing (still numbered & logged).
+  **Finalise, no print** to record the sale without printing (still numbered & logged).
+  A **Pick up later** order always prints — the button is hidden, since the customer needs the
+  receipt's pick-up barcode to collect it.
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
   open one to **reprint** it.
 - **Refund some of a sale** — open the invoice → **Refund items…**, choose how many of each line
@@ -545,7 +547,10 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 
 - **Admin ▾ → 🔒 Login** (header) asks for the Admin password once; the device then stays logged in
   until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
-  totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
+  totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin/⚙︎ Settings ask for
+  the password.
+- If the site rejects the device's **sales token** (so no password can be checked), ⚙︎ Settings opens
+  anyway so the token can be fixed; log in after saving.
 - The password is the Netlify env var **ADMIN_PIN** — the site checks it, so it isn't in the page.
   The server also refuses box-list edits, expenses and cost prices without it.
 - **⚠ N unsent** appears in the header only while sales rung up on this device haven't reached the
@@ -608,3 +613,21 @@ To go back at any point, set `DEVICE_KEYS` back to `off` (or delete it) and rede
 packs inside. **Open 1** sends one Squarespace adjustment: box −1 and pack +N together (all or nothing).
 The list is stored on the site (`/api/boxes`, Netlify Blobs), so every till shares it. Until the first edit
 it starts from a built-in list of the boxes in the product feed (see `netlify/functions/boxes.mjs`).
+
+## 🎓 Training mode
+
+The opening screen has a small dashed **🎓 Training** tile in the bottom-right corner. It opens the
+exact same till — scanning, discounts, cash/card/split, pick-ups, voids, refunds, reprints — so new
+staff can practise, but **nothing they do is real**:
+
+- Sales stay on that device only (a separate practice log) and are **never sent to the site**, so
+  they don't show in Takings, Admin, Insights, the Google Sheet or either store's invoice list.
+- **Squarespace stock is never changed**, and the on-screen stock counts don't drop either.
+- Invoice numbers come from their own local run (`INV-TR-0001`, …), so the real stores' numbering
+  doesn't move.
+- Money Added and Expenses don't save, and Open box is switched off.
+- Every docket prints **TRAINING — NOT A REAL SALE** at the top, and the header shows an orange
+  **TRAINING** flag the whole time.
+
+To finish, tap **Invoices ▾ → ⇄ switch** and pick a real store. To wipe the practice sales, open
+Settings while in Training and use **Clear this device's log** (that clears the practice log only).

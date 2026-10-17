@@ -105,6 +105,8 @@
   .quicktender button{padding:8px 10px;font-size:13px;background:#fff;border:1px solid var(--line)}
   .finalize{padding:18px;font-size:18px;font-weight:700}
   .finalize:disabled{opacity:.45;cursor:not-allowed}
+  /* Finalise, no print: indigo, a sibling of the blue Finalise & Print (green/red mean cash/danger) */
+  #btnFinalizeNoPrint{background:#5e5ce6;color:#fff;border-color:#5e5ce6}
   .warn{color:var(--danger);font-size:13px}
   .muted{color:var(--muted);font-size:12.5px}
 
@@ -139,7 +141,7 @@
   .saved.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .bignum{font-size:40px;font-weight:800;line-height:1.1}
 
-  /* Store chip in the header — shows which location this till is ringing up for */
+  /* Store chip in the header - shows which location this till is ringing up for */
   .storechip{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;
     background:#e8f1fd;color:var(--card);padding:7px 12px;border-radius:999px}
   .storechip .swap{opacity:.6;font-weight:400}
@@ -178,6 +180,14 @@
   .tile.last{border-color:var(--accent)}
   .tile.last .tsub{color:var(--accent)}
   .gatefoot{margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  /* Training: a small dashed tile pinned bottom-right, clear of the two store tiles */
+  .gatetrain{position:absolute;right:24px;bottom:24px}
+  .tile.training{padding:12px 16px;gap:2px;border-style:dashed;box-shadow:none;max-width:220px}
+  .tile.training .tname{font-size:15px}
+  .tile.training .tsub{font-size:11.5px}
+  @media (max-width:640px){ .gate{padding-bottom:110px} .gatetrain{right:16px;bottom:16px} }
+  .trainflag{background:#f5a623;color:#1d1d1f;font-weight:700;border-radius:8px;padding:2px 10px}
+  body.training .app > header{box-shadow:inset 0 -4px 0 #f5a623}
 
   /* ---------- Admin ---------- */
   .sheet.wide{max-width:860px}
@@ -207,14 +217,14 @@
   #btnLogin.in{background:var(--ok);color:#fff}
   .boxadd{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:8px;align-items:end}
   @media (max-width:640px){ .boxadd{grid-template-columns:1fr 1fr} }
-  /* Expenses pad — tap notes and coins, they add up */
+  /* Expenses pad - tap notes and coins, they add up */
   .cashpad{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
   .cashpad button{padding:16px 6px;font-size:18px;font-weight:700;position:relative}
   .cashpad button.note{background:#e6f4ea;color:#0b5d24;border-radius:8px}
   .cashpad button.coin{background:#fff4d6;color:#7a5200;border-radius:999px;aspect-ratio:1/1;padding:0}
   .cashpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
     background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
-  /* "⚠ 3 unsent" — only shown while sales are waiting to reach the site */
+  /* "⚠ 3 unsent" - only shown while sales are waiting to reach the site */
   .unsent{display:none;background:#fff4d6;color:#7a5200;border:1px solid #f0d58a;font-weight:600}
   .unsent.on{display:inline-flex}
   #btnExpenses{display:none}
@@ -328,8 +338,8 @@
     .gx .donut{align-self:center}
     .gx .gstatus{font-size:12.5px}
     #adInsights > div:first-child{flex-wrap:wrap}
-    /* Top products / no-cost lists: each row becomes a small card — name on top,
-       figures in a row underneath — instead of a squashed 5-column table. */
+    /* Top products / no-cost lists: each row becomes a small card - name on top,
+       figures in a row underneath - instead of a squashed 5-column table. */
     .gx #gxTop table.gt thead{display:none}
     .gx #gxTop table.gt,.gx #gxTop table.gt tbody{display:block}
     .gx #gxTop table.gt tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px 8px;padding:10px 2px;border-bottom:1px solid var(--g-line)}
@@ -457,7 +467,7 @@
   #invoicesModal.single #invDetail fieldset{margin-top:0 !important}
 
   /* ---------- Dark mode (toggle in the header; choice saved per device) ----------
-     Soft warm greys, not pitch black. Screen only — receipts always print black on white. */
+     Soft warm greys, not pitch black. Screen only - receipts always print black on white. */
   .themetog{display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:7px 11px;white-space:nowrap}
   .gatetheme{position:absolute;top:18px;right:22px;font-size:16px;padding:11px 16px;gap:10px;border-radius:12px}
   .gatetheme .tk{width:44px;height:26px}
@@ -496,6 +506,7 @@
   [data-theme="dark"] .ddmenu > button.storechip:hover{background:rgba(75,156,255,.24)}
   [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
   [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
+  [data-theme="dark"] #btnFinalizeNoPrint{background:#7d7aff;border-color:#7d7aff;color:#fff}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
@@ -565,11 +576,11 @@
         <button role="menuitem" id="mnuInvoices">🧾 Previous invoices</button>
         <div class="ddlbl">Store</div>
         <button role="menuitem" class="storechip" id="btnSwitchStore" title="Switch to the other store">
-          <span id="hStoreName">—</span><span class="swap">⇄ switch</span>
+          <span id="hStoreName">-</span><span class="swap">⇄ switch</span>
         </button>
       </div>
     </div>
-    <button class="ghost" id="btnPickups" title="Orders waiting to be picked up — scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
+    <button class="ghost" id="btnPickups" title="Orders waiting to be picked up. Scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
     <!-- Money Added is for everyone; Expenses shows only while an admin is logged in -->
     <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
     <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
@@ -580,7 +591,7 @@
         <button role="menuitem" id="btnTakings">🧮 Takings</button>
         <button role="menuitem" id="btnAdmin">📊 Admin dashboard</button>
         <div class="ddsep"></div>
-        <button role="menuitem" id="btnLogin" title="Admin login — shows the sales totals on this device">🔒 Login</button>
+        <button role="menuitem" id="btnLogin" title="Admin login (shows the sales totals on this device)">🔒 Login</button>
       </div>
     </div>
     <span class="spacer"></span>
@@ -693,32 +704,33 @@
 
         <div class="warn" id="finalizeWarn"></div>
         <button class="primary finalize" id="btnFinalize" disabled>Finalise &amp; Print</button>
-        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled>Finalise — no print</button>
+        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled>Finalise, no print</button>
         <button class="ghost" id="btnClear">Clear sale</button>
       </div>
     </aside>
   </main>
 </div>
 
-<!-- STORE GATE — shown before the till opens; nothing else is reachable until a store is picked -->
+<!-- STORE GATE - shown before the till opens; nothing else is reachable until a store is picked -->
 <div class="modal gate" id="gateModal">
   <button class="ghost themetog gatetheme" title="Switch light / dark mode" aria-pressed="false"><span class="themeLbl">☀️ Light</span><span class="tk"></span></button>
   <div class="gatebox">
     <h1 id="gateTitle">Which store?</h1>
-    <p class="gsub">Pick the location this till is ringing up for. Its sales are kept on the site, so either store can be opened from any device.</p>
+    <p class="gsub">Pick the location this till is ringing up for.</p>
     <div class="gatetiles" id="gateTiles"></div>
     <div class="gatefoot">
-      <button class="ghost" id="gateAdmin">View all stores — Admin</button>
+      <button class="ghost" id="gateAdmin">View all stores (Admin)</button>
       <button class="ghost" id="gateSettings">⚙︎ Settings</button>
       <button class="ghost" id="gatePair" style="display:none">🔑 Pair this device</button>
     </div>
   </div>
+  <div class="gatetrain" id="gateTraining"></div>
 </div>
 
-<!-- ADMIN MODAL — takings and invoices for any store, any day -->
+<!-- ADMIN MODAL - takings and invoices for any store, any day -->
 <div class="modal" id="adminModal">
   <div class="sheet wide" id="adminSheet">
-    <header><span class="store">Admin — all stores</span>
+    <header><span class="store">Admin: all stores</span>
       <nav class="gtabs" id="adTabs">
         <button data-tab="takings" class="sel">Takings</button>
         <button data-tab="insights">📊 Insights</button>
@@ -756,7 +768,7 @@
       <div id="adSummary"></div>
       <div id="adByStore"></div>
       <div class="field" id="adDaysWrap" style="display:none">
-        <label>Day by day — click a row to see that day's invoices</label>
+        <label>Day by day. Click a row to see that day's invoices</label>
         <div class="scroller"><table class="dtable" id="adDays"></table></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -769,13 +781,13 @@
         <button class="ghost" id="adExpenses">💸 Expenses…</button>
       </div>
       </div>
-      <!-- INSIGHTS — revenue, profit, brands and products for the store/period above -->
+      <!-- INSIGHTS - revenue, profit, brands and products for the store/period above -->
       <div id="adInsights" class="gx" style="display:none;flex-direction:column;gap:14px">
         <div style="display:flex;gap:10px;align-items:center">
           <div class="gstatus" id="gxStatus" style="flex:1"></div>
           <button class="ghost" id="gxRefresh">⟳ Refresh</button>
         </div>
-        <!-- NO COST — opened from the yellow "sold with no cost" chip above: type the missing costs in -->
+        <!-- NO COST - opened from the yellow "sold with no cost" chip above: type the missing costs in -->
         <div id="ncPanel" style="display:none;flex-direction:column;gap:14px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <div class="gstatus" id="ncStatus" style="flex:1"></div>
@@ -787,11 +799,11 @@
         </div>
         <div class="ggrid" id="gxGrid"></div>
       </div>
-      <!-- BARCODES — give a one-off product (a single, anything with no barcode) its own barcode and print labels -->
+      <!-- BARCODES - give a one-off product (a single, anything with no barcode) its own barcode and print labels -->
       <div id="adLabels" style="display:none;flex-direction:column;gap:14px">
         <div class="hint" style="margin:0">For one-off things with no barcode. Type it in, and the site gives it a barcode of its own
           and prints labels to stick on. Every till can scan it straight away (after its next ⟳ Sync); stock counts down as it sells.
-          These live only on the website — not in Squarespace or the Google Sheet.</div>
+          These live only on the website, not in Squarespace or the Google Sheet.</div>
         <div class="field"><label for="lbName">Product name</label>
           <input id="lbName" autocomplete="off" maxlength="120" placeholder="e.g. Charizard ex 199/165 (single)" /></div>
         <div class="grid2">
@@ -805,7 +817,7 @@
         <div class="field">
           <label>Label size</label>
           <div class="seg" id="lbSizes">
-            <button data-size="50x25">50 × 25 mm — best for single cards</button>
+            <button data-size="50x25">50 × 25 mm (best for single cards)</button>
             <button data-size="62x29">62 × 29 mm</button>
             <button data-size="40x30">40 × 30 mm</button>
             <button data-size="a4">A4 sheet (21 per page)</button>
@@ -821,7 +833,7 @@
           <div class="scroller"><table class="dtable" id="lbList"></table></div>
         </div>
       </div>
-      <!-- DEVICES — each till / phone / sheet script has its own key (DEVICE_KEYS on the site) -->
+      <!-- DEVICES - each till / phone / sheet script has its own key (DEVICE_KEYS on the site) -->
       <div id="adDevices" style="display:none;flex-direction:column;gap:14px">
         <div class="card muted" id="dvMode" style="font-size:13.5px"></div>
         <div class="field"><label>Add a device</label>
@@ -833,7 +845,7 @@
                 <option value="till">Till</option><option value="admin">Admin device</option></select></div>
             </div>
           </div>
-          <div class="hint"><b>Till</b> rings up sales; Admin still asks for the password. <b>Admin device</b> opens Admin without it — the owner's phone, or a Google Sheet script.</div>
+          <div class="hint"><b>Till</b> rings up sales; Admin still asks for the password. <b>Admin device</b> opens Admin without it - the owner's phone, or a Google Sheet script.</div>
           <div style="margin-top:8px"><button class="primary" id="dvInvite">Make a pairing code</button></div>
         </div>
         <div class="card" id="dvCode" style="display:none;text-align:center">
@@ -852,7 +864,7 @@
   </div>
 </div>
 
-<!-- MONEY ADDED MODAL — anyone can record money put into the till -->
+<!-- MONEY ADDED MODAL - anyone can record money put into the till -->
 <div class="modal" id="addModal">
   <div class="sheet wide">
     <header><span class="store">Money Added</span><span class="spacer"></span><button class="ghost" id="closeAdd">Close</button></header>
@@ -887,7 +899,7 @@
   </div>
 </div>
 
-<!-- EXPENSES MODAL — tap notes/coins to add up an expense (admin only) -->
+<!-- EXPENSES MODAL - tap notes/coins to add up an expense (admin only) -->
 <div class="modal" id="expModal">
   <div class="sheet wide">
     <header><span class="store">Expenses</span><span class="spacer"></span><button class="ghost" id="closeExp">Close</button></header>
@@ -918,7 +930,7 @@
   </div>
 </div>
 
-<!-- OPEN BOX MODAL — box -1, single packs +N (admin only) -->
+<!-- OPEN BOX MODAL - box -1, single packs +N (admin only) -->
 <div class="modal" id="boxModal">
   <div class="sheet wide">
     <header><span class="store">📦 Open box</span><span class="spacer"></span><button class="ghost" id="closeBoxes">Close</button></header>
@@ -928,7 +940,7 @@
           <div class="hint">Scanning opens it straight away: box stock −1, single packs +N (Squarespace and every till).</div>
         </div>
         <div class="muted" id="bxStatus"></div>
-        <div class="field"><label>Add a new box — scan the box, then one pack, then type packs per box</label></div>
+        <div class="field"><label>Add a new box: scan the box, then one pack, then type packs per box</label></div>
         <div class="boxadd">
           <div class="field"><label for="bxBox">Box barcode</label><input id="bxBox" autocomplete="off" placeholder="scan the box" /></div>
           <div class="field"><label for="bxPack">Single pack barcode</label><input id="bxPack" autocomplete="off" placeholder="scan one pack" /></div>
@@ -954,7 +966,7 @@
           <div class="field"><label>Phone</label><input id="sPhone" placeholder="(0x) xxxx xxxx" /></div>
         </div>
         <div class="field"><label>Address</label><input id="sAddress" placeholder="123 Main St, Suburb VIC 3000" /></div>
-        <div class="field"><label>Receipt footer message</label><input id="sFooter" placeholder="Thank you — no refunds without receipt" /></div>
+        <div class="field"><label>Receipt footer message</label><input id="sFooter" placeholder="Thank you! No refunds without receipt" /></div>
       </fieldset>
 
       <fieldset><legend>Stores</legend>
@@ -964,7 +976,7 @@
 
       <fieldset><legend>Products link</legend>
         <div class="field"><label>Products link (Google Sheet CSV, or proxy URL)</label><input id="sCatUrl" placeholder="https://docs.google.com/…/pub?output=csv" />
-          <div class="hint">Paste a <b>published Google Sheet</b> (File → Share → Publish to web → CSV) with columns <b>barcode, name, price</b> — no server needed. Or the URL of a Squarespace proxy (see README). Leave blank to use demo/pasted products.</div>
+          <div class="hint">Paste a <b>published Google Sheet</b> (File → Share → Publish to web → CSV) with columns <b>barcode, name, price</b>. No server needed. Or the URL of a Squarespace proxy (see README). Leave blank to use demo/pasted products.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="ghost" id="btnDemo">Load demo products</button>
@@ -977,27 +989,27 @@
         </div>
       </fieldset>
 
-      <fieldset><legend>Sales memory — where the sales are kept</legend>
+      <fieldset><legend>Sales memory (where the sales are kept)</legend>
         <div class="field"><label>Sales log URL</label><input id="sShareUrl" placeholder="/api/sales" />
-          <div class="hint">Leave as <b>/api/sales</b> if this till is hosted on your Netlify site. Every sale is written here, so <b>Today, Invoices, Takings and Admin all read the site's record</b> rather than this browser — any device can see any store's sales, for today or any earlier day. Blank falls back to this browser only (single device, no Admin).</div>
+          <div class="hint">Leave as <b>/api/sales</b> if this till is hosted on your Netlify site. Every sale is written here, so <b>Today, Invoices, Takings and Admin all read the site's record</b> rather than this browser, so any device can see any store's sales, for today or any earlier day. Blank falls back to this browser only (single device, no Admin).</div>
         </div>
         <div class="grid2">
           <div class="field"><label>Sales log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" />
             <div class="hint" id="sDevInfo"></div></div>
           <div class="field"><label>Device tag (optional)</label><input id="sDevice" placeholder="e.g. 2" />
-            <div class="hint">Not needed any more — every device at a store already shares one invoice count from the site. If set, it's added to this device's numbers (INV-SM2-0007).</div>
+            <div class="hint">Not needed any more. Every device at a store already shares one invoice count from the site. If set, it's added to this device's numbers (INV-SM2-0007).</div>
           </div>
         </div>
       </fieldset>
 
-      <fieldset><legend>Live stock — update Squarespace on each sale (optional)</legend>
+      <fieldset><legend>Live stock: update Squarespace on each sale (optional)</legend>
         <div class="field"><label>Inventory update URL</label><input id="sInvUrl" placeholder="/api/inventory" />
           <div class="hint">Leave as <b>/api/inventory</b> if this till is hosted on your Netlify site. Each finalised sale then <b>decrements the matching Squarespace stock</b> (matched by barcode/SKU). Uses the same <b>shared-log token</b> above, and needs the Netlify env var <b>SQUARESPACE_API_KEY</b> to have <b>Inventory Read/Write</b> permission. Blank = never change stock.</div>
         </div>
       </fieldset>
 
       <fieldset><legend>Staff (the "Served by" list)</legend>
-        <div class="field"><label>Names — one per line</label>
+        <div class="field"><label>Names (one per line)</label>
           <textarea id="sStaff" rows="3" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px" placeholder="Alex&#10;Sam&#10;Jordan"></textarea>
         </div>
       </fieldset>
@@ -1050,7 +1062,7 @@
       <div class="field"><input id="puSearch" placeholder="Scan the pick-up barcode, or search name, phone, invoice #…" autocomplete="off" /></div>
       <div class="puhead" id="puOpenHead">Waiting to be picked up</div>
       <div class="pulist" id="puOpen"></div>
-      <div class="puhead">Picked up — last 7 days</div>
+      <div class="puhead">Picked up in the last 7 days</div>
       <div class="pulist" id="puDone"></div>
     </div>
   </div>
@@ -1085,7 +1097,7 @@
   </div>
 </div>
 
-<!-- ADMIN LOGIN — the site checks the password (ADMIN_PIN on Netlify) -->
+<!-- ADMIN LOGIN - the site checks the password (ADMIN_PIN on Netlify) -->
 <div class="modal" id="loginModal">
   <div class="sheet" style="max-width:380px">
     <header><span class="store">🔒 Admin login</span></header>
@@ -1098,7 +1110,7 @@
   </div>
 </div>
 
-<!-- PAIR THIS DEVICE — swaps a one-time code from Admin → Devices for this device's own key -->
+<!-- PAIR THIS DEVICE - swaps a one-time code from Admin → Devices for this device's own key -->
 <div class="modal" id="pairModal">
   <div class="sheet" style="max-width:420px">
     <header><span class="store">🔑 Pair this device</span></header>
@@ -1111,7 +1123,7 @@
         <div class="field"><label for="prName">Name this device</label><input id="prName" maxlength="60" placeholder="e.g. Roxy front till" /></div>
         <div class="field"><label for="prPin">Admin password</label><input id="prPin" type="password" autocomplete="current-password" /></div>
         <label class="muted" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">
-          <input type="checkbox" id="prAdmin" style="width:auto;margin:0" /> Admin device — opens Admin without the password</label>
+          <input type="checkbox" id="prAdmin" style="width:auto;margin:0" /> Admin device - opens Admin without the password</label>
       </details>
       <div class="warn" id="prStatus" role="status"></div>
     </div>
@@ -1128,25 +1140,35 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------ *
- *  Store Till & Tax Invoice — self-contained, no build step.
+ *  Store Till & Tax Invoice - self-contained, no build step.
  *  Data lives in localStorage. Catalog comes from a read-only proxy
  *  (see README) that holds the secret Squarespace API key.
  * ------------------------------------------------------------------ */
 
 const LS = {
   settings:'inv_settings', catalog:'inv_catalog', catalogAt:'inv_catalog_at',
-  counter:'inv_counter', sales:'inv_sales', store:'inv_store'
+  counter:'inv_counter', store:'inv_store',
+  // Training keeps its own log on the device, so a practice sale can never be sent to the site
+  get sales(){ return isTraining() ? 'inv_training_sales' : 'inv_sales'; }
 };
 
 /* The two shop locations. Pick one on the opening screen; every sale is stamped
    with it and filed under it on the server. `tag` goes into the invoice number
    so the two stores' numbers can never collide (INV-SM-0007 / INV-RX-0007).
-   The ids are what the server files sales under, so they never change — the
+   The ids are what the server files sales under, so they never change - the
    display name, address and phone are editable in Settings → Stores. */
 const STORE_DEFS = [
   { id:'south-melbourne', name:'South Melbourne', tag:'SM' },
   { id:'roxy',            name:'Roxy',            tag:'RX' }
 ];
+/* Training: the same till, for practice. Not in STORE_DEFS, so it never shows in
+   Admin, Insights, Expenses or the store lists. Its sales live only in this
+   browser (LS.sales → inv_training_sales): nothing is sent to the site's sales
+   log, Squarespace stock isn't touched, and invoice numbers come from a local
+   counter (INV-TR-…), so the real sequence doesn't move. */
+const TRAINING = { id:'training', name:'Training', tag:'TR' };
+function isTraining(){ return !!currentStore && currentStore.id===TRAINING.id; }
+function isTrainingSale(s){ return !!s && String(s.store||'')===TRAINING.id; }
 
 const DEFAULTS = {
   name:'My Store', abn:'', phone:'', address:'', footer:'Thank you!',
@@ -1155,7 +1177,7 @@ const DEFAULTS = {
   // Live stock write-back to Squarespace on each sale (blank = don't touch stock).
   invUrl:'/api/inventory',
   staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
-  // The site's sales record — where Today / Invoices / Takings / Admin read from.
+  // The site's sales record - where Today / Invoices / Takings / Admin read from.
   shareUrl:'/api/sales', shareToken:'', device:'',
   // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
   stores:{}
@@ -1167,7 +1189,7 @@ const DEFAULTS = {
    person working the till doesn't retype it to see the totals. Logged out, the
    header's money figures are blacked out. */
 const ADMIN_KEY = 'inv_admin_pin';
-try{ localStorage.removeItem('inv_admin'); }catch(e){}   // the old "logged in" flag — log in once more
+try{ localStorage.removeItem('inv_admin'); }catch(e){}   // the old "logged in" flag - log in once more
 function adminPin(){ try{ return localStorage.getItem(ADMIN_KEY)||''; }catch(e){ return ''; } }
 function isAdmin(){ return !!adminPin() || deviceAdmin(); }
 // A site endpoint (/api/…). Relative works when the till is hosted on Netlify; if
@@ -1197,9 +1219,15 @@ async function checkAdminPin(pin){
   const res=await fetch(apiUrl('/api/admin'), {method:'POST', headers:h, body:'{}'});
   const d=await res.json().catch(()=>({}));
   if(res.ok && d.ok) return {ok:true};
-  // wrong = the site rejected this password (or has none set) — not a token or network problem
-  // (d.code = the device/token check failed, not the password — see /api/devices)
-  if(res.status===401 || res.status===503) return {bad: d.error || 'Wrong password', wrong: res.status===503 || (!d.code && !/token/i.test(d.error||''))};
+  // wrong = the site rejected this password (or has none set) - not a token or network problem.
+  // A device-key refusal (see /api/devices) isn't the password either: Settings can't
+  // fix that, pairing can, so it opens the pairing box rather than the token fix.
+  if(res.status===401 || res.status===503){
+    const dev = /^(missing|unknown|revoked)$/.test(d.code||'');
+    if(dev) noteAuth(d);
+    const token = res.status===401 && !dev && (d.code==='token' || /token/i.test(d.error||''));
+    return {bad: d.error || 'Wrong password', wrong: !token && !dev, token};
+  }
   throw new Error(d.error || ('HTTP '+res.status));
 }
 async function submitLogin(){
@@ -1208,6 +1236,14 @@ async function submitLogin(){
   btn.disabled=true; $('lgStatus').textContent='Checking…';
   try{
     const r=await checkAdminPin(pin);
+    if(r.token && loginThen===openSettings){
+      // This device's sales token doesn't match the site's, so no password can be
+      // checked until it's fixed - and the token lives in Settings. Let them in to fix it.
+      $('loginModal').classList.remove('show'); loginThen=null;
+      openSettings(true);
+      alert('The site rejected this device\'s sales token, so the password can\'t be checked yet.\n\nFix "Sales token" under Sales memory, Save, then log in.');
+      return;
+    }
     if(r.bad){ $('lgStatus').textContent=r.bad; $('lgPin').select(); return; }
     try{ localStorage.setItem(ADMIN_KEY, pin); }catch(e){}
     $('loginModal').classList.remove('show');
@@ -1215,14 +1251,14 @@ async function submitLogin(){
     const then=loginThen; loginThen=null;
     if(then) then(); else focusScan();
   }catch(e){
-    $('lgStatus').textContent='Can\'t reach the site to check the password — try again when the till is back online.';
+    $('lgStatus').textContent='Can\'t reach the site to check the password. Try again when the till is back online.';
   }finally{ btn.disabled=false; }
 }
 function cancelLogin(){ loginThen=null; $('loginModal').classList.remove('show'); focusScan(); }
 // The password was changed on Netlify → a device still holding the old one is logged out.
 async function recheckAdmin(){
   const pin=adminPin(); if(!pin || navigator.onLine===false) return;
-  try{ const r=await checkAdminPin(pin); if(r.wrong) logoutAdmin(); }catch(e){ /* offline — keep it */ }
+  try{ const r=await checkAdminPin(pin); if(r.wrong) logoutAdmin(); }catch(e){ /* offline - keep it */ }
 }
 function logoutAdmin(){
   try{ localStorage.removeItem(ADMIN_KEY); }catch(e){}
@@ -1230,6 +1266,7 @@ function logoutAdmin(){
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
   $('expModal').classList.remove('show');
+  $('settingsModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
 function renderAuth(){
@@ -1238,7 +1275,7 @@ function renderAuth(){
   b.classList.toggle('in', on);
   $('btnExpenses').classList.toggle('on', on);
   $('hAdminLock').textContent = on ? '🔓' : '🔒';
-  $('btnAdminMenu').title = on ? 'Admin — logged in on this device' : 'Takings, Admin, login';
+  $('btnAdminMenu').title = on ? 'Admin (logged in on this device)' : 'Takings, Admin, login';
   renderToday();
   if(on) refreshToday();
 }
@@ -1247,7 +1284,7 @@ function renderAuth(){
    With the switch on, this device sends a key of its own (x-device-key) so it can
    be switched off on its own from Admin → Devices. It gets one by pairing: a
    one-time code made on a paired device, or the Admin password. While the site
-   has DEVICE_KEYS unset none of this shows and no key is sent — the shared
+   has DEVICE_KEYS unset none of this shows and no key is sent - the shared
    token in Settings works exactly as before. */
 const DEV_KEY='inv_device_key', DEV_INFO='inv_device', DEV_MODE='inv_device_mode';
 let devMode = (()=>{ try{ return localStorage.getItem(DEV_MODE)||'off'; }catch(e){ return 'off'; } })();
@@ -1349,7 +1386,7 @@ async function submitPair(){
     toast('Paired as “'+d.device.name+'”');
     flushUnsynced();
   }catch(e){
-    $('prStatus').textContent='Can\'t reach the site — pairing needs the internet.';
+    $('prStatus').textContent='Can\'t reach the site - pairing needs the internet.';
   }finally{ btn.disabled=false; }
 }
 function renderDeviceUi(){
@@ -1359,7 +1396,7 @@ function renderDeviceUi(){
   if(!on && adTab==='devices') setAdminTab('takings');
   $('sDevInfo').textContent = !on ? ''
     : paired ? '🔑 Paired with the site as “'+d.name+'” ('+(d.role==='admin'?'Admin device':'till')+').'
-    : '🔑 Not paired yet — tap 🔑 Pair this device on the opening screen.';
+    : '🔑 Not paired yet - tap 🔑 Pair this device on the opening screen.';
 }
 
 /* Admin → Devices: pair, rename, revoke. */
@@ -1383,7 +1420,7 @@ function renderDvStores(){
   sel.value = keep || (currentStore && currentStore.id) || '';
 }
 function ago(iso){
-  const t=Date.parse(iso); if(!isFinite(t)) return '—';
+  const t=Date.parse(iso); if(!isFinite(t)) return '-';
   const m=Math.round((Date.now()-t)/60000);
   if(m<90) return m<=1 ? 'just now' : m+' min ago';
   const h=Math.round(m/60); if(h<36) return h+' h ago';
@@ -1392,7 +1429,7 @@ function ago(iso){
 function renderDevices(){
   $('dvMode').innerHTML = devMode==='required'
     ? '<b>Device keys are required.</b> Only paired devices can reach the site; the shared token no longer works. The Admin password still pairs a device if every paired one is lost.'
-    : '<b>Device keys are on, alongside the shared token.</b> Tills that aren\'t paired yet keep working, and ones that have the token pair themselves when they open (shown as “Till …” — rename them). Once every till, phone and sheet script is paired, set <b>DEVICE_KEYS=required</b> on Netlify.';
+    : '<b>Device keys are on, alongside the shared token.</b> Tills that aren\'t paired yet keep working, and ones that have the token pair themselves when they open (shown as “Till …” - rename them). Once every till, phone and sheet script is paired, set <b>DEVICE_KEYS=required</b> on Netlify.';
   const mine=(deviceInfo()||{}).id, STALE=30*86400000;
   const storeSel=(d)=>'<select data-store="'+esc(d.id)+'"'+(d.revokedAt?' disabled':'')+'><option value="">Any store</option>'+
     allStores().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===d.store?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select>';
@@ -1404,7 +1441,7 @@ function renderDevices(){
       '<td><b>'+esc(d.name)+'</b>'+(d.id===mine?' <span class="muted">(this device)</span>':'')+
         (d.revokedAt?'<div class="muted">Revoked '+esc(ago(d.revokedAt))+'</div>':'')+'</td>'+
       '<td>'+storeSel(d)+'</td><td>'+roleSel(d)+'</td>'+
-      '<td'+(stale?' class="warn" title="Not seen for over 30 days — lost or wiped? Revoke it."':'')+'>'+(stale?'⚠ ':'')+esc(ago(d.lastSeen))+'</td>'+
+      '<td'+(stale?' class="warn" title="Not seen for over 30 days - lost or wiped? Revoke it."':'')+'>'+(stale?'⚠ ':'')+esc(ago(d.lastSeen))+'</td>'+
       '<td style="white-space:nowrap">'+(d.revokedAt
         ? '<button class="ghost" data-remove="'+esc(d.id)+'">Remove</button>'
         : '<button class="ghost" data-rename="'+esc(d.id)+'">Rename</button> <button class="ghost" data-revoke="'+esc(d.id)+'">Revoke</button>')+'</td></tr>';
@@ -1428,7 +1465,7 @@ async function dvRevoke(id){
   const d=dvList.find(x=>x.id===id); if(!d) return;
   const me=id===(deviceInfo()||{}).id;
   if(!confirm('Revoke “'+d.name+'”?\n\nIts key stops working within a minute. Sales it rang up before now still come in from its offline queue.'+
-    (me?'\n\nThis is the device you\'re using — it will need pairing again.':''))) return;
+    (me?'\n\nThis is the device you\'re using - it will need pairing again.':''))) return;
   if(await dvPost('revoke', {id})) loadDevices();
 }
 async function dvRemove(id){
@@ -1488,10 +1525,10 @@ let variantMap = new Map();  // variantId -> product (so stock reconcile doesn't
 let searchIndex = [];        // [{p, name, sku}] with the match keys pre-lowered/normalised once per sync
 let basket = [];             // {sku,name,price,qty}
 let method = null;           // 'cash' | 'card'
-let discountMode = 'amount'; // 'amount' | 'pct' — which field the user last set (held when the basket changes)
+let discountMode = 'amount'; // 'amount' | 'pct' - which field the user last set (held when the basket changes)
 let discountAmt = 0;         // $ off (when mode==='amount')
 let discountPct = 0;         // % off (when mode==='pct')
-let currentStore = null;     // the location picked on the opening screen — null until then
+let currentStore = null;     // the location picked on the opening screen - null until then
 let todayTally = null;       // today's takings as the server reports them (see refreshToday)
 let allTally = null;         // today's takings across every store (admin only)
 
@@ -1525,6 +1562,7 @@ function shiftDay(key, n){ const d=new Date(key+'T00:00:00'); d.setDate(d.getDat
    Settings → Stores overrides. The id is what the server files sales under, so
    renaming a store in Settings never orphans its history. */
 function storeById(id){
+  if(id===TRAINING.id) return { id:TRAINING.id, tag:TRAINING.tag, name:TRAINING.name, address:'', phone:'', training:true };
   const def = STORE_DEFS.find(s=>s.id===id);
   if(!def) return null;
   const ov = (settings.stores && settings.stores[id]) || {};
@@ -1556,7 +1594,7 @@ function counterKey(){ return currentStore ? (LS.counter+':'+currentStore.id) : 
 function readCounter(){
   const n = parseInt(localStorage.getItem(counterKey())||'', 10);
   if(!isNaN(n)) return n;
-  // First sale for this store on this device — carry the old single counter over.
+  // First sale for this store on this device - carry the old single counter over.
   const legacy = parseInt(localStorage.getItem(LS.counter)||'1', 10);
   return isNaN(legacy) ? 1 : legacy;
 }
@@ -1576,7 +1614,7 @@ function deviceId(){
 // the same sequence, so a number is only ever printed for one sale. null =
 // couldn't reach the site in time.
 async function nextServerNumber(waitMs){
-  const url=salesUrl({counter:'next'}); if(!url || !currentStore) return null;
+  const url=salesUrl({counter:'next'}); if(!url || !currentStore || isTraining()) return null;
   const c=new AbortController(); const t=setTimeout(()=>c.abort(), waitMs||5000);
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
@@ -1590,7 +1628,7 @@ async function nextServerNumber(waitMs){
 }
 // The next number is fetched ahead of time (when the store opens, and after
 // each sale) and kept on the device, so Finalise never waits on the wifi for it.
-// It's held until a sale uses it — a cleared basket doesn't waste it.
+// It's held until a sale uses it - a cleared basket doesn't waste it.
 function reservedKey(){ return 'inv_reserved:'+(currentStore ? currentStore.id : ''); }
 function takeReserved(){
   let n=NaN; try{ n=parseInt(localStorage.getItem(reservedKey())||'', 10); localStorage.removeItem(reservedKey()); }catch(e){}
@@ -1611,6 +1649,8 @@ async function reserveNumber(){
 // it's re-printed from the South Melbourne till.
 function receiptStore(sale){
   const st = (sale && sale.store ? storeById(sale.store) : null) || currentStore;
+  if(isTrainingSale(sale) || (!sale && isTraining()))
+    return { name: settings.name, location: '*** TRAINING - NOT A REAL SALE ***', address:'', phone:'', abn:'', footer: 'Practice receipt, no money taken' };
   return {
     name: settings.name,
     location: st ? st.name : ((sale && sale.storeName) || ''),
@@ -1635,11 +1675,18 @@ function renderGate(){
       '<span class="tsub">'+(s.id===last?'Last used on this device':'Open the till here')+'</span>'+
       '<span class="ttag">'+esc(settings.prefix+s.tag+'-')+'…</span>'+
     '</button>').join('');
+  // Training sits in the corner, away from the two real stores
+  $('gateTraining').innerHTML =
+    '<button class="tile training'+(last===TRAINING.id?' last':'')+'" data-store="'+TRAINING.id+'">'+
+      '<span class="tname">🎓 '+esc(TRAINING.name)+'</span>'+
+      '<span class="tsub">Practice only. Sales and stock aren\'t kept</span>'+
+    '</button>';
 }
 function selectStore(id){
   const s = storeById(id); if(!s) return;
   currentStore = s;
   localStorage.setItem(LS.store, s.id);
+  document.body.classList.toggle('training', isTraining());
   $('gateModal').classList.remove('show');
   clearSale();                    // a basket belongs to one store, never both
   applySettings();
@@ -1699,7 +1746,7 @@ async function syncCatalog(silent){
   $('catDot').className='dot';
   try{
     const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json, text/csv, */*'}});
-    if(!res.ok) throw new Error('HTTP '+res.status+' — '+(await res.text()).slice(0,140));
+    if(!res.ok) throw new Error('HTTP '+res.status+': '+(await res.text()).slice(0,140));
     const text = await res.text();
     const items = parseCatalog(text, res.headers.get('content-type')||'', settings.catUrl);
     if(!items.length) throw new Error('No products found at that link (need columns: barcode/SKU, name, price).');
@@ -1922,7 +1969,7 @@ function render(){
   if(dp && document.activeElement!==dp) dp.value = t.disc>0 ? String(Math.round(t.pct*100)/100) : '';
 
   // the buyer's name is optional, except on a $1,000+ tax invoice where the ATO needs it
-  $('customerHint').textContent = t.total>=1000 ? '(required — sale is $1,000+)' : '(optional)';
+  $('customerHint').textContent = t.total>=1000 ? '(required for sales of $1,000+)' : '(optional)';
 
   // cash box
   if(method==='split'){
@@ -1973,7 +2020,7 @@ function updateFinalizeState(){
   else if(!$('servedBy').value) msg='Select who served the customer.';
   else if(!method) msg='Choose Cash or Card.';
   else if(t.total>=1000 && !$('customer').value.trim()) { msg='Enter customer name/ABN (sale is $1,000+).'; ok=false; }
-  else if(method==='split' && !splitParts(t).ok){ msg='Enter the card part of the split — more than $0 and less than the total.'; ok=false; }
+  else if(method==='split' && !splitParts(t).ok){ msg='Enter the card part of the split. It has to be more than $0 and less than the total.'; ok=false; }
   else if(method==='cash' || method==='split'){
     const ct=round5(cashDue(t)), tender=parseFloat($('tender').value);
     if(isFinite(tender) && tender<ct){ msg='Cash received is less than the '+(method==='split'?'cash part.':'total.'); ok=false; }
@@ -1986,7 +2033,10 @@ function updateFinalizeState(){
   }
   warn.textContent=msg;
   $('btnFinalize').disabled=!ok;
-  $('btnFinalizeNoPrint').disabled=!ok;
+  // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
+  const pickup=$('orderType').value==='pickup';
+  $('btnFinalizeNoPrint').style.display=pickup?'none':'';
+  $('btnFinalizeNoPrint').disabled=!ok || pickup;
 }
 
 /* ---------------- today summary ---------------- */
@@ -2001,7 +2051,7 @@ function renderToday(){
     '<span>Today: <b>'+t.count+'</b> sales</span>'+
     '<span>This store '+m(t.total)+'</span>'+
     '<span>All stores '+(on && !allTally ? '<b>…</b>' : m(allTally ? allTally.total : 0))+'</span>'+
-    (t.local ? '<span class="muted">this device only</span>' : '');
+    (isTraining() ? '<span class="trainflag">🎓 TRAINING (practice only)</span>' : t.local ? '<span class="muted">this device only</span>' : '');
 }
 // Does this locally-stored sale belong to the store that's open? (Sales from before
 // the store selector are filed under South Melbourne by adoptStorelessSales.)
@@ -2078,7 +2128,7 @@ async function commitSale(){
   const counter = fromSite || readCounter();
   // Offline the number can't come from the shared sequence, so it carries this
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
-  sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite ? '' : '-'+deviceId());
+  sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite || isTraining() ? '' : '-'+deviceId());
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
   localStorage.setItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
@@ -2092,6 +2142,7 @@ async function commitSale(){
 // Optimistically shift the cached stock so "X left" updates instantly between catalog syncs.
 // dir = -1 for a sale (lower), +1 for a void/refund (put back).
 function applyLocalStock(stockItems, dir){
+  if(isTraining()) return;        // practice sales leave the stock counts alone
   dir = dir || -1;
   let changed=false;
   for(const it of (stockItems||[])){
@@ -2113,12 +2164,12 @@ function markSynced(no){
   if(s && !s.synced){ s.synced=true; save(LS.sales, sales); }
 }
 async function syncSale(sale){
-  const url=salesUrl(); if(!url) return;
+  const url=salesUrl(); if(!url || isTrainingSale(sale)) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
     let d=null; try{ d=await res.json(); }catch(e){}
     if(!res.ok){ noteAuth(d); return; }
-    // The site only renames a sale when another sale already had its number —
+    // The site only renames a sale when another sale already had its number -
     // take the site's number so a reprint from any device matches.
     if(d && d.no && String(d.no)!==String(sale.no)) renameSale(sale, String(d.no));
     if(d && d.pickupCode && !sale.pickupCode) adoptPickupCode(sale, String(d.pickupCode));
@@ -2151,10 +2202,10 @@ async function flushUnsynced(){
 // or catching up. Tapping it retries now.
 function renderUnsent(){
   const b=$('btnUnsent'); if(!b) return;
-  const n = settings.shareUrl ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
+  const n = settings.shareUrl && !isTraining() ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
   b.classList.toggle('on', n>0);
   b.textContent='⚠ '+n+' unsent';
-  b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet — tap to send now' : '';
+  b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet. Tap to send now' : '';
 }
 
 /* ---------------- live stock (decrement Squarespace on each sale) ---------------- */
@@ -2166,7 +2217,7 @@ function markStockAdjusted(no){
 // POST the sold lines so Squarespace decrements. Idempotent per invoice (server uses the
 // invoice no as the Idempotency-Key), and only fires while stockAdjusted===false → exactly once.
 async function adjustStock(sale){
-  if(!sale || sale.stockAdjusted) return;
+  if(!sale || sale.stockAdjusted || isTrainingSale(sale)) return;
   const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
   if(!items.length){ markStockAdjusted(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
@@ -2193,7 +2244,7 @@ function markRestocked(no){
 // PUT the stock back in Squarespace for a voided sale (increment). Distinct idemKey from the sale's
 // decrement, and only while restocked===false → exactly once.
 async function restockInventory(sale){
-  if(!sale || !(sale.voided || sale.kind==='refund') || sale.restocked) return;
+  if(!sale || !(sale.voided || sale.kind==='refund') || sale.restocked || isTrainingSale(sale)) return;
   const items=(sale.stockItems||[]).filter(x=>x.quantity>0 && (x.variantId||x.sku));
   if(!items.length){ markRestocked(sale.no); return; }
   const url=inventoryUrl(); if(!url) return;      // not configured; retried after Settings save
@@ -2214,7 +2265,7 @@ function voidSale(no, ref){
   const sales=load(LS.sales,[]);
   let s=sales.find(x=>x.no===no && (!ref || (x.day===ref.day && String(x.store||'')===String(ref.store||''))));
   if(!s){
-    if(!ref){ alert('This invoice was rung up on the other till — void it from that device.'); return; }
+    if(!ref){ alert('This invoice was rung up on the other till. Void it from that device.'); return; }
     if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to void it from here.'); return; }
     s=JSON.parse(JSON.stringify(ref));
     // The site doesn't store the till's stock bookkeeping, so rebuild it: the sale went through
@@ -2228,7 +2279,7 @@ function voidSale(no, ref){
   }
   if(s.voided) return;
   if(s.kind==='refund'){ alert('A refund can’t be voided.'); return; }
-  if(Object.keys(s.refunded||{}).length){ alert(s.no+' already has items refunded — use “Refund items” for the rest instead of voiding it.'); return; }
+  if(Object.keys(s.refunded||{}).length){ alert(s.no+' already has items refunded. Use “Refund items” for the rest instead of voiding it.'); return; }
   if(!confirm('Void '+s.no+' ('+money(s.total)+')?\nThis removes it from takings and returns the stock to Squarespace.')) return;
   s.voided=true; s.voidedAt=new Date().toISOString();
   const wasDecremented = s.stockAdjusted===true && (s.stockItems||[]).length;
@@ -2283,6 +2334,7 @@ async function fetchServerSales(params){
 async function storeDaySales(day, storeId){
   const store = storeId!==undefined ? storeId : (currentStore && currentStore.id) || '';
   const mine = s => !store || String(s.store||'')===store;
+  if(store===TRAINING.id) return {sales: load(LS.sales,[]).filter(s=>s.day===day && mine(s)), combined:true, training:true};
   const d = await fetchServerSales(store ? {day, store} : {day});
   if(d && Array.isArray(d.sales)){
     const map=new Map(); d.sales.forEach(s=>map.set(String(s.no), s));
@@ -2313,14 +2365,14 @@ function aggregate(sales){
   cash=round2(cash); card=round2(card);
   return {count:live.filter(s=>s.kind!=='refund').length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
 }
-let finalizing=false;   // a number is being fetched — ignore a second tap
+let finalizing=false;   // a number is being fetched - ignore a second tap
 async function finalizeSale(doPrint){
   if(finalizing) return;
   finalizing=true;
   let sale=null;
   try{ sale=await commitSale(); }finally{ finalizing=false; }
   if(!sale) return;
-  if(doPrint){
+  if(doPrint || sale.order==='pickup'){
     printSale(sale, false);       // bridge, or window.print() -> afterPrint()
   }else{
     toast('Saved '+sale.no+' · '+money(sale.total));
@@ -2336,8 +2388,8 @@ function reprintSale(s){
   suppressClearOnPrint=true;      // don't wipe the current in-progress basket
   printSale(s, true);
 }
-// ⟲ Reprint opens today's invoices at this store — from every device, newest
-// first — so the exact one is picked and printed as it was saved: same number,
+// ⟲ Reprint opens today's invoices at this store - from every device, newest
+// first - so the exact one is picked and printed as it was saved: same number,
 // same time, same lines. (It used to blindly reprint this device's latest sale,
 // which after another sale was the next invoice, not the one wanted.)
 function reprintLast(){
@@ -2357,16 +2409,16 @@ function savedPill(msg){
 /* ---------------- receipt bridge ----------------
    The TM-T88V speaks ESC/POS, but macOS has no driver for it and falls back to
    "Epson 24-Pin Series" (ESC/P2, for dot-matrix). The printer can't read ESC/P2
-   and prints the escape bytes as characters — the "binary junk" symptom. So for
+   and prints the escape bytes as characters - the "binary junk" symptom. So for
    thermal paper we skip the print dialog entirely and POST the sale to a local
    helper (receipt-bridge/), which builds ESC/POS and spools it with `lp -o raw`.
 
    If the helper isn't running we silently fall back to window.print(), so the
-   till still works — just with the old broken-driver output. A4 always uses the
+   till still works - just with the old broken-driver output. A4 always uses the
    normal print dialog. */
 const BRIDGE_URL = 'http://127.0.0.1:9100';
 
-let bridgeInfo = null;   // the bridge's /health reply — says which sale fields it prints
+let bridgeInfo = null;   // the bridge's /health reply - says which sale fields it prints
 async function bridgeReady(){
   if(settings.paper === 'A4') return false;
   try{
@@ -2393,7 +2445,7 @@ async function bridgeSend(payload){
   return j;
 }
 
-/* The ESC/POS bridge prints a fixed header — name, address, phone, ABN — so the
+/* The ESC/POS bridge prints a fixed header - name, address, phone, ABN - so the
    location rides along on the address line rather than needing its own field.
    That keeps escpos-bridge.pl untouched, and so needs no re-install. */
 /* Bridges from before the order/contact fields only print `customer`; for those,
@@ -2429,7 +2481,7 @@ async function printSale(sale, isReprint){
                         options:{cut:true, drawer:true}});
       // A bridge installed before pick-up barcodes prints the docket without one.
       if(sale.pickupCode && !bridgeHas(bridgeInfo, 'pickupCode'))
-        toast('Printed ' + sale.no + ' — no barcode: re-run the receipt printer installer');
+        toast('Printed ' + sale.no + ', but with no barcode. Re-run the receipt printer installer');
       else toast('Printed ' + sale.no);
       finishPrint(isReprint);
       return;
@@ -2452,7 +2504,7 @@ async function printSale(sale, isReprint){
 
 /* ---------------- page geometry ----------------
    Receipt roll is continuous, so each job must declare a page exactly as tall as
-   its own content. CSS can't express that — `@page{size:80mm auto}` is invalid
+   its own content. CSS can't express that - `@page{size:80mm auto}` is invalid
    (a length may not be paired with `auto`), and var() is ignored inside @page.
    An invalid `size` is dropped silently and the browser falls back to the
    printer default (A4), which is why receipts landed on a strip of a 297mm page
@@ -2500,7 +2552,7 @@ function buildReceipt(s){
   if(st.phone)    h+='<div class="c">'+esc(st.phone)+'</div>';
   if(st.abn)      h+='<div class="c">ABN '+esc(st.abn)+'</div>';
   h+='<hr>';
-  h+='<div class="c b">'+(s.kind==='refund'?'REFUND — ADJUSTMENT NOTE':'TAX INVOICE')+'</div>';
+  h+='<div class="c b">'+(isTrainingSale(s)?'TRAINING - NOT A TAX INVOICE':s.kind==='refund'?'REFUND - ADJUSTMENT NOTE':'TAX INVOICE')+'</div>';
   if(s.kind==='refund') h+='<div>Refund of: '+esc(s.refundOf)+'</div>';
   h+='<div class="tot"><span>'+esc(s.no)+'</span><span>'+esc(dt)+'</span></div>';
   h+='<div>Served by: '+esc(s.servedBy)+'</div>';
@@ -2550,8 +2602,8 @@ function buildReceipt(s){
 }
 
 /* ---------------- pick-up barcode ----------------
-   Every "Pick up later" sale gets its own code — PU + the time in base 36 + two
-   random characters, e.g. PUMGB4K2X17Q — printed on the receipt as a Code 128
+   Every "Pick up later" sale gets its own code - PU + the time in base 36 + two
+   random characters, e.g. PUMGB4K2X17Q - printed on the receipt as a Code 128
    barcode. It's separate from the invoice number on purpose: the number can still
    change after printing (the site renames a clash to …-2), the code never does.
    Scanning it anywhere on the till opens Pick ups with that order highlighted. */
@@ -2571,7 +2623,7 @@ const C128 = ('212222 222122 222221 121223 121322 131222 122213 122312 132212 22
   '131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112').split(' ');
 function code128Svg(text){
   const t=String(text); let vals;
-  if(/^(\d\d)+$/.test(t)){                            // all digits, even count: Start C, two digits a bar —
+  if(/^(\d\d)+$/.test(t)){                            // all digits, even count: Start C, two digits a bar -
     vals=[105];                                       // half as wide, so a shelf label stays easy to scan
     for(let i=0;i<t.length;i+=2) vals.push(+t.slice(i, i+2));
   }else{
@@ -2601,6 +2653,10 @@ function localPickups(storeId){
     (!storeId || String(s.store||'')===storeId));
 }
 async function fetchPickups(storeId){
+  if(storeId===TRAINING.id){
+    const all=load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && isTrainingSale(s));
+    return { open: all.filter(s=>!s.pickedUp), done: all.filter(s=>s.pickedUp), online:true };
+  }
   const d = await fetchServerSales(salesPickupParams(storeId));
   const local = localPickups(storeId);
   if(d && Array.isArray(d.open)){
@@ -2610,7 +2666,7 @@ async function fetchPickups(storeId){
   return { open: local, done: [], online:false, error: d && d.error };
 }
 async function refreshPickupCount(){
-  if(!currentStore || !settings.shareUrl) return renderPickupBadge(localPickups(currentStore && currentStore.id).length);
+  if(!currentStore || (!settings.shareUrl && !isTraining())) return renderPickupBadge(localPickups(currentStore && currentStore.id).length);
   const d = await fetchPickups(currentStore.id);
   renderPickupBadge(d.open.length);
 }
@@ -2630,7 +2686,7 @@ async function loadPickups(){
   $('puScope').textContent=' · '+currentStore.name+' · loading…';
   const d = await fetchPickups(currentStore.id);
   puData = d;
-  $('puScope').textContent=' · '+currentStore.name+(d.online?'':(' · '+(d.error||'site unreachable — this device only')));
+  $('puScope').textContent=' · '+currentStore.name+(d.online?'':(' · '+(d.error||'site unreachable, this device only')));
   renderPickupBadge(d.open.length);
   renderPickups();
 }
@@ -2647,9 +2703,9 @@ function puRow(s, done){
   const got = done && s.pickedUpAt ? ' · picked up '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(s.pickedUpBy?' by '+esc(s.pickedUpBy):'') : '';
   return '<div class="pr'+(done?' done':'')+(puHighlight && s.pickupCode===puHighlight?' hl':'')+'" data-code="'+esc(s.pickupCode)+'">'+
     '<div><div class="who">'+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
-      '<div class="meta">'+esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'—')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
+      '<div class="meta">'+esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
     '<div class="amt"><b>'+money(s.total)+'</b><span>'+items+' item'+(items===1?'':'s')+' · '+esc(s.method||'')+'</span></div>'+
-    '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up — tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
+    '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up. Tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
   '</div>';
 }
 function renderPickups(){
@@ -2685,23 +2741,30 @@ async function tickPickup(code, btn){
   const s=puFind(code); if(!s) return;
   const undo=!!s.pickedUp;
   if(undo && !confirm('Mark '+s.no+(s.customer?' ('+s.customer+')':'')+' as NOT picked up?')) return;
-  if(s.synced===false){                                // still only on this device — send it first
+  if(isTrainingSale(s)){                               // practice pick-up - tick it on this device only
+    const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);
+    if(x){ x.pickedUp=!undo; x.pickedUpDay=undo ? '' : todayKey(); save(LS.sales, sales); }
+    savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
+    puHighlight=''; await loadPickups(); refreshPickupCount();
+    return;
+  }
+  if(s.synced===false){                                // still only on this device - send it first
     await syncSale(s);
-    if(!load(LS.sales,[]).some(x=>x.pickupCode===code && x.synced)){ alert('Can\'t reach the site — try again when back online.'); return; }
+    if(!load(LS.sales,[]).some(x=>x.pickupCode===code && x.synced)){ alert('Can\'t reach the site. Try again when back online.'); return; }
   }
   btn.disabled=true;
   try{
     const res=await fetch(salesUrl({pickup:'done'}), {method:'POST', headers:shareHeaders(true),
       body:JSON.stringify({store:s.store||currentStore.id, code, done:!undo, day: undo ? s.pickedUpDay : todayKey(), by:$('servedBy').value||''})});
     const d=await res.json().catch(()=>({}));
-    if(!res.ok){ alert(d.error || ('Couldn\'t update — HTTP '+res.status)); btn.disabled=false; return; }
+    if(!res.ok){ alert(d.error || ('Couldn\'t update (HTTP '+res.status+')')); btn.disabled=false; return; }
     savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
-  }catch(e){ alert('Can\'t reach the site — try again when back online.'); btn.disabled=false; return; }
+  }catch(e){ alert('Can\'t reach the site. Try again when back online.'); btn.disabled=false; return; }
   puHighlight='';
   await loadPickups();
   refreshPickupCount();
 }
-// Just that one invoice — not the day's list around it.
+// Just that one invoice - not the day's list around it.
 function openPickupInvoice(code){
   const s=puFind(code); if(!s) return;
   invScopeStore = s.store||currentStore.id;
@@ -2752,7 +2815,7 @@ async function loadInvoices(){
   invCache=sales;
   const where = invScopeStore===undefined ? (currentStore ? currentStore.name : 'All stores')
               : (invScopeStore ? storeLabel(invScopeStore) : 'All stores');
-  $('invScope').textContent = where+' · '+(combined?'from the site — every device':'this device only (site unreachable)')+
+  $('invScope').textContent = where+' · '+(isTrainingSale({store: invScopeStore===undefined && currentStore ? currentStore.id : invScopeStore}) ? 'practice sales on this device only' : combined?'from the site, every device':'this device only (site unreachable)')+
     ' · '+sales.length+' invoice'+(sales.length===1?'':'s');
   renderInvList($('invSearch').value);
 }
@@ -2775,7 +2838,7 @@ function renderInvList(q){
       '<button class="ghost" data-reprint="'+i+'" title="Reprint this exact invoice">⟲ Reprint</button></span></div>';
   }).join('');
 }
-// The sale itself, matched on number AND time — a number alone could (on old
+// The sale itself, matched on number AND time - a number alone could (on old
 // data) belong to two sales, and a reprint must be the exact one that was tapped.
 function sameSale(a, b){ return a && b && a.no===b.no && String(a.ts)===String(b.ts); }
 function showInvoiceDetail(ref){
@@ -2794,11 +2857,11 @@ function showInvoiceDetail(ref){
   h+='<div class="row"><span class="lbl">GST ('+s.rate+'%)</span><span class="money">'+money(s.gst)+'</span></div>';
   h+='<div class="row" style="font-weight:700"><span>Total ('+esc(s.method)+')</span><span class="money">'+money(s.total)+'</span></div>';
   if(s.method==='split') h+='<div class="row"><span class="lbl">Card '+money(s.cardPaid)+' · Cash '+money(s.cashPaid)+'</span></div>';
-  if(s.kind==='refund') h+='<div class="warn" style="margin-top:10px">↩ Refund of '+esc(s.refundOf)+' — paid back by '+esc(s.method)+'.</div>';
+  if(s.kind==='refund') h+='<div class="warn" style="margin-top:10px">↩ Refund of '+esc(s.refundOf)+', paid back by '+esc(s.method)+'.</div>';
   const refNos=(s.refunds||[]); if(refNos.length) h+='<div class="muted" style="margin-top:8px">Refunds: '+refNos.map(esc).join(', ')+'</div>';
   if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up'+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
     (s.pickedUp ? '<b style="color:var(--ok)">✓ Picked up</b>'+(s.pickedUpAt?' '+esc(new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):'') : '<b style="color:#b26a00">Waiting</b>')+'</span></div>';
-  if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+' — removed from takings; stock returned to Squarespace.</div>';
+  if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+'. Removed from takings, stock returned to Squarespace.</div>';
   h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
   h+='<button class="ghost" id="btnReprintOne">Reprint this invoice</button>';
   if(!s.voided && s.kind!=='refund'){
@@ -2813,8 +2876,8 @@ function showInvoiceDetail(ref){
 }
 
 /* ---------------- partial refund / exchange ----------------
-   Refunding some of a sale makes a separate record — a credit note numbered
-   CR-<invoice>-<n> — with negative quantities and totals, filed on the day and
+   Refunding some of a sale makes a separate record - a credit note numbered
+   CR-<invoice>-<n> - with negative quantities and totals, filed on the day and
    store the money went back. It takes away from that day's takings (cash or card)
    and puts the stock back. The original invoice keeps `refunded` (line → qty
    refunded so far) and `refunds` (credit note numbers) so nothing is refunded twice.
@@ -2923,11 +2986,11 @@ async function renderTakings(){
   const {sales,combined}=await storeDaySales(key);
   const t=aggregate(sales);
   const d=new Date(key+'T00:00:00');
-  $('takScope').textContent = combined ? '✓ From the site — every device at this store'
+  $('takScope').textContent = combined ? '✓ From the site, every device at this store'
     : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device');
   $('takSummary').innerHTML=
     '<div style="text-align:center;margin:6px 0 14px">'+
-      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+' — '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
+      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+', '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
       '<div class="bignum">'+money(t.total)+'</div>'+
       '<div class="muted">'+t.count+' sale'+(t.count===1?'':'s')+'</div>'+
     '</div>'+
@@ -2978,7 +3041,7 @@ function setReceiptWidth(){
   document.documentElement.style.setProperty('--rwidth', settings.paper==='58' ? '48mm' : (settings.paper==='A4' ? '150mm' : '72mm'));
 }
 
-/* ---------------- boxes — open a sealed box into single packs ---------------- *
+/* ---------------- boxes - open a sealed box into single packs ---------------- *
    The box → pack list lives on the site (/api/boxes) so every till shares it.
    Opening a box sends ONE inventory adjustment: box −1 and pack +N together, so
    Squarespace can never end up with one half done. Anyone can open a box;
@@ -2991,7 +3054,7 @@ async function loadBoxes(){
     const d=await res.json();
     if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
     boxes=d.boxes||[];
-    $('bxStatus').textContent=d.seeded?'Starter list — saved to the site the first time you change it.':'';
+    $('bxStatus').textContent=d.seeded?'Starter list. It\'s saved to the site the first time you change it.':'';
   }catch(e){ $('bxStatus').textContent='Could not load the box list: '+e.message; }
   renderBoxes();
 }
@@ -3004,12 +3067,12 @@ async function saveBoxes(list){
 }
 function renderBoxes(){
   const nm=sku=>{ const p=catItem(sku); return p?esc(p.name):'<span class="warn">not in catalog</span>'; };
-  const st=sku=>{ const s=stockOf(sku); return s===null?'–':s; };
+  const st=sku=>{ const s=stockOf(sku); return s===null?'-':s; };
   $('bxTable').innerHTML='<tr><th>Box</th><th class="num">Box stock</th><th>Single pack</th><th class="num">Pack stock</th><th class="num">Packs</th><th></th></tr>'+
     (boxes.length?boxes.map((b,i)=>'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
       '<td>'+nm(b.pack)+'<div class="muted">'+esc(b.pack)+'</div></td><td class="num">'+st(b.pack)+'</td><td class="num">'+b.packs+'</td>'+
       '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').join('')
-      :'<tr><td colspan="6" class="muted">No boxes yet — add one below.</td></tr>');
+      :'<tr><td colspan="6" class="muted">No boxes yet. Add one below.</td></tr>');
 }
 async function addBox(){
   if(!requireAdmin(addBox)) return;             // anyone can open a box; changing the list is admin
@@ -3033,6 +3096,7 @@ async function openBox(i, scanned){
   if(!bp||!pp){ alert('Both the box and the single pack must be in the product catalog. Sync catalog and try again.'); return; }
   const bs=stockOf(b.box);
   if(!scanned && !confirm('Open 1 × '+bp.name+'?\n\nBox stock −1'+(bs!==null?' ('+bs+' → '+(bs-1)+')':'')+'\n'+pp.name+' +'+b.packs)) return;
+  if(isTraining()){ alert('Training mode: opening a box changes real stock, so it\'s switched off here.'); return; }
   const url=inventoryUrl();
   if(!url){ alert('Live stock is off (Settings → Inventory update URL).'); return; }
   const idemKey='openbox|'+b.box+'|'+new Date().toISOString();
@@ -3049,8 +3113,8 @@ async function openBox(i, scanned){
     toast('Opened 1 box → +'+b.packs+' packs');
     $('bxStatus').innerHTML='<span style="color:var(--ok)">✓ Opened 1 × '+esc(bp.name)+' → +'+b.packs+' × '+esc(pp.name)+'</span>';
   }catch(e){
-    if(scanned) $('bxStatus').innerHTML='<span class="warn">Could not open — nothing was changed. '+esc(e.message)+'</span>';
-    else alert('Could not open the box — nothing was changed.\n'+e.message);
+    if(scanned) $('bxStatus').innerHTML='<span class="warn">Could not open, nothing was changed. '+esc(e.message)+'</span>';
+    else alert('Could not open the box. Nothing was changed.\n'+e.message);
   }
 }
 // Scan a box barcode → open it. Unknown barcode → start adding it instead.
@@ -3061,11 +3125,11 @@ async function scanBox(){
   const i=boxes.findIndex(b=>normSku(b.box)===normSku(code));
   if(i>=0){ $('bxStatus').textContent='Opening…'; await openBox(i, true); $('bxScan').focus(); return; }
   const p=catItem(code);
-  $('bxStatus').innerHTML='<span class="warn">'+esc(p?p.name:code)+' isn\'t in the box list yet — scan one single pack below and enter packs per box to add it.</span>';
+  $('bxStatus').innerHTML='<span class="warn">'+esc(p?p.name:code)+' isn\'t in the box list yet. Scan one single pack below and enter packs per box to add it.</span>';
   $('bxBox').value=code; $('bxPack').focus();
 }
 
-/* ---------------- admin — any store, any day ---------------- *
+/* ---------------- admin - any store, any day ---------------- *
    Reads the site's record only: this view is about what the business took, not
    about what happens to be cached in the browser it's opened in. */
 let adState = { store:'', from:'', to:'', preset:'today', data:null };
@@ -3083,7 +3147,7 @@ function openAdmin(){
   requestAnimationFrame(moveAdminInk);
   reloadAdmin(false);
 }
-/* ---------------- expenses — cash paid out ----------------
+/* ---------------- expenses - cash paid out ----------------
    Tap notes and coins; they add up until Done (or Enter). The total is saved
    to the site under the expense's own date, and the Google Sheet script pulls
    each day's total into the sheet's Expenses column every hour. */
@@ -3115,6 +3179,7 @@ async function saveExpense(){
   if(!(amount>0)){ toast('Tap some notes or coins first'); return; }
   const day=$('exDate').value, store=$('exStore').value;
   if(!day){ toast('Pick a date'); return; }
+  if(isTraining()){ exTaps=[]; $('exNote').value=''; renderExpPad(); savedPill('Training: expense of '+money(amount)+' not saved'); return; }
   const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
   const h=shareHeaders(true); h['x-admin-pin']=adminPin();
   $('exDone').disabled=true; $('exStatus').textContent='Saving…';
@@ -3133,7 +3198,7 @@ async function saveExpense(){
 async function loadExpenses(){
   const day=$('exDate').value, store=$('exStore').value;
   if(!day) return;
-  $('exListLbl').textContent='Expenses on '+day+' — '+storeLabel(store);
+  $('exListLbl').textContent='Expenses on '+day+', '+storeLabel(store);
   try{
     const res=await fetch(apiUrl('/api/expenses', {from:day, to:day, store}), {headers:shareHeaders(false)});
     const d=await res.json();
@@ -3141,7 +3206,7 @@ async function loadExpenses(){
     const rows=d.entries||[];
     $('exList').innerHTML=rows.length
       ? '<tr><th>Time</th><th>What for</th><th class="num">Amount</th><th></th></tr>'+
-        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'—')+
+        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'-')+
           '</td><td class="num">'+money(e.amount)+'</td><td class="num"><button class="ghost" data-del="'+esc(e.id)+'">✕</button></td></tr>').join('')+
         '<tfoot><tr><td></td><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
       : '<tr><td class="muted">No expenses recorded for this day.</td></tr>';
@@ -3158,7 +3223,7 @@ async function deleteExpense(id){
   }catch(e){ alert('Could not delete: '+e.message); }
 }
 
-/* ---------------- money added — cash put into the till (anyone) ----------------
+/* ---------------- money added - cash put into the till (anyone) ----------------
    Tap $2/$4/$10/$20/$50 or type any amount under Other; they add up until
    Done (or Enter). Saved under the chosen date and store; the Google Sheet
    script pulls each day's total into the sheet's Money Added column. */
@@ -3195,6 +3260,7 @@ async function saveMoneyAdded(){
   if(!(amount>0)){ toast('Tap or type an amount first'); return; }
   const day=$('maDate').value, store=$('maStore').value;
   if(!day){ toast('Pick a date'); return; }
+  if(isTraining()){ maTaps=[]; renderAddPad(); savedPill('Training: '+money(amount)+' not saved'); return; }
   const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
   $('maDone').disabled=true; $('maStatus').textContent='Saving…';
   try{
@@ -3212,7 +3278,7 @@ async function saveMoneyAdded(){
 async function loadMoneyAdded(){
   const day=$('maDate').value, store=$('maStore').value;
   if(!day) return;
-  $('maListLbl').textContent='Money added on '+day+' — '+storeLabel(store);
+  $('maListLbl').textContent='Money added on '+day+', '+storeLabel(store);
   try{
     const res=await fetch(apiUrl('/api/money-added', {from:day, to:day, store}), {headers:shareHeaders(false)});
     const d=await res.json();
@@ -3295,7 +3361,7 @@ function renderAdmin(){
     adCard('GST collected', money(t.gst), 'Subtotal ex GST '+money(t.sub))+
     '</div>';
 
-  // Split by location — the whole point of the tab when "All stores" is picked.
+  // Split by location - the whole point of the tab when "All stores" is picked.
   const ids=Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
   $('adByStore').innerHTML = ids.length ?
     '<table class="dtable"><thead><tr><th>Store</th><th class="num">Sales</th><th class="num">Cash</th>'+
@@ -3335,7 +3401,7 @@ function adPeriod(){ return adState.from===adState.to ? niceDay(adState.from) : 
 /* ---------------- admin: 🏷️ Barcodes ----------------
    A one-off product with no barcode (a single, a second-hand item) gets one of
    its own here: the site (/api/labels) picks a free 12-digit code starting with
-   2 — the range kept for in-store codes — and keeps the name, price and stock,
+   2 - the range kept for in-store codes - and keeps the name, price and stock,
    so every till can scan it. Its cost goes with the website's other typed
    costs (/api/costs) for Insights. Labels print from a hidden frame, sized to
    the label roll, or 21 to an A4 sticker sheet. */
@@ -3360,12 +3426,12 @@ async function loadLabels(){
 }
 function renderLabels(){
   const t=$('lbList'), items=lb.items || [];
-  if(!items.length){ t.innerHTML='<tbody><tr><td class="muted">None yet — the ones you make show here, to print again or restock.</td></tr></tbody>'; return; }
+  if(!items.length){ t.innerHTML='<tbody><tr><td class="muted">None yet. The ones you make show here, to print again or restock.</td></tr></tbody>'; return; }
   t.innerHTML='<thead><tr><th>Product</th><th>Barcode</th><th class="num">Price</th><th class="num">Cost</th><th class="num">Stock</th><th></th></tr></thead><tbody>'+
     items.map(x=>{
       const c=lb.costs[x.sku];
       return '<tr data-sku="'+esc(x.sku)+'"><td>'+esc(x.name)+'</td><td>'+esc(x.sku)+'</td>'+
-        '<td class="num">'+money(x.price)+'</td><td class="num">'+(c && c.cost!=null ? money(c.cost) : '—')+'</td>'+
+        '<td class="num">'+money(x.price)+'</td><td class="num">'+(c && c.cost!=null ? money(c.cost) : '-')+'</td>'+
         '<td class="num">'+esc(x.stock)+'</td>'+
         '<td style="white-space:nowrap;text-align:right">'+
           '<button class="ghost" data-lb="print" title="Print labels">🖨</button> '+
@@ -3392,7 +3458,7 @@ function editLabel(sku){
   $('lbStock').value=x.stock; $('lbCopies').value='0';
   $('lbMake').textContent='Save changes';
   $('lbCancel').style.display='';
-  $('lbStatus').textContent='Editing '+x.sku+' — set Labels to print above 0 to print more.';
+  $('lbStatus').textContent='Editing '+x.sku+'. Set Labels to print above 0 to print more.';
   $('lbName').focus();
 }
 async function postLabels(body){
@@ -3429,10 +3495,10 @@ async function makeLabel(){
     const had=lb.costs[item.sku] && lb.costs[item.sku].cost;
     if(cost!==null || (editing && had!=null)){
       try{ await saveLabelCost(item.sku, item.name, cost); }
-      catch(e){ costNote=' (the cost price didn’t save: '+e.message+' — try Edit)'; }
+      catch(e){ costNote=' (the cost price didn’t save: '+e.message+'. Try Edit)'; }
     }
     renderLabels(); resetLabelForm();
-    $('lbStatus').textContent=(editing ? 'Saved ' : 'Made ')+item.sku+' — '+item.name+costNote;
+    $('lbStatus').textContent=(editing ? 'Saved ' : 'Made ')+item.sku+' ('+item.name+')'+costNote;
     if(copies) printLabels(item, copies);
     // This till can scan it straight away; the others pick it up on their next sync.
     if(settings.catUrl) syncCatalog(true);
@@ -3588,7 +3654,7 @@ function addAgg(a, b){
     gst:round2(a.gst+b.gst), sub:round2(a.sub+b.sub), total:round2(a.total+b.total)};
 }
 
-/* ---------------- Insights — the charts that used to be in the Google Sheet ----------------
+/* ---------------- Insights - the charts that used to be in the Google Sheet ----------------
    Revenue and profit over time, by brand and by product, for the store and
    period picked above. Sales come from the site; cost prices and brands come
    from the Google Sheet's Products tab, which the sheet script sends to
@@ -3607,14 +3673,14 @@ function lineCost(s, it, i){
 
 /* ---------------- Games takings from before the till ----------------
    The daily "Games" column of the Google Sheet (tatts eod balance → 2025 / 2026
-   tabs), South Melbourne, 1 Oct 2025 → 19 Sep 2026 — a one-off copy, never
+   tabs), South Melbourne, 1 Oct 2025 → 19 Sep 2026 - a one-off copy, never
    synced. From 20 Sep the sheet's Games column is written from the till, so
    it adds nothing.
    The till rang up some of these days itself (sales made on the device before
    the site kept them were uploaded when it went live), so up to the day the
    till starts matching the sheet (TILL_FROM) the sheet is used and those
    South Melbourne till sales are left out; from that day, only the till. Only
-   the day's total is known — no items, no cash/card split — so sheet days are
+   the day's total is known - no items, no cash/card split - so sheet days are
    costed at a conservative 50%.
    Per month: "day:takings", space-separated. */
 const HIST_UNTIL = '2026-09-20';        // the sheet is never used from here on
@@ -3646,7 +3712,7 @@ const HIST_GAMES = (()=>{
 const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
 // The day the till takes over: 4 Sep 2026 is the first day from which South
 // Melbourne's till matches the sheet's Games figure every day (checked against
-// the site's sales on 30 Sep 2026 — the till was in use from 8 Aug, but a few
+// the site's sales on 30 Sep 2026 - the till was in use from 8 Aug, but a few
 // days up to 3 Sep differ from the sheet, and the sheet is always right).
 // Before it, the sheet is used and the till's South Melbourne sales are left
 // out; from it, only the till counts.
@@ -3662,7 +3728,7 @@ function histDays(from, to, store){
   return [...HIST_GAMES.keys()].filter(k=>k>=from && k<=to && k<TILL_FROM).sort().map(k=>({day:k, rev:HIST_GAMES.get(k)}));
 }
 
-// Same guesses as BRAND_RULES in google-sheet/daily-total.gs — only used for
+// Same guesses as BRAND_RULES in google-sheet/daily-total.gs - only used for
 // products the sheet hasn't sent yet (brand typed in the sheet always wins).
 const BRAND_RULES = [
   ['Pokémon (Japanese)', /pok[eé]mon/i, /japan|\bjp\b|\bjpn\b/i],
@@ -3676,7 +3742,7 @@ const BRAND_RULES = [
   ['Weiss Schwarz',      /wei(ss|ß)\s*schwarz/i],
   ['Flesh and Blood',    /flesh\s*(and|&)\s*blood/i],
   ['Star Wars',          /star\s*wars/i],
-  // Sport — checked after the card games, so "Pokémon World Championships" stays Pokémon.
+  // Sport - checked after the card games, so "Pokémon World Championships" stays Pokémon.
   ['AFL',                /\bafl\b|footy|teamcoach|aussie rules/i],
   ['NRL',                /\bnrl\b|rugby league|state of origin/i],
   ['Rugby',              /rugby|wallabies/i],
@@ -3855,13 +3921,13 @@ function moneyShort(v){
 function moneySigned(v){
   return (v<0?'−':'')+settings.currency+Math.abs(round2(v)).toLocaleString('en-AU', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
-function pct(v){ return isFinite(v) ? (Math.round(v*1000)/10).toFixed(1)+'%' : '—'; }
+function pct(v){ return isFinite(v) ? (Math.round(v*1000)/10).toFixed(1)+'%' : '-'; }
 function niceStep(range, n){
   const raw=range/n, p=Math.pow(10, Math.floor(Math.log10(raw||1))), f=raw/p;
   return (f<=1?1:f<=2?2:f<=5?5:10)*p;
 }
 function bucketLabel(mode, k, long){
-  if(mode==='hour'){ const h=+k; const s=(h%12||12)+(h<12?'am':'pm'); return long ? s+'–'+((h+1)%12||12)+((h+1)%24<12?'am':'pm') : s; }
+  if(mode==='hour'){ const h=+k; const s=(h%12||12)+(h<12?'am':'pm'); return long ? s+'-'+((h+1)%12||12)+((h+1)%24<12?'am':'pm') : s; }
   if(mode==='month'){ const d=new Date(k+'-01T00:00:00'); return d.toLocaleDateString('en-AU', long?{month:'long', year:'numeric'}:{month:'short'}); }
   const d=new Date(k+'T00:00:00');
   return d.toLocaleDateString('en-AU', long?{weekday:'short', day:'numeric', month:'short'}:{day:'numeric', month:'short'});
@@ -3880,15 +3946,15 @@ function renderInsights(anim){
   const chips=[];
   const scope=(adState.store ? storeLabel(adState.store) : 'All stores')+' · '+adPeriod();
   chips.push('<span>'+esc(scope)+'</span>');
-  if(!hasCost) chips.push('<span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+') — profit can’t be worked out. Re-run setup in the Google Sheet script.</span>');
+  if(!hasCost) chips.push('<span class="gchip bad">Cost prices not loaded ('+esc(gx.costsErr)+'), so profit can’t be worked out. Re-run setup in the Google Sheet script.</span>');
   else{
     if(gx.costsAt) chips.push('<span class="gchip ok">Cost prices from the Google Sheet · updated '+esc(agoText(gx.costsAt))+'</span>');
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
-      ' sold with no cost yet — left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
+      ' sold with no cost yet, left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
   if(r.histDays){
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(TILL_FROM))+
-      ' — before that, it’s the Google Sheet’s Games takings with profit estimated at '+Math.round((1-HIST_COST)*100)+'%</span>');
+      '. Before that, it’s the Google Sheet’s Games takings with profit estimated at '+Math.round((1-HIST_COST)*100)+'%</span>');
   }
   $('gxStatus').innerHTML=chips.join('');
 
@@ -3900,7 +3966,7 @@ function renderInsights(anim){
   let i=0; const card=(cls, inner)=>'<div class="gcard '+cls+'" style="--i:'+(i++)+'">'+inner+'</div>';
   const kpi=(k, lbl, val, fmt, sub, color)=>'<div class="kpi" style="--i:'+k+';--k:'+color+'"><div class="kl">'+esc(lbl)+'</div>'+
     '<div class="kv" data-count="'+val+'" data-fmt="'+fmt+'">'+fmtVal(anim?0:val, fmt)+'</div><div class="ks">'+sub+'</div></div>';
-  const avg=r.count ? (r.revenue-r.histRev)/r.count : 0;     // till invoices only — the sheet has day totals
+  const avg=r.count ? (r.revenue-r.histRev)/r.count : 0;     // till invoices only - the sheet has day totals
   const salesSub=r.count+' sale'+(r.count===1?'':'s')+(r.histDays?' + '+r.histDays+' sheet day'+(r.histDays===1?'':'s'):'');
   let h='<div class="kpis">'+
     kpi(0, 'Revenue', r.revenue, 'money', salesSub, '#1a73e8')+
@@ -3917,7 +3983,7 @@ function renderInsights(anim){
     (hasCost?'<span><i style="background:var(--s3)"></i>Gross profit</span>':'')+'</div></div>'+
     '<div class="chart" id="gxLine"></div>');
   h+=card('span6', '<div class="gtitle">Revenue by brand</div><div class="gsub">Share of sales</div><div id="gxDonut"></div>');
-  h+=card('span6', '<div class="gtitle">Profit by brand</div><div class="gsub">'+(hasCost?'Gross profit, with margin — items without a cost aren’t counted':'Needs cost prices from the Google Sheet')+'</div><div class="chart" id="gxBrandBars"></div>');
+  h+=card('span6', '<div class="gtitle">Profit by brand</div><div class="gsub">'+(hasCost?'Gross profit, with margin. Items without a cost aren’t counted':'Needs cost prices from the Google Sheet')+'</div><div class="chart" id="gxBrandBars"></div>');
   if(!adState.store && r.stores.size>1)
     h+=card('', '<div class="gtitle">By store</div><div class="gsub">Revenue, with gross profit</div><div class="chart" id="gxStores"></div>');
   h+=card('', '<div class="ghead"><div><div class="gtitle">Top products</div><div class="gsub">Best 10 in this period</div></div>'+
@@ -3936,19 +4002,19 @@ function renderInsights(anim){
   topProducts($('gxTop'), r, hasCost, anim);
   if(anim) countUp(grid); else grid.querySelectorAll('[data-count]').forEach(el=>{ el.textContent=fmtVal(+el.dataset.count, el.dataset.fmt); });
 }
-/* ---------------- No cost — things sold with no cost price ----------------
+/* ---------------- No cost - things sold with no cost price ----------------
    Anything sold in the period that has no cost is left out of profit. The
    yellow chip on Insights opens this list so the cost can be typed straight in:
-   - products, one row each (by barcode) — the cost goes to the site, and the
+   - products, one row each (by barcode) - the cost goes to the site, and the
      Google Sheet copies it into the Products tab's Cost column on its next refresh;
    - Miscellaneous lines, one row per sale, by the date and time it was sold,
      since there's no barcode to say what it was. Their cost stays on the site. */
-const ncSaved = new Set();     // rows costed since this list loaded — kept on screen until Refresh
+const ncSaved = new Set();     // rows costed since this list loaded - kept on screen until Refresh
 function ncOpen(){ return $('ncPanel').style.display!=='none'; }
 function setNcOpen(on){
   $('ncPanel').style.display = on ? 'flex' : 'none';
   if(on) renderNoCost();
-  else if(ncSaved.size){ ncSaved.clear(); renderInsights(false); }   // profit has moved — redraw it
+  else if(ncSaved.size){ ncSaved.clear(); renderInsights(false); }   // profit has moved - redraw it
   else{ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('hide ▲','show ▼'); }
   if(on){ const b=$('gxNoCostBtn'); if(b) b.innerHTML=b.innerHTML.replace('show ▼','hide ▲'); }
 }
@@ -3968,7 +4034,7 @@ function noCostRows(){
       }
       const sku=normSku(it.sku), info=gx.costs.get(sku);
       const fromSite=!!(info && info.src==='site');
-      if(info && info.cost!=null && !fromSite) return;     // the sheet has a cost — not this list's business
+      if(info && info.cost!=null && !fromSite) return;     // the sheet has a cost - not this list's business
       const p=prods.get(sku) || {k:sku, sku:String(it.sku).trim(), name:(info && info.name) || it.name || sku,
         qty:0, rev:0, last:'', cost:fromSite ? Number(info.cost) : null};
       p.qty+=q; p.rev+=rev; if(String(s.ts)>p.last) p.last=String(s.ts);
@@ -4000,7 +4066,7 @@ function renderNoCost(){
 
   let i=0; const card=inner=>'<div class="gcard" style="--i:'+(i++)+'">'+inner+'</div>';
   let h=card('<div class="gtitle">Products with no cost</div>'+
-    '<div class="gsub">Type the cost each (GST included, like the sheet’s Cost column) — it’s saved as you leave the box or press Enter. '+
+    '<div class="gsub">Type the cost each (GST included, like the sheet’s Cost column). It’s saved as you leave the box or press Enter. '+
     'The Google Sheet copies it into the Products tab on its next refresh; after that, change it there.</div>'+
     (P.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Last sold</th><th class="num">Cost each</th></tr></thead><tbody>'+
       P.map(r=>'<tr><td><div>'+esc(r.name)+'</div><div class="muted">'+esc(r.sku)+'</div></td>'+
@@ -4028,7 +4094,7 @@ function renderNcStatus(prods, misc){
   if(missP.length || missM.length){
     chips.push('<span>'+missP.length+' product'+(missP.length===1?'':'s')+' and '+missM.length+
       ' misc sale'+(missM.length===1?'':'s')+' still to cost · '+esc(moneySigned(missRev))+' of sales left out of profit</span>');
-  }else chips.push('<span class="gchip ok">All costed — press Done to update the profit figures</span>');
+  }else chips.push('<span class="gchip ok">All costed. Press Done to update the profit figures</span>');
   $('ncStatus').innerHTML=chips.join('');
 }
 async function saveNoCost(input){
@@ -4055,10 +4121,10 @@ async function saveNoCost(input){
     st.className='ncst ok'; st.textContent=cost===null ? '✓ Cleared' : '✓ Saved';
     if(cost!==null) input.value=cost.toFixed(2);
     renderNcStatus();            // the counts move with each save; the rows stay put so typing carries on
-  }catch(e){ st.className='ncst bad'; st.textContent='Not saved — '+e.message; }
+  }catch(e){ st.className='ncst bad'; st.textContent='Not saved: '+e.message; }
 }
 function fmtVal(v, fmt){
-  if(fmt==='none') return '—';
+  if(fmt==='none') return '-';
   if(fmt==='money') return moneySigned(v);
   if(fmt==='pct') return (Math.round(v*10)/10).toFixed(1)+'%';
   return String(Math.round(v));
@@ -4075,7 +4141,7 @@ function countUp(root){
 }
 function agoText(iso){
   const m=Math.round((Date.now()-new Date(iso).getTime())/60000);
-  if(!isFinite(m)) return '—';
+  if(!isFinite(m)) return '-';
   if(m<1) return 'just now';
   if(m<60) return m+' min ago';
   if(m<60*24) return Math.round(m/60)+' h ago';
@@ -4150,7 +4216,7 @@ function lineChart(host, labels, longLabels, series, anim){
   hit.addEventListener('pointerleave', ()=>{ tip.classList.remove('on'); xh.style.display='none'; dots.forEach(d=>d.style.display='none'); });
 }
 
-// Grouped columns — for hours of one day, or months of a long period.
+// Grouped columns - for hours of one day, or months of a long period.
 function columnChart(host, labels, longLabels, series, anim){
   const W=Math.max(300, host.clientWidth), H=270, P={l:52, r:14, t:14, b:30};
   const iw=W-P.l-P.r, ih=H-P.t-P.b, n=labels.length, m=series.length;
@@ -4268,7 +4334,7 @@ function topProducts(host, r, hasCost, anim){
         '<div class="mini" data-w="'+w+'"'+(anim?'':' style="width:'+w+'%"')+'></div></td>'+
         '<td class="num">'+p.qty+'</td><td class="num">'+moneySigned(p.rev)+'</td>'+
         '<td class="num">'+(hasCost && p.revKnown ? moneySigned(p.profit) : '<span class="muted">no cost</span>')+'</td>'+
-        '<td class="num">'+(hasCost && p.revKnown ? pct(p.profit/p.revKnown) : '—')+'</td></tr>';
+        '<td class="num">'+(hasCost && p.revKnown ? pct(p.profit/p.revKnown) : '-')+'</td></tr>';
     }).join('')+'</tbody></table>';
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.mini').forEach((m,k)=>{
     m.style.transitionDelay=(k*40)+'ms'; m.style.width=m.dataset.w+'%'; })));
@@ -4276,11 +4342,11 @@ function topProducts(host, r, hasCost, anim){
 
 // Print the period's takings the way Admin shows them: one total across every
 // store, then a line per store so the split is on the same docket. Same two
-// routes as a receipt — the ESC/POS bridge when it's there, the print dialog
+// routes as a receipt - the ESC/POS bridge when it's there, the print dialog
 // when it isn't.
 async function printAdminSummary(){
   const d=adState.data;
-  if(!d){ $('adStatus').textContent='Nothing loaded yet — hit Refresh first.'; return; }
+  if(!d){ $('adStatus').textContent='Nothing loaded yet. Hit Refresh first.'; return; }
   const t=d.totals;
   const scope = adState.store ? storeLabel(adState.store) : 'All stores';
   const sub = scope+' · '+adPeriod();
@@ -4298,7 +4364,7 @@ async function printAdminSummary(){
   await printReport('SALES SUMMARY', sub, rows, 'Sales summary printed');
 }
 
-// Every sale in the shown period, straight from the site — the file to hand the
+// Every sale in the shown period, straight from the site - the file to hand the
 // accountant, with a Store column so both locations are in the one sheet.
 async function exportAdminCsv(){
   $('adStatus').textContent='Building the CSV…';
@@ -4331,13 +4397,16 @@ function downloadSalesCsv(sales, filename){
 }
 
 /* ---------------- settings UI ---------------- */
-function openSettings(){
+// Admin only, like Takings and Admin. `tokenFix` is the one way in without the
+// password: the site rejected this device's sales token (see submitLogin).
+function openSettings(tokenFix){
+  if(tokenFix!==true && !requireAdmin(openSettings)) return;
   $('sName').value=settings.name; $('sAbn').value=settings.abn; $('sPhone').value=settings.phone;
   $('sAddress').value=settings.address; $('sFooter').value=settings.footer; $('sCatUrl').value=settings.catUrl;
   $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;
   $('sPrefix').value=settings.prefix; $('sCounter').value=String(readCounter());
   $('sCounter').dataset.was=$('sCounter').value;
-  $('sCounterStore').textContent = currentStore ? ('— '+currentStore.name) : '';
+  $('sCounterStore').textContent = currentStore ? ('('+currentStore.name+')') : '';
   loadSiteCounter();
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
   $('sInvUrl').value=settings.invUrl;
@@ -4368,7 +4437,7 @@ function renderStoreFields(){
 // Show the store's shared next number (the site's) rather than this device's guess.
 async function loadSiteCounter(){
   const url=salesUrl({counter:'1', store: currentStore ? currentStore.id : ''});
-  if(!url || !currentStore) return;
+  if(!url || !currentStore || isTraining()) return;
   try{
     const res=await fetch(url, {headers:shareHeaders(false)});
     const d=res.ok ? await res.json() : null;
@@ -4381,11 +4450,11 @@ async function loadSiteCounter(){
   }catch(e){}
 }
 async function setSiteCounter(n){
-  const url=salesUrl({counter:'set'}); if(!url || !currentStore) return;
+  const url=salesUrl({counter:'set'}); if(!url || !currentStore || isTraining()) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify({store:currentStore.id, next:n})});
-    if(!res.ok) toast('Couldn\'t update the shared invoice number — try again online');
-  }catch(e){ toast('Couldn\'t update the shared invoice number — try again online'); }
+    if(!res.ok) toast('Couldn\'t update the shared invoice number. Try again online');
+  }catch(e){ toast('Couldn\'t update the shared invoice number. Try again online'); }
 }
 function saveSettingsUI(){
   settings.name=$('sName').value.trim()||'My Store';
@@ -4397,7 +4466,7 @@ function saveSettingsUI(){
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
   settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
-  // Per-store overrides — only what was actually filled in gets stored.
+  // Per-store overrides - only what was actually filled in gets stored.
   const stores={};
   $('sStores').querySelectorAll('input[data-store]').forEach(inp=>{
     const id=inp.dataset.store, f=inp.dataset.f, v=inp.value.trim();
@@ -4424,12 +4493,12 @@ function saveSettingsUI(){
 }
 function applySettings(){
   $('hStore').textContent=settings.name;
-  $('hStoreName').textContent = currentStore ? currentStore.name : '—';
+  $('hStoreName').textContent = currentStore ? currentStore.name : '-';
   $('btnSwitchStore').style.display = currentStore ? 'flex' : 'none';
   $('hStoreTag').textContent = currentStore ? currentStore.tag : '';
-  $('btnInvoices').title = currentStore ? 'Invoices — '+currentStore.name : 'Invoices';
+  $('btnInvoices').title = currentStore ? 'Invoices: '+currentStore.name : 'Invoices';
   const sel=$('servedBy'); const cur=sel.value;
-  sel.innerHTML='<option value="">— select —</option>'+settings.staff.map(n=>'<option>'+esc(n)+'</option>').join('');
+  sel.innerHTML='<option value="">Select…</option>'+settings.staff.map(n=>'<option>'+esc(n)+'</option>').join('');
   if(settings.staff.includes(cur)) sel.value=cur;
   render();
 }
@@ -4440,7 +4509,7 @@ function exportCsv(){
 }
 
 /* ---------------- focus management ---------------- */
-// Never steal focus from a panel that's open — the gate included, so the scan
+// Never steal focus from a panel that's open - the gate included, so the scan
 // box can't be typed into before a store is picked.
 function focusScan(){
   if(anyModalOpen()) return;
@@ -4453,7 +4522,7 @@ function bind(){
   adoptStorelessSales();
   rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
 
-  // scan input — a barcode scanner "types" the code then sends Enter, so this
+  // scan input - a barcode scanner "types" the code then sends Enter, so this
   // auto-adds the item and keeps the cursor here, ready for the next scan. No button needed.
   $('scan').addEventListener('keydown', e=>{
     if(e.key==='Enter'){ e.preventDefault(); const v=$('scan').value; $('scan').value=''; addByBarcode(v); focusScan(); }
@@ -4480,7 +4549,7 @@ function bind(){
   $('servedBy').addEventListener('change', ()=>{ updateFinalizeState(); });
   $('customer').addEventListener('input', ()=>updateFinalizeState());
 
-  // discount — $ and % stay in sync; the field you type in wins, the other follows
+  // discount - $ and % stay in sync; the field you type in wins, the other follows
   $('discAmt').addEventListener('input', ()=>{ discountMode='amount'; discountAmt=Math.max(0, parseFloat($('discAmt').value)||0); render(); });
   $('discPct').addEventListener('input', ()=>{ discountMode='pct';    discountPct=Math.max(0, parseFloat($('discPct').value)||0); render(); });
   $('discClear').onclick=()=>{ discountMode='amount'; discountAmt=0; discountPct=0; $('discAmt').value=''; $('discPct').value=''; render(); focusScan(); };
@@ -4488,12 +4557,13 @@ function bind(){
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
+  $('orderType').addEventListener('change', ()=>updateFinalizeState());
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
   window.addEventListener('afterprint', afterPrint);
 
   // header
   $('btnUnsent').onclick=async()=>{ const b=$('btnUnsent'); b.textContent='Sending…'; await flushUnsynced(); focusScan();
-    if(b.classList.contains('on')) toast('Still can\'t reach the site — they\'ll send when the wifi is back'); else toast('All sales sent'); };
+    if(b.classList.contains('on')) toast('Still can\'t reach the site. They\'ll send when the wifi is back'); else toast('All sales sent'); };
   // Wifi back → send the queue straight away rather than waiting for the next minute.
   window.addEventListener('online', ()=>{ reserveNumber(); flushUnsynced(); flushUnadjusted(); flushRestocks(); refreshToday(); });
   $('btnSync').onclick=()=>syncCatalog(false);
@@ -4508,7 +4578,7 @@ function bind(){
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{
-    if(deviceAdmin() && !adminPin()){ toast('This is an Admin device — change that in Admin → 🔑 Devices'); return; }
+    if(deviceAdmin() && !adminPin()){ toast('This is an Admin device - change that in Admin → 🔑 Devices'); return; }
     if(isAdmin()) logoutAdmin(); else requireAdmin();
   };
   $('gatePair').onclick=()=>openPair(false);
@@ -4598,6 +4668,9 @@ function bind(){
   $('gateTiles').addEventListener('click', e=>{
     const b=e.target.closest('[data-store]'); if(b) selectStore(b.dataset.store);
   });
+  $('gateTraining').addEventListener('click', e=>{
+    const b=e.target.closest('[data-store]'); if(b) selectStore(b.dataset.store);
+  });
   $('gateAdmin').onclick=openAdmin;
   $('gateSettings').onclick=openSettings;
 
@@ -4681,7 +4754,7 @@ function bind(){
   // previous invoices
   $('closeInvoices').onclick=()=>{
     $('invoicesModal').classList.remove('show');
-    if($('pickupsModal').classList.contains('show')){ loadPickups(); $('puSearch').focus(); }   // opened from Pick ups — a void may have changed it
+    if($('pickupsModal').classList.contains('show')){ loadPickups(); $('puSearch').focus(); }   // opened from Pick ups - a void may have changed it
     else focusScan();
   };
   $('invSearch').addEventListener('input', e=>renderInvList(e.target.value));
@@ -4726,7 +4799,7 @@ function bind(){
     const pending=load(LS.sales,[]).filter(s=>!s.synced).length;
     const msg = pending
       ? 'Clear this device\'s copy of the log?\n\n'+pending+' sale'+(pending===1?'':'s')+' still haven\'t reached the site and would be lost. Everything already sent stays on the site.'
-      : 'Clear this device\'s copy of the log?\n\nThe sales stay on the site — this only empties the local cache.';
+      : 'Clear this device\'s copy of the log?\n\nThe sales stay on the site. This only empties the local cache.';
     if(confirm(msg)){ save(LS.sales,[]); refreshToday(); openSettings(); }
   };
 
