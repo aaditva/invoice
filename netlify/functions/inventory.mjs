@@ -22,6 +22,7 @@
  * ------------------------------------------------------------------ */
 
 import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+import { takeLabelLines } from '../lib/labels.mjs';
 
 const SQ = 'https://api.squarespace.com/1.0/commerce';
 const UA = 'StoreTill/1.0 (+inventory)';
@@ -32,18 +33,31 @@ export default async (req) => {
   if (!tokenOk(req)) return json({ error: 'Unauthorized' }, 401, headers);
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, headers);
 
-  const key = process.env.SQUARESPACE_API_KEY;
-  if (!key) return json({ error: 'SQUARESPACE_API_KEY is not set.' }, 500, headers);
-
   let body;
   try { body = await req.json(); } catch (e) { return json({ error: 'Invalid JSON body' }, 400, headers); }
 
   // Merge duplicate lines and drop non-positive quantities. `items` follow `mode`
   // (decrement by default); `increments` always go up — an "Open box" sends the box
   // in `items` and its single packs in `increments`, so both land in one adjustment.
-  const lines = mergeLines(body && body.items);
-  const ups = mergeLines(body && body.increments);
+  let lines = mergeLines(body && body.items);
+  let ups = mergeLines(body && body.increments);
   if (!lines.length && !ups.length) return json({ ok: true, adjusted: [], note: 'nothing to adjust' }, 200, headers);
+
+  // Products given a barcode in Admin → 🏷️ Barcodes aren't in Squarespace: their
+  // stock is kept on the site, so move it here and send Squarespace the rest.
+  let own = [];
+  try {
+    const dir = (body && body.mode) === 'increment' ? 1 : -1;
+    const idemKey = body && body.idemKey ? String(body.idemKey) + '|' + (dir > 0 ? 'up' : 'down') : '';
+    const t = await takeLabelLines(lines, ups, dir, idemKey);
+    lines = t.lines; ups = t.ups; own = t.inventory;
+  } catch (e) {
+    return json({ error: 'Could not update stock for barcodes made here: ' + ((e && e.message) || e) }, 500, headers);
+  }
+  if (!lines.length && !ups.length) return json({ ok: true, adjusted: [], unresolved: [], inventory: own }, 200, headers);
+
+  const key = process.env.SQUARESPACE_API_KEY;
+  if (!key) return json({ error: 'SQUARESPACE_API_KEY is not set.' }, 500, headers);
 
   try {
     // Resolve sku-only lines → variantId via the Inventory API.
@@ -58,7 +72,7 @@ export default async (req) => {
     const unresolved = [...lines, ...ups].filter(l => !l.variantId).map(l => l.sku);
     // A box opening is all-or-nothing: never drop the box without adding its packs.
     if (ups.length && unresolved.length) return json({ error: 'Not found in Squarespace: ' + unresolved.join(', '), unresolved }, 404, headers);
-    if (!ops.length && !upOps.length) return json({ ok: true, adjusted: [], unresolved }, 200, headers);
+    if (!ops.length && !upOps.length) return json({ ok: true, adjusted: [], unresolved, inventory: own }, 200, headers);
 
     // Idempotency-Key must be UNIQUE per sale (else Squarespace silently skips a "seen" key —
     // invoice numbers repeat over time) yet STABLE for retries (so an offline resync can't
@@ -86,7 +100,7 @@ export default async (req) => {
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (e) { /* empty/opaque body is fine */ }
     const inventory = Array.isArray(data.inventory) ? data.inventory : (Array.isArray(data) ? data : []);
-    return json({ ok: true, adjusted: ops, increased: upOps, unresolved, inventory }, 200, headers);
+    return json({ ok: true, adjusted: ops, increased: upOps, unresolved, inventory: inventory.concat(own) }, 200, headers);
   } catch (e) {
     return json({ error: String((e && e.message) || e) }, 502, headers);
   }
