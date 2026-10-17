@@ -1704,7 +1704,10 @@ function updateFinalizeState(){
   }
   warn.textContent=msg;
   $('btnFinalize').disabled=!ok;
-  $('btnFinalizeNoPrint').disabled=!ok;
+  // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
+  const pickup=$('orderType').value==='pickup';
+  $('btnFinalizeNoPrint').style.display=pickup?'none':'';
+  $('btnFinalizeNoPrint').disabled=!ok || pickup;
 }
 
 /* ---------------- today summary ---------------- */
@@ -2036,7 +2039,7 @@ async function finalizeSale(doPrint){
   let sale=null;
   try{ sale=await commitSale(); }finally{ finalizing=false; }
   if(!sale) return;
-  if(doPrint){
+  if(doPrint || sale.order==='pickup'){
     printSale(sale, false);       // bridge, or window.print() -> afterPrint()
   }else{
     toast('Saved '+sale.no+' · '+money(sale.total));
@@ -4201,6 +4204,7 @@ function bind(){
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
+  $('orderType').addEventListener('change', ()=>updateFinalizeState());
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
   window.addEventListener('afterprint', afterPrint);
 
