@@ -332,7 +332,7 @@ async function handleCounter(req, headers, mode) {
     const res = await st.setJSON(key, { next: n + 1 }, opts);
     if (!res || res.modified !== false) return json({ ok: true, store, n }, 200, headers);
   }
-  return json({ error: 'The invoice counter is busy — try again.' }, 503, headers);
+  return json({ error: 'The invoice counter is busy. Try again.' }, 503, headers);
 }
 
 async function getWithEtag(st, key) {

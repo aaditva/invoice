@@ -559,3 +559,21 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 packs inside. **Open 1** sends one Squarespace adjustment: box −1 and pack +N together (all or nothing).
 The list is stored on the site (`/api/boxes`, Netlify Blobs), so every till shares it. Until the first edit
 it starts from a built-in list of the boxes in the product feed (see `netlify/functions/boxes.mjs`).
+
+## 🎓 Training mode
+
+The opening screen has a small dashed **🎓 Training** tile in the bottom-right corner. It opens the
+exact same till — scanning, discounts, cash/card/split, pick-ups, voids, refunds, reprints — so new
+staff can practise, but **nothing they do is real**:
+
+- Sales stay on that device only (a separate practice log) and are **never sent to the site**, so
+  they don't show in Takings, Admin, Insights, the Google Sheet or either store's invoice list.
+- **Squarespace stock is never changed**, and the on-screen stock counts don't drop either.
+- Invoice numbers come from their own local run (`INV-TR-0001`, …), so the real stores' numbering
+  doesn't move.
+- Money Added and Expenses don't save, and Open box is switched off.
+- Every docket prints **TRAINING — NOT A REAL SALE** at the top, and the header shows an orange
+  **TRAINING** flag the whole time.
+
+To finish, tap **Invoices ▾ → ⇄ switch** and pick a real store. To wipe the practice sales, open
+Settings while in Training and use **Clear this device's log** (that clears the practice log only).
