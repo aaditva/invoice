@@ -323,7 +323,9 @@ it can't clash with a number another till gets.
 
 **🏷️ Barcodes** — for one-off things with no barcode (a single card, a second-hand item).
 Type the name, sell price, cost price and stock, pick a label size (50 × 25, 62 × 29 or 40 × 30 mm
-rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. The
+rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. For a
+single card in a toploader use **50 × 25 mm** on the **back** of the toploader — it fits inside the
+edges and leaves the front of the card clear. The
 site gives it a 12-digit barcode starting with **2** (the range kept for in-store codes, so it
 can't clash with a maker's barcode) and the labels print as Code 128. Every till scans it after its
 next ⟳ Sync, and its stock counts down on each sale (back up on a void/refund). The list underneath
