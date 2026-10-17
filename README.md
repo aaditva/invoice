@@ -141,7 +141,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
   part under Cash and Card.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
 - **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
-  **Finalise — no print** to record the sale without printing (still numbered & logged).
+  **Finalise, no print** to record the sale without printing (still numbered & logged).
   A **Pick up later** order always prints — the button is hidden, since the customer needs the
   receipt's pick-up barcode to collect it.
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
