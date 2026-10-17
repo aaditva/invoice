@@ -1166,7 +1166,10 @@ async function checkAdminPin(pin){
   const d=await res.json().catch(()=>({}));
   if(res.ok && d.ok) return {ok:true};
   // wrong = the site rejected this password (or has none set) - not a token or network problem
-  if(res.status===401 || res.status===503) return {bad: d.error || 'Wrong password', wrong: res.status===503 || !/token/i.test(d.error||'')};
+  if(res.status===401 || res.status===503){
+    const token = res.status===401 && /token/i.test(d.error||'');
+    return {bad: d.error || 'Wrong password', wrong: !token, token};
+  }
   throw new Error(d.error || ('HTTP '+res.status));
 }
 async function submitLogin(){
@@ -1175,6 +1178,14 @@ async function submitLogin(){
   btn.disabled=true; $('lgStatus').textContent='Checking…';
   try{
     const r=await checkAdminPin(pin);
+    if(r.token && loginThen===openSettings){
+      // This device's sales token doesn't match the site's, so no password can be
+      // checked until it's fixed - and the token lives in Settings. Let them in to fix it.
+      $('loginModal').classList.remove('show'); loginThen=null;
+      openSettings(true);
+      alert('The site rejected this device\'s sales token, so the password can\'t be checked yet.\n\nFix "Sales token" under Sales memory, Save, then log in.');
+      return;
+    }
     if(r.bad){ $('lgStatus').textContent=r.bad; $('lgPin').select(); return; }
     try{ localStorage.setItem(ADMIN_KEY, pin); }catch(e){}
     $('loginModal').classList.remove('show');
@@ -1197,6 +1208,7 @@ function logoutAdmin(){
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
   $('expModal').classList.remove('show');
+  $('settingsModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
 function renderAuth(){
@@ -4095,7 +4107,10 @@ function downloadSalesCsv(sales, filename){
 }
 
 /* ---------------- settings UI ---------------- */
-function openSettings(){
+// Admin only, like Takings and Admin. `tokenFix` is the one way in without the
+// password: the site rejected this device's sales token (see submitLogin).
+function openSettings(tokenFix){
+  if(tokenFix!==true && !requireAdmin(openSettings)) return;
   $('sName').value=settings.name; $('sAbn').value=settings.abn; $('sPhone').value=settings.phone;
   $('sAddress').value=settings.address; $('sFooter').value=settings.footer; $('sCatUrl').value=settings.catUrl;
   $('sStaff').value=(settings.staff||[]).join('\n'); $('sGst').value=settings.gst; $('sPaper').value=settings.paper;

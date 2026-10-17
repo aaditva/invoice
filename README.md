@@ -112,7 +112,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 ## 4. Point the till at the proxy
 
 1. Open **`index.html`** (double-click it, or host it — see below).
-2. Click **⚙︎ Settings** and fill in:
+2. Click **⚙︎ Settings** (it asks for the Admin password, the `ADMIN_PIN` env var on Netlify) and fill in:
    - **Business name, ABN, address, phone** — printed on every tax invoice (ABN is legally required).
    - **Catalog proxy URL** — the address from step 3.
    - **Staff names** — one per line; these populate the "Served by" list.
@@ -546,7 +546,10 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 
 - **Admin ▾ → 🔒 Login** (header) asks for the Admin password once; the device then stays logged in
   until **Log out**. Logged in, the header shows **This store** (today) and **All stores** (today)
-  totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin ask for the password.
+  totals plus cash/card. Logged out, those figures are blacked out and Takings/Admin/⚙︎ Settings ask for
+  the password.
+- If the site rejects the device's **sales token** (so no password can be checked), ⚙︎ Settings opens
+  anyway so the token can be fixed; log in after saving.
 - The password is the Netlify env var **ADMIN_PIN** — the site checks it, so it isn't in the page.
   The server also refuses box-list edits, expenses and cost prices without it.
 - **⚠ N unsent** appears in the header only while sales rung up on this device haven't reached the
