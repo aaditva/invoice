@@ -718,11 +718,13 @@
       <nav class="gtabs" id="adTabs">
         <button data-tab="takings" class="sel">Takings</button>
         <button data-tab="insights">📊 Insights</button>
+        <button data-tab="labels">🏷️ Barcodes</button>
         <span class="gink" id="adInk"></span>
       </nav>
       <span class="spacer"></span><button class="ghost" id="closeAdmin">Close</button>
       <div class="gbar" id="adBar"></div></header>
     <div class="body">
+      <div id="adFilters" style="display:contents">
       <div class="field">
         <label>Store</label>
         <div class="seg" id="adStores"></div>
@@ -742,6 +744,7 @@
       <div class="grid2">
         <div class="field"><label for="adFrom">From</label><input type="date" id="adFrom" /></div>
         <div class="field"><label for="adTo">To</label><input type="date" id="adTo" /></div>
+      </div>
       </div>
       <div id="adTakings" style="display:flex;flex-direction:column;gap:14px">
       <div class="muted" id="adStatus"></div>
@@ -778,6 +781,40 @@
           <div class="ggrid" id="ncGrid"></div>
         </div>
         <div class="ggrid" id="gxGrid"></div>
+      </div>
+      <!-- BARCODES — give a one-off product (a single, anything with no barcode) its own barcode and print labels -->
+      <div id="adLabels" style="display:none;flex-direction:column;gap:14px">
+        <div class="hint" style="margin:0">For one-off things with no barcode. Type it in, and the site gives it a barcode of its own
+          and prints labels to stick on. Every till can scan it straight away (after its next ⟳ Sync); stock counts down as it sells.
+          These live only on the website — not in Squarespace or the Google Sheet.</div>
+        <div class="field"><label for="lbName">Product name</label>
+          <input id="lbName" autocomplete="off" maxlength="120" placeholder="e.g. Charizard ex 199/165 (single)" /></div>
+        <div class="grid2">
+          <div class="field"><label for="lbPrice">Sell price (inc GST)</label><input type="number" id="lbPrice" min="0" step="0.01" inputmode="decimal" placeholder="0.00" /></div>
+          <div class="field"><label for="lbCost">Cost price</label><input type="number" id="lbCost" min="0" step="0.01" inputmode="decimal" placeholder="optional" /></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label for="lbStock">Stock</label><input type="number" id="lbStock" min="0" step="1" inputmode="numeric" value="1" /></div>
+          <div class="field"><label for="lbCopies">Labels to print</label><input type="number" id="lbCopies" min="0" step="1" inputmode="numeric" value="1" /></div>
+        </div>
+        <div class="field">
+          <label>Label size</label>
+          <div class="seg" id="lbSizes">
+            <button data-size="50x25">50 × 25 mm — best for single cards</button>
+            <button data-size="62x29">62 × 29 mm</button>
+            <button data-size="40x30">40 × 30 mm</button>
+            <button data-size="a4">A4 sheet (21 per page)</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="primary" id="lbMake">🏷️ Make barcode &amp; print</button>
+          <button class="ghost" id="lbCancel" style="display:none">Cancel edit</button>
+        </div>
+        <div class="muted" id="lbStatus"></div>
+        <div class="field">
+          <label>Barcodes made here</label>
+          <div class="scroller"><table class="dtable" id="lbList"></table></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1384,7 +1421,7 @@ async function syncCatalog(silent){
     const text = await res.text();
     const items = parseCatalog(text, res.headers.get('content-type')||'', settings.catUrl);
     if(!items.length) throw new Error('No products found at that link (need columns: barcode/SKU, name, price).');
-    catalog = items;
+    catalog = withOwnLabels(items, await fetchOwnLabels());
     catalogAt = new Date().toISOString();
     save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
     rebuildSkuMap(); renderCatalogStatus(true);
@@ -1392,6 +1429,24 @@ async function syncCatalog(silent){
     renderCatalogStatus(false);
     if(!silent) alert('Could not sync products:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
   }
+}
+// Products given a barcode in Admin → 🏷️ Barcodes live on the site (/api/labels),
+// not in Squarespace or the sheet, so they're added after every sync. null = the
+// site couldn't be reached, and the copies from the last sync are kept.
+async function fetchOwnLabels(){
+  try{
+    const res=await fetch(apiUrl('/api/labels'), {headers:shareHeaders(false)});
+    if(!res.ok) return null;
+    const d=await res.json();
+    return Array.isArray(d.items) ? d.items : null;
+  }catch(e){ return null; }
+}
+function withOwnLabels(items, own){
+  const list = own ? own.map(x=>({sku:String(x.sku), name:x.name||x.sku, price:Number(x.price)||0,
+                                   stock:(x.stock==null?null:Number(x.stock)), variantId:null, own:true}))
+                   : catalog.filter(p=>p.own);
+  const have=new Set(items.map(p=>normSku(p.sku)));
+  return items.concat(list.filter(p=>!have.has(normSku(p.sku))));
 }
 // Accepts a JSON proxy response OR a CSV (e.g. a published Google Sheet).
 function parseCatalog(text, ctype, url){
@@ -2231,8 +2286,14 @@ const C128 = ('212222 222122 222221 121223 121322 131222 122213 122312 132212 22
   '241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 '+
   '131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112').split(' ');
 function code128Svg(text){
-  const vals=[104];                                   // Start B
-  for(const ch of String(text)){ const c=ch.charCodeAt(0); vals.push(c>=32&&c<=126 ? c-32 : 0); }
+  const t=String(text); let vals;
+  if(/^(\d\d)+$/.test(t)){                            // all digits, even count: Start C, two digits a bar —
+    vals=[105];                                       // half as wide, so a shelf label stays easy to scan
+    for(let i=0;i<t.length;i+=2) vals.push(+t.slice(i, i+2));
+  }else{
+    vals=[104];                                       // Start B
+    for(const ch of t){ const c=ch.charCodeAt(0); vals.push(c>=32&&c<=126 ? c-32 : 0); }
+  }
   let sum=vals[0]; for(let i=1;i<vals.length;i++) sum+=vals[i]*i;
   vals.push(sum%103, 106);                            // checksum, stop
   const QUIET=10; let x=QUIET, rects='';
@@ -2987,7 +3048,177 @@ function niceDay(key){
   return d.toLocaleDateString('en-AU',o);
 }
 function adPeriod(){ return adState.from===adState.to ? niceDay(adState.from) : niceDay(adState.from)+' → '+niceDay(adState.to); }
-/* ---------------- admin tabs: Takings | Insights ---------------- */
+/* ---------------- admin: 🏷️ Barcodes ----------------
+   A one-off product with no barcode (a single, a second-hand item) gets one of
+   its own here: the site (/api/labels) picks a free 12-digit code starting with
+   2 — the range kept for in-store codes — and keeps the name, price and stock,
+   so every till can scan it. Its cost goes with the website's other typed
+   costs (/api/costs) for Insights. Labels print from a hidden frame, sized to
+   the label roll, or 21 to an A4 sticker sheet. */
+const LB_SIZES = { '50x25':[50,25], '62x29':[62,29], '40x30':[40,30], 'a4':null };
+const LB_SIZE_KEY = 'inv_label_size';
+let lb = { items:null, costs:{}, editing:null, size:'50x25' };
+try{ const v=localStorage.getItem(LB_SIZE_KEY); if(v in LB_SIZES) lb.size=v; }catch(e){}
+
+function lbHeaders(json){ const h=shareHeaders(json); h['x-admin-pin']=adminPin(); return h; }
+async function loadLabels(){
+  $('lbStatus').textContent='Reading the list…';
+  markLabelSize();
+  try{
+    const [res, c]=await Promise.all([fetch(apiUrl('/api/labels'), {headers:lbHeaders(false)}), fetchCosts()]);
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+    lb.items=d.items || [];
+    lb.costs=(c && c.manual) || {};
+    $('lbStatus').textContent='';
+  }catch(e){ $('lbStatus').textContent='Could not read the list: '+e.message; }
+  renderLabels();
+}
+function renderLabels(){
+  const t=$('lbList'), items=lb.items || [];
+  if(!items.length){ t.innerHTML='<tbody><tr><td class="muted">None yet — the ones you make show here, to print again or restock.</td></tr></tbody>'; return; }
+  t.innerHTML='<thead><tr><th>Product</th><th>Barcode</th><th class="num">Price</th><th class="num">Cost</th><th class="num">Stock</th><th></th></tr></thead><tbody>'+
+    items.map(x=>{
+      const c=lb.costs[x.sku];
+      return '<tr data-sku="'+esc(x.sku)+'"><td>'+esc(x.name)+'</td><td>'+esc(x.sku)+'</td>'+
+        '<td class="num">'+money(x.price)+'</td><td class="num">'+(c && c.cost!=null ? money(c.cost) : '—')+'</td>'+
+        '<td class="num">'+esc(x.stock)+'</td>'+
+        '<td style="white-space:nowrap;text-align:right">'+
+          '<button class="ghost" data-lb="print" title="Print labels">🖨</button> '+
+          '<button class="ghost" data-lb="edit" title="Change price, cost or stock">Edit</button> '+
+          '<button class="ghost" data-lb="del" title="Delete">✕</button></td></tr>';
+    }).join('')+'</tbody>';
+}
+function markLabelSize(){
+  $('lbSizes').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.size===lb.size));
+}
+function resetLabelForm(){
+  lb.editing=null;
+  $('lbName').value=''; $('lbPrice').value=''; $('lbCost').value=''; $('lbStock').value='1'; $('lbCopies').value='1';
+  delete $('lbCopies').dataset.touched;
+  $('lbMake').textContent='🏷️ Make barcode & print';
+  $('lbCancel').style.display='none';
+}
+function editLabel(sku){
+  const x=(lb.items||[]).find(i=>i.sku===sku); if(!x) return;
+  const c=lb.costs[sku];
+  lb.editing=sku;
+  $('lbName').value=x.name; $('lbPrice').value=Number(x.price).toFixed(2);
+  $('lbCost').value=c && c.cost!=null ? Number(c.cost).toFixed(2) : '';
+  $('lbStock').value=x.stock; $('lbCopies').value='0';
+  $('lbMake').textContent='Save changes';
+  $('lbCancel').style.display='';
+  $('lbStatus').textContent='Editing '+x.sku+' — set Labels to print above 0 to print more.';
+  $('lbName').focus();
+}
+async function postLabels(body){
+  const res=await fetch(apiUrl('/api/labels'), {method:'POST', headers:lbHeaders(true), body:JSON.stringify(body)});
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+  lb.items=d.items || lb.items;
+  return d;
+}
+async function saveLabelCost(sku, name, cost){
+  const res=await fetch(apiUrl('/api/costs'), {method:'POST', headers:lbHeaders(true), body:JSON.stringify({set:[{sku, name, cost}]})});
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+  lb.costs=d.manual || lb.costs;
+}
+async function makeLabel(){
+  const name=$('lbName').value.trim();
+  const price=parseFloat($('lbPrice').value);
+  const rawCost=$('lbCost').value.trim(), cost=rawCost==='' ? null : round2(parseFloat(rawCost));
+  const stock=$('lbStock').value.trim()==='' ? 1 : Math.floor(Number($('lbStock').value));
+  const copies=Math.max(0, Math.min(500, Math.floor(Number($('lbCopies').value) || 0)));
+  if(!name){ $('lbStatus').textContent='Give it a name.'; $('lbName').focus(); return; }
+  if(!(price>=0)){ $('lbStatus').textContent='Type the sell price.'; $('lbPrice').focus(); return; }
+  if(cost!==null && !(cost>=0)){ $('lbStatus').textContent='Cost price must be a number.'; $('lbCost').focus(); return; }
+  if(!(stock>=0)){ $('lbStatus').textContent='Stock must be 0 or more.'; $('lbStock').focus(); return; }
+  const btn=$('lbMake'); btn.disabled=true;
+  $('lbStatus').textContent='Saving…';
+  try{
+    const editing=lb.editing;
+    const d = editing ? await postLabels({update:{sku:editing, name, price:round2(price), stock}})
+                      : await postLabels({add:{name, price:round2(price), stock}});
+    const item=d.item;
+    let costNote='';
+    const had=lb.costs[item.sku] && lb.costs[item.sku].cost;
+    if(cost!==null || (editing && had!=null)){
+      try{ await saveLabelCost(item.sku, item.name, cost); }
+      catch(e){ costNote=' (the cost price didn’t save: '+e.message+' — try Edit)'; }
+    }
+    renderLabels(); resetLabelForm();
+    $('lbStatus').textContent=(editing ? 'Saved ' : 'Made ')+item.sku+' — '+item.name+costNote;
+    if(copies) printLabels(item, copies);
+    // This till can scan it straight away; the others pick it up on their next sync.
+    if(settings.catUrl) syncCatalog(true);
+  }catch(e){ $('lbStatus').textContent='Could not save: '+e.message; }
+  finally{ btn.disabled=false; }
+}
+async function deleteLabel(sku){
+  const x=(lb.items||[]).find(i=>i.sku===sku); if(!x) return;
+  if(!confirm('Delete '+x.name+' ('+sku+')?\nIts labels will stop scanning at the till. Sales already made keep their record.')) return;
+  try{
+    await postLabels({remove:sku});
+    renderLabels();
+    if(lb.editing===sku) resetLabelForm();
+    $('lbStatus').textContent='Deleted '+x.name+'.';
+    if(settings.catUrl) syncCatalog(true);
+  }catch(e){ $('lbStatus').textContent='Could not delete: '+e.message; }
+}
+function reprintLabel(sku){
+  const x=(lb.items||[]).find(i=>i.sku===sku); if(!x) return;
+  const n=prompt('How many labels for '+x.name+'?', String(Math.max(1, Number(x.stock)||1)));
+  if(n===null) return;
+  const k=Math.max(0, Math.min(500, Math.floor(Number(n)||0)));
+  if(k) printLabels(x, k);
+}
+// One label: name, price, the barcode and its digits.
+function labelHtml(x){
+  return '<div class="lb"><div class="nm">'+esc(x.name)+'</div><div class="pr">'+esc(money(x.price))+'</div>'+
+    '<div class="bc">'+code128Svg(x.sku)+'</div><div class="cd">'+esc(x.sku)+'</div></div>';
+}
+function printLabels(x, copies){
+  const size=LB_SIZES[lb.size];
+  const one=labelHtml(x);
+  let body=new Array(copies).fill(one).join('');
+  if(!size){                                          // A4: 21 to a page, each page its own sheet
+    const pages=[];
+    for(let n=copies; n>0; n-=21) pages.push('<div class="sheet">'+new Array(Math.min(21, n)).fill(one).join('')+'</div>');
+    body=pages.join('');
+  }
+  // A roll prints one label per page; the A4 sheet is 3 × 7 of 63.5 × 38.1 mm (Avery L7160).
+  const css = size
+    ? '@page{size:'+size[0]+'mm '+size[1]+'mm;margin:0}'+
+      '.lb{width:'+size[0]+'mm;height:'+size[1]+'mm;padding:1.5mm 2.5mm;page-break-after:always;break-after:page}'+
+      '.lb:last-child{page-break-after:auto;break-after:auto}'
+    : '@page{size:A4;margin:0}'+
+      '.sheet{display:grid;grid-template-columns:repeat(3,63.5mm);grid-template-rows:repeat(7,38.1mm);column-gap:2.5mm;'+
+        'width:210mm;height:297mm;padding:15.1mm 7.2mm 0;overflow:hidden;page-break-after:always;break-after:page}'+
+      '.sheet:last-child{page-break-after:auto;break-after:auto}'+
+      '.lb{padding:3mm 4mm}';
+  const h = size ? size[1] : 38.1;
+  const html='<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>'+
+    '*{box-sizing:border-box;margin:0}html,body{background:#fff;color:#000}'+
+    'body{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    '.lb{display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden;text-align:center}'+
+    '.nm{font-size:'+(h<28?7.5:9)+'pt;font-weight:600;line-height:1.1;max-height:2.2em;overflow:hidden;width:100%;word-break:break-word}'+
+    '.pr{font-size:'+(h<28?10:13)+'pt;font-weight:800;line-height:1.1}'+
+    '.bc{width:100%;flex:1;min-height:0;display:flex}.bc svg{width:100%;height:100%}'+
+    '.cd{font-family:Menlo,Consolas,monospace;font-size:7pt;letter-spacing:.08em;line-height:1.2}'+
+    css+'</style></head><body>'+body+'</body></html>';
+  const f=document.createElement('iframe');
+  f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+  document.body.appendChild(f);
+  const doc=f.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  const done=()=>setTimeout(()=>f.remove(), 1000);
+  f.contentWindow.addEventListener('afterprint', done);
+  setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ alert('Could not open printing: '+e.message); } setTimeout(()=>f.remove(), 120000); }, 300);
+}
+
+/* ---------------- admin tabs: Takings | Insights | Barcodes ---------------- */
 let adTab = 'takings';
 function adKey(){ return (adState.store||'')+'|'+adState.from+'|'+adState.to; }
 // Reads From/To (swapping them if typed back to front) into adState.
@@ -3002,7 +3233,9 @@ function readAdminRange(){
 // Reload whichever tab is showing. lazy = only if the store/period changed.
 function reloadAdmin(lazy){
   readAdminRange();
-  if(adTab==='insights'){
+  if(adTab==='labels'){
+    if(!lazy || !lb.items) loadLabels();
+  }else if(adTab==='insights'){
     if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
   }else if(!lazy || adState.key!==adKey()) loadAdmin();
 }
@@ -3011,10 +3244,12 @@ function setAdminTab(tab){
   $('adTabs').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.tab===tab));
   $('adTakings').style.display = tab==='takings' ? 'flex' : 'none';
   $('adInsights').style.display = tab==='insights' ? 'flex' : 'none';
-  $('adminSheet').classList.toggle('xl', tab!=='takings');
+  $('adLabels').style.display = tab==='labels' ? 'flex' : 'none';
+  $('adFilters').style.display = tab==='labels' ? 'none' : 'contents';   // no store or period to pick for barcodes
+  $('adminSheet').classList.toggle('xl', tab==='insights');
   moveAdminInk();
   // The sheet widens as Insights opens; wait for it so the charts fit.
-  if(tab!=='takings') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
+  if(tab==='insights') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
 }
 function moveAdminInk(){
   const b=$('adTabs').querySelector('button.sel'), ink=$('adInk');
@@ -4074,6 +4309,27 @@ function bind(){
     const b=e.target.closest('[data-tab]'); if(b && b.dataset.tab!==adTab) setAdminTab(b.dataset.tab);
   });
   $('adminModal').addEventListener('pointerdown', ripple);
+  // 🏷️ Barcodes
+  $('lbMake').onclick=makeLabel;
+  $('lbCancel').onclick=()=>{ resetLabelForm(); $('lbStatus').textContent=''; };
+  $('lbSizes').addEventListener('click', e=>{
+    const b=e.target.closest('[data-size]'); if(!b) return;
+    lb.size=b.dataset.size; markLabelSize();
+    try{ localStorage.setItem(LB_SIZE_KEY, lb.size); }catch(e){}
+  });
+  $('lbList').addEventListener('click', e=>{
+    const b=e.target.closest('[data-lb]'), r=e.target.closest('tr[data-sku]'); if(!b || !r) return;
+    const sku=r.dataset.sku;
+    if(b.dataset.lb==='print') reprintLabel(sku);
+    else if(b.dataset.lb==='edit') editLabel(sku);
+    else if(b.dataset.lb==='del') deleteLabel(sku);
+  });
+  // A new product prints one label per item in stock, unless the count's been changed by hand.
+  $('lbStock').addEventListener('input', ()=>{ if(!lb.editing && !$('lbCopies').dataset.touched) $('lbCopies').value=$('lbStock').value; });
+  $('lbCopies').addEventListener('input', ()=>{ $('lbCopies').dataset.touched='1'; });
+  $('adLabels').addEventListener('keydown', e=>{
+    if(e.key==='Enter' && e.target.matches('#adLabels input')){ e.preventDefault(); makeLabel(); }
+  });
   $('adInsights').addEventListener('click', e=>{
     const b=e.target.closest('#gxSort [data-sort]'); if(!b) return;
     gx.sort=b.dataset.sort;
