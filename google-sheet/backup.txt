@@ -17,6 +17,7 @@
 const SITE_URL      = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN   = '';   // same as the SALES_TOKEN env var; blank if you didn't set one
 const ADMIN_PIN     = '';   // the till's Admin password — type it here in Apps Script; never commit it
+const DEVICE_KEY    = '';   // only once the site has DEVICE_KEYS on: this script's own key (see README → Per-device keys); never commit it
 const MAIN_SHEET_ID = '1UoB2JQP8PdtavFA3c60FIk_pwrVXt00uc5Vgz3IUXHs'; // the main till sheet (for its Products tab); '' to skip
 const PRODUCTS_TAB  = 'Products';
 const BACKUP_FROM   = '2026-07-01'; // first day of sales to include
@@ -40,6 +41,7 @@ function authHeaders() {
   const h = {};
   if (SALES_TOKEN) h['x-sales-token'] = SALES_TOKEN;
   if (ADMIN_PIN) h['x-admin-pin'] = ADMIN_PIN;
+  if (DEVICE_KEY) h['x-device-key'] = DEVICE_KEY;
   return h;
 }
 

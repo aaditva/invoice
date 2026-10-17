@@ -49,6 +49,9 @@
  *    SALES_TOKEN    optional shared secret. If set, every request must send a
  *                   matching x-sales-token header. The same token the till's
  *                   Settings → Shared log token holds.
+ *    DEVICE_KEYS    off (default) | on | required — per-device keys instead of
+ *                   the shared token; see lib/devices.mjs. With keys on, each
+ *                   sale is stamped devId / devName (the device that sent it).
  *    ALLOW_ORIGIN   optional, locks CORS to your site URL (default *).
  *
  *  Storage layout — two kinds of blob:
@@ -72,7 +75,8 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
-import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+import { corsHeaders, preflight, json } from '../lib/http.mjs';
+import { auth } from '../lib/devices.mjs';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -96,10 +100,14 @@ const PICKUP_STATE = ['pickedUp', 'pickedUpAt', 'pickedUpDay', 'pickedUpBy'];
 export default async (req) => {
   const headers = corsHeaders('GET, POST');
   if (req.method === 'OPTIONS') return preflight(headers);
-  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  const who = await auth(req);
+  // A revoked device may still hand in plain sales from its offline queue (checked
+  // against revokedAt in handlePost); nothing else.
+  const late = !who.ok && who.code === 'revoked' && req.method === 'POST' && !/[?&](counter|pickup)=/.test(req.url);
+  if (!who.ok && !late) return json({ error: who.error, code: who.code }, 401, headers);
 
   try {
-    if (req.method === 'POST') return await handlePost(req, headers);
+    if (req.method === 'POST') return await handlePost(req, headers, who);
     if (req.method === 'GET') return await handleGet(req, headers);
     return json({ error: 'Method not allowed.' }, 405, headers);
   } catch (e) {
@@ -111,7 +119,7 @@ export const config = { path: '/api/sales' };
 
 /* ---------------- write ---------------- */
 
-async function handlePost(req, headers) {
+async function handlePost(req, headers, who) {
   const sp = new URL(req.url).searchParams;
   const counter = sp.get('counter');
   if (counter) return await handleCounter(req, headers, counter);
@@ -129,8 +137,16 @@ async function handlePost(req, headers) {
   const day = String(sale.day == null ? '' : sale.day).trim();
   if (!DAY_RE.test(day)) return json({ error: 'Sale needs day = YYYY-MM-DD.' }, 400, headers);
 
+  if (!who.ok) {
+    const t = Date.parse(sale.ts);
+    if (!(t < Date.parse(who.device.revokedAt))) return json({ error: who.error, code: who.code }, 401, headers);
+  }
+
   const store = slugStore(sale.store);
   const clean = { ...sale, no, day, store };
+  // Which paired device sent it (DEVICE_KEYS on). Never taken from the body.
+  delete clean.devId; delete clean.devName;
+  if (who.device) { clean.devId = who.device.id; clean.devName = who.device.name; }
   if (store === DEFAULT_STORE && sale.store !== DEFAULT_STORE) clean.storeName = DEFAULT_STORE_NAME; // no store → South Melbourne
   for (const k of LOCAL_ONLY) delete clean[k];
   for (const k of PICKUP_STATE) delete clean[k];
@@ -156,6 +172,8 @@ async function handlePost(req, headers) {
   if (prev) {
     for (const k of PICKUP_STATE) if (prev[k] !== undefined) clean[k] = prev[k];
     if (!clean.pickupCode && prev.pickupCode) clean.pickupCode = prev.pickupCode;
+    // A void or refund keeps the device that rang the sale up.
+    if (prev.devId) { clean.devId = prev.devId; clean.devName = prev.devName; }
   }
   // A pick-up from a till still running an older page arrives with no code.
   if (clean.order === 'pickup' && !clean.pickupCode) clean.pickupCode = newPickupCode(Date.parse(clean.ts) || Date.now());

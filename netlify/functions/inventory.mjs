@@ -21,7 +21,8 @@
  *    ALLOW_ORIGIN          optional, locks CORS to your site URL
  * ------------------------------------------------------------------ */
 
-import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+import { corsHeaders, preflight, json } from '../lib/http.mjs';
+import { auth } from '../lib/devices.mjs';
 
 const SQ = 'https://api.squarespace.com/1.0/commerce';
 const UA = 'StoreTill/1.0 (+inventory)';
@@ -29,7 +30,8 @@ const UA = 'StoreTill/1.0 (+inventory)';
 export default async (req) => {
   const headers = corsHeaders('POST');
   if (req.method === 'OPTIONS') return preflight(headers);
-  if (!tokenOk(req)) return json({ error: 'Unauthorized' }, 401, headers);
+  const who = await auth(req);
+  if (!who.ok) return json({ error: who.error, code: who.code }, 401, headers);
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405, headers);
 
   const key = process.env.SQUARESPACE_API_KEY;

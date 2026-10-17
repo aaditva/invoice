@@ -1,5 +1,5 @@
 /* Shared by the Netlify functions: CORS headers, JSON replies, and the
-   x-sales-token / x-admin-pin checks (compared without leaking timing). */
+   x-sales-token / x-admin-pin checks (lib/devices.mjs builds on these) (compared without leaking timing). */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 
@@ -7,7 +7,7 @@ export function corsHeaders(methods) {
   return {
     'Access-Control-Allow-Origin': process.env.ALLOW_ORIGIN || '*',
     'Access-Control-Allow-Methods': methods + ', OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token, x-admin-pin',
+    'Access-Control-Allow-Headers': 'Content-Type, x-sales-token, x-admin-pin, x-device-key',
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json',
   };

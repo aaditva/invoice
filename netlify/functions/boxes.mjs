@@ -19,7 +19,8 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
-import { corsHeaders, preflight, json, tokenOk, pinOk } from '../lib/http.mjs';
+import { corsHeaders, preflight, json } from '../lib/http.mjs';
+import { auth, adminOk } from '../lib/devices.mjs';
 
 const KEY = 'boxes';
 const MAX = 500;
@@ -40,7 +41,8 @@ export default async (req) => {
   const headers = corsHeaders('GET, POST');
   if (req.method === 'OPTIONS') return preflight(headers);
 
-  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  const who = await auth(req);
+  if (!who.ok) return json({ error: who.error, code: who.code }, 401, headers);
 
   const st = getStore({ name: 'boxes', consistency: 'strong' });
   try {
@@ -49,7 +51,7 @@ export default async (req) => {
       return json({ boxes: saved && Array.isArray(saved.boxes) ? saved.boxes : SEED, seeded: !saved }, 200, headers);
     }
     if (req.method === 'POST') {
-      if (!pinOk(req)) return json({ error: 'Admin password required.' }, 401, headers);
+      if (!adminOk(req, who)) return json({ error: 'Admin password required.' }, 401, headers);
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
       const boxes = clean(body && body.boxes);

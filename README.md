@@ -520,6 +520,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs), plus the Pick up later list. |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
+| `netlify/functions/devices.mjs` + `netlify/lib/devices.mjs` | Per-device keys: pairing, Admin → Devices, and the key check every function uses (`DEVICE_KEYS`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
 | `api/catalog.js` | Vercel catalogue proxy (alt to Netlify). |
@@ -539,6 +540,54 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
   It disappears once everything is sent.
 - **Offline reload.** The page keeps a copy of itself on the device (`sw.js`), so the till still
   opens with no internet; sales made then queue up under **⚠ N unsent**.
+
+## Per-device keys (built, switched off)
+
+Today every till shares one `SALES_TOKEN`, so losing one iPad means changing it on Netlify and
+retyping it everywhere. With per-device keys, each till, phone and sheet script has a key of its
+own, and one can be switched off from **Admin → 🔑 Devices** without touching the rest. Every sale
+also records which device rang it up (`devName` on the sale).
+
+**It is all in place but does nothing until you set the switch.** The Netlify env var
+**`DEVICE_KEYS`** controls it:
+
+| `DEVICE_KEYS` | What happens |
+|---|---|
+| *(not set)* or `off` | Exactly as before. The shared token works, nothing new shows on the till. |
+| `on` | Keys **and** the shared token both work. **🔑 Devices** appears in Admin, and **🔑 Pair this device** on the opening screen. A till that already has the token takes a key of its own when it opens (listed as “Till ABC” — rename it). |
+| `required` | Only paired devices get in. A device without a working key shows the pairing box and can't be used until it's paired. |
+
+### Switching it on (when you can reach every device)
+1. Netlify → **Environment variables** → add `DEVICE_KEYS` = `on` → redeploy.
+2. Open the till on each device once. Tills holding the token pair themselves. Name them in
+   **Admin → 🔑 Devices**, and set their store.
+3. For any other device (a new one, the owner's phone): **Admin → 🔑 Devices → Make a pairing
+   code**. On the new device, scan the QR code, open the link, or tap **🔑 Pair this device** on the
+   opening screen and type the code. A code works once, for 10 minutes.
+4. Google Sheet scripts: make a code with **Kind = Admin device** (the scripts read cost prices),
+   then swap it for a key once from any computer:
+   `curl -X POST https://<your-site>/api/devices?pair=1 -H 'Content-Type: application/json' -d '{"code":"ABCD2345"}'`
+   Paste the `key` it returns into `DEVICE_KEY` at the top of each script (one key per script is
+   tidiest — each gets its own row in Devices).
+5. When everything in **Devices** shows *last seen* recently, set `DEVICE_KEYS` = `required` and
+   redeploy. `SALES_TOKEN` then no longer opens anything.
+
+To go back at any point, set `DEVICE_KEYS` back to `off` (or delete it) and redeploy.
+
+### Good to know
+- **Kinds.** A **Till** rings up sales; Admin still asks for the password on it. An **Admin
+  device** opens Admin, cost prices and expenses without the password (the owner's phone, the
+  sheet scripts). The Admin password keeps working wherever it did.
+- **Keys don't expire.** A device stays paired until it's revoked in Devices, or its browser data is
+  cleared. **On iPads/iPhones add the till to the Home Screen** (Share → Add to Home Screen):
+  Safari wipes a website's saved data after about a week without a visit, which would unpair a
+  till left in a drawer. Devices not seen for 30+ days get a ⚠ in the list.
+- **Revoke** stops a key within about a minute. Sales the device rang up *before* the revoke still
+  come in from its offline queue; nothing newer does. **Remove** forgets a revoked device completely.
+- **Every device lost?** The opening screen's pairing box has *Use the Admin password instead* —
+  that pairs a device with no code.
+- Only a hash of each key is kept on the site (Netlify Blobs, `devices` store), so the stored data
+  can't be used as a key.
 
 ## Open box (box → single packs)
 

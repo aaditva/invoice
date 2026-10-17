@@ -49,6 +49,7 @@
 const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's site
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
 const ADMIN_PIN    = '';          // the till's Admin password — type it here in Apps Script (same as ADMIN_PIN on Netlify); never commit it
+const DEVICE_KEY   = '';          // only once the site has DEVICE_KEYS on: this script's own key (see README → Per-device keys); never commit it
 const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
 const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
 const DATE_COLUMN  = 'A';         // column holding the dates
@@ -459,6 +460,7 @@ function authHeaders() {
   const h = {};
   if (SALES_TOKEN) h['x-sales-token'] = SALES_TOKEN;
   if (ADMIN_PIN) h['x-admin-pin'] = ADMIN_PIN;
+  if (DEVICE_KEY) h['x-device-key'] = DEVICE_KEY;
   return h;
 }
 
@@ -743,7 +745,7 @@ function updateProfit(now) {
     const day = Utilities.formatDate(new Date(now.getTime() - d * 86400000), TIME_ZONE, 'yyyy-MM-dd');
     const url = SITE_URL.replace(/\/$/, '') + '/api/sales?day=' + day +
       (STORE && STORE !== 'all' ? '&store=' + encodeURIComponent(STORE) : '');
-    const res = UrlFetchApp.fetch(url, { headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {}, muteHttpExceptions: true });
+    const res = UrlFetchApp.fetch(url, { headers: authHeaders(), muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error('sales fetch failed (' + res.getResponseCode() + ')');
     const sales = (JSON.parse(res.getContentText()).sales || []).filter(s => s && !s.voided);
     if (!sales.length) continue;
@@ -875,7 +877,7 @@ function fetchApi(what, from, to) {
   const url = SITE_URL.replace(/\/$/, '') + '/api/' + what + '?from=' + from + '&to=' + to +
     (STORE && STORE !== 'all' ? '&store=' + encodeURIComponent(STORE) : '');
   const res = UrlFetchApp.fetch(url, {
-    headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {},
+    headers: authHeaders(),
     muteHttpExceptions: true,
   });
   if (res.getResponseCode() !== 200) {

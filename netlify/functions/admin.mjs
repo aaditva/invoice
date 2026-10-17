@@ -16,14 +16,16 @@
  *    ALLOW_ORIGIN  optional, locks CORS to your site URL (default *)
  * ------------------------------------------------------------------ */
 
-import { corsHeaders, preflight, json, tokenOk, same } from '../lib/http.mjs';
+import { corsHeaders, preflight, json, same } from '../lib/http.mjs';
+import { auth } from '../lib/devices.mjs';
 
 export default async (req) => {
   const headers = corsHeaders('POST');
   if (req.method === 'OPTIONS') return preflight(headers);
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, headers);
 
-  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
+  const who = await auth(req);
+  if (!who.ok) return json({ error: who.error, code: who.code }, 401, headers);
 
   const pin = process.env.ADMIN_PIN;
   if (!pin) {

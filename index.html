@@ -194,6 +194,9 @@
     text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
   .dtable td{padding:9px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
   .dtable tr.day td{cursor:pointer}
+  #dvList{min-width:640px}
+  #dvList select{min-width:120px;width:auto}
+  @media (max-width:640px){ #adDevices .grid2{grid-template-columns:1fr} }
   .dtable tr.day:hover td{background:#f5f5f7}
   .dtable th.num,.dtable td.num{text-align:right}
   .dtable tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
@@ -707,6 +710,7 @@
     <div class="gatefoot">
       <button class="ghost" id="gateAdmin">View all stores — Admin</button>
       <button class="ghost" id="gateSettings">⚙︎ Settings</button>
+      <button class="ghost" id="gatePair" style="display:none">🔑 Pair this device</button>
     </div>
   </div>
 </div>
@@ -718,16 +722,17 @@
       <nav class="gtabs" id="adTabs">
         <button data-tab="takings" class="sel">Takings</button>
         <button data-tab="insights">📊 Insights</button>
+        <button data-tab="devices" id="adDevTab" style="display:none">🔑 Devices</button>
         <span class="gink" id="adInk"></span>
       </nav>
       <span class="spacer"></span><button class="ghost" id="closeAdmin">Close</button>
       <div class="gbar" id="adBar"></div></header>
     <div class="body">
-      <div class="field">
+      <div class="field adrange">
         <label>Store</label>
         <div class="seg" id="adStores"></div>
       </div>
-      <div class="field">
+      <div class="field adrange">
         <label>Period</label>
         <div class="seg" id="adPresets">
           <button data-range="today">Today</button>
@@ -739,7 +744,7 @@
           <button data-range="all">All time</button>
         </div>
       </div>
-      <div class="grid2">
+      <div class="grid2 adrange">
         <div class="field"><label for="adFrom">From</label><input type="date" id="adFrom" /></div>
         <div class="field"><label for="adTo">To</label><input type="date" id="adTo" /></div>
       </div>
@@ -778,6 +783,33 @@
           <div class="ggrid" id="ncGrid"></div>
         </div>
         <div class="ggrid" id="gxGrid"></div>
+      </div>
+      <!-- DEVICES — each till / phone / sheet script has its own key (DEVICE_KEYS on the site) -->
+      <div id="adDevices" style="display:none;flex-direction:column;gap:14px">
+        <div class="card muted" id="dvMode" style="font-size:13.5px"></div>
+        <div class="field"><label>Add a device</label>
+          <div class="grid2">
+            <div class="field"><label for="dvName">Name</label><input id="dvName" maxlength="60" placeholder="e.g. Roxy front till" /></div>
+            <div class="grid2">
+              <div class="field"><label for="dvStore">Store</label><select id="dvStore"></select></div>
+              <div class="field"><label for="dvRole">Kind</label><select id="dvRole">
+                <option value="till">Till</option><option value="admin">Admin device</option></select></div>
+            </div>
+          </div>
+          <div class="hint"><b>Till</b> rings up sales; Admin still asks for the password. <b>Admin device</b> opens Admin without it — the owner's phone, or a Google Sheet script.</div>
+          <div style="margin-top:8px"><button class="primary" id="dvInvite">Make a pairing code</button></div>
+        </div>
+        <div class="card" id="dvCode" style="display:none;text-align:center">
+          <div class="clbl">Pairing code for <b id="dvCodeFor"></b></div>
+          <div class="bignum" id="dvCodeTxt" style="letter-spacing:.12em;font-variant-numeric:tabular-nums"></div>
+          <div id="dvQr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px;margin:8px 0"></div>
+          <div class="csub">On the new device: scan this, open the link, or type the code under <b>🔑 Pair this device</b> on the opening screen. Works once, until <b id="dvCodeExp"></b>.</div>
+          <div style="margin-top:8px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="ghost" id="dvCopy">Copy link</button><button class="ghost" id="dvCodeDone">Done</button></div>
+        </div>
+        <div class="muted" id="dvStatus"></div>
+        <div class="scroller"><table class="dtable" id="dvList"></table></div>
+        <div><button class="ghost" id="dvRefresh">Refresh</button></div>
       </div>
     </div>
   </div>
@@ -913,7 +945,8 @@
           <div class="hint">Leave as <b>/api/sales</b> if this till is hosted on your Netlify site. Every sale is written here, so <b>Today, Invoices, Takings and Admin all read the site's record</b> rather than this browser — any device can see any store's sales, for today or any earlier day. Blank falls back to this browser only (single device, no Admin).</div>
         </div>
         <div class="grid2">
-          <div class="field"><label>Sales log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" /></div>
+          <div class="field"><label>Sales log token</label><input id="sShareToken" placeholder="matches SALES_TOKEN" autocomplete="off" />
+            <div class="hint" id="sDevInfo"></div></div>
           <div class="field"><label>Device tag (optional)</label><input id="sDevice" placeholder="e.g. 2" />
             <div class="hint">Not needed any more — every device at a store already shares one invoice count from the site. If set, it's added to this device's numbers (INV-SM2-0007).</div>
           </div>
@@ -1028,6 +1061,27 @@
   </div>
 </div>
 
+<!-- PAIR THIS DEVICE — swaps a one-time code from Admin → Devices for this device's own key -->
+<div class="modal" id="pairModal">
+  <div class="sheet" style="max-width:420px">
+    <header><span class="store">🔑 Pair this device</span></header>
+    <div class="body">
+      <div class="warn" id="prWhy" style="display:none;font-size:14px"></div>
+      <div class="field"><label for="prCode">Pairing code</label>
+        <input id="prCode" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="ABCD-2345" style="font-size:22px;letter-spacing:.12em;text-transform:uppercase" />
+        <div class="hint">Make one on a device that's already paired: <b>Admin → 🔑 Devices → Make a pairing code</b>. It works once, for 10 minutes.</div></div>
+      <details id="prPinWrap"><summary class="muted" style="cursor:pointer;padding:4px 0">No other device paired? Use the Admin password instead</summary>
+        <div class="field"><label for="prName">Name this device</label><input id="prName" maxlength="60" placeholder="e.g. Roxy front till" /></div>
+        <div class="field"><label for="prPin">Admin password</label><input id="prPin" type="password" autocomplete="current-password" /></div>
+        <label class="muted" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="prAdmin" style="width:auto;margin:0" /> Admin device — opens Admin without the password</label>
+      </details>
+      <div class="warn" id="prStatus" role="status"></div>
+    </div>
+    <div class="foot"><button class="ghost" id="prCancel">Not now</button><button class="primary" id="prGo">Pair</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <div class="saved" id="saved" role="status" aria-live="polite"></div>
 
@@ -1078,7 +1132,7 @@ const DEFAULTS = {
 const ADMIN_KEY = 'inv_admin_pin';
 try{ localStorage.removeItem('inv_admin'); }catch(e){}   // the old "logged in" flag — log in once more
 function adminPin(){ try{ return localStorage.getItem(ADMIN_KEY)||''; }catch(e){ return ''; } }
-function isAdmin(){ return !!adminPin(); }
+function isAdmin(){ return !!adminPin() || deviceAdmin(); }
 // A site endpoint (/api/…). Relative works when the till is hosted on Netlify; if
 // catUrl is a full URL (a till hosted elsewhere), resolve against that origin.
 function apiUrl(path, params){
@@ -1107,7 +1161,8 @@ async function checkAdminPin(pin){
   const d=await res.json().catch(()=>({}));
   if(res.ok && d.ok) return {ok:true};
   // wrong = the site rejected this password (or has none set) — not a token or network problem
-  if(res.status===401 || res.status===503) return {bad: d.error || 'Wrong password', wrong: res.status===503 || !/token/i.test(d.error||'')};
+  // (d.code = the device/token check failed, not the password — see /api/devices)
+  if(res.status===401 || res.status===503) return {bad: d.error || 'Wrong password', wrong: res.status===503 || (!d.code && !/token/i.test(d.error||''))};
   throw new Error(d.error || ('HTTP '+res.status));
 }
 async function submitLogin(){
@@ -1142,13 +1197,240 @@ function logoutAdmin(){
 }
 function renderAuth(){
   const b=$('btnLogin'), on=isAdmin();
-  b.textContent = on ? 'Log out' : '🔒 Login';
+  b.textContent = deviceAdmin() && !adminPin() ? '🔑 Admin device' : on ? 'Log out' : '🔒 Login';
   b.classList.toggle('in', on);
   $('btnExpenses').classList.toggle('on', on);
   $('hAdminLock').textContent = on ? '🔓' : '🔒';
   $('btnAdminMenu').title = on ? 'Admin — logged in on this device' : 'Takings, Admin, login';
   renderToday();
   if(on) refreshToday();
+}
+
+/* ---------------- per-device keys (DEVICE_KEYS on the site) ----------------
+   With the switch on, this device sends a key of its own (x-device-key) so it can
+   be switched off on its own from Admin → Devices. It gets one by pairing: a
+   one-time code made on a paired device, or the Admin password. While the site
+   has DEVICE_KEYS unset none of this shows and no key is sent — the shared
+   token in Settings works exactly as before. */
+const DEV_KEY='inv_device_key', DEV_INFO='inv_device', DEV_MODE='inv_device_mode';
+let devMode = (()=>{ try{ return localStorage.getItem(DEV_MODE)||'off'; }catch(e){ return 'off'; } })();
+function deviceKey(){ try{ return localStorage.getItem(DEV_KEY)||''; }catch(e){ return ''; } }
+function deviceInfo(){ return load(DEV_INFO, null); }
+function devicePaired(){ const d=deviceInfo(); return !!deviceKey() && !!d && !d.revokedAt; }
+function deviceAdmin(){ return devMode!=='off' && devicePaired() && deviceInfo().role==='admin'; }
+function saveDevice(key, info){
+  try{ localStorage.setItem(DEV_KEY, key); }catch(e){}
+  save(DEV_INFO, info);
+  // Ask the browser not to clear the key to free up space (Chrome/Edge honour this;
+  // on an iPad, Add to Home Screen is what keeps Safari from clearing it).
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
+}
+function dropDevice(){ try{ localStorage.removeItem(DEV_KEY); localStorage.removeItem(DEV_INFO); }catch(e){} }
+function setDevMode(m){
+  devMode = m==='on' || m==='required' ? m : 'off';
+  try{ localStorage.setItem(DEV_MODE, devMode); }catch(e){}
+}
+// When the till opens: is the switch on, and is this device's key still good?
+async function checkDevice(){
+  if(navigator.onLine===false) return;
+  const wasAdmin=isAdmin();
+  let d;
+  try{
+    const res=await fetch(apiUrl('/api/devices', {me:1}), {headers:shareHeaders(false)});
+    if(!res.ok) return;   // a site from before device keys: stays 'off'
+    d=await res.json();
+  }catch(e){ return; }
+  setDevMode(d.mode);
+  if(devMode!=='off'){
+    if(d.device) save(DEV_INFO, d.device);   // a rename or new role in Admin → Devices reaches it here
+    else if(deviceKey() && d.known===false) dropDevice();
+    // Switching over: a till that already has the shared token takes a key of its own.
+    if(!deviceKey() && devMode==='on' && settings.shareToken) await claimDevice();
+  }
+  renderDeviceUi();
+  if(isAdmin()!==wasAdmin) renderAuth();
+  needPairing();
+}
+async function claimDevice(){
+  try{
+    const res=await fetch(apiUrl('/api/devices', {claim:1}), {method:'POST', headers:shareHeaders(true),
+      body:JSON.stringify({name:'Till '+deviceId(), store:localStorage.getItem(LS.store)||''})});
+    const d=await res.json().catch(()=>({}));
+    if(res.ok && d.key) saveDevice(d.key, d.device);
+  }catch(e){}
+}
+// A site answer that says this device's key is no good (see auth() in lib/devices.mjs).
+function noteAuth(d){
+  if(!d || !/^(revoked|unknown|missing)$/.test(d.code||'')) return;
+  if(d.code==='unknown') dropDevice();
+  if(d.code==='revoked'){ const i=deviceInfo()||{}; if(!i.revokedAt){ i.revokedAt=new Date().toISOString(); save(DEV_INFO, i); } }
+  if(d.code!=='revoked') setDevMode('required');   // only a site that requires keys says these
+  renderDeviceUi(); renderAuth();
+  needPairing();
+}
+// The site needs a key and this device has no working one: the pairing box,
+// with no way round it. (A revoked key is kept, so sales rung up before it was
+// revoked can still go up from the offline queue.)
+function needPairing(){
+  if(devMode!=='required' || devicePaired()) return;
+  const d=deviceInfo();
+  openPair(true, d && d.revokedAt
+    ? 'This device was removed from the site, so it can\'t ring up sales. Pair it again with a new code.'
+    : 'The site now needs each device paired before it can ring up sales.');
+}
+function openPair(forced, why, code){
+  const m=$('pairModal');
+  $('prCancel').style.display = forced ? 'none' : '';
+  if(forced) m.dataset.forced='1'; else delete m.dataset.forced;
+  if(m.classList.contains('show')){ if(code) $('prCode').value=code; return; }
+  $('prWhy').textContent=why||''; $('prWhy').style.display = why ? '' : 'none';
+  $('prCode').value=code||''; $('prPin').value=''; $('prStatus').textContent='';
+  m.classList.add('show');
+  setTimeout(()=>$('prCode').focus(), 30);
+}
+function closePair(){ $('pairModal').classList.remove('show'); }
+async function submitPair(){
+  const code=$('prCode').value.replace(/[^a-z0-9]/gi,'').toUpperCase(), pin=$('prPin').value.trim();
+  const usePin=$('prPinWrap').open && pin;
+  let body;
+  if(usePin){
+    const name=$('prName').value.trim();
+    if(!name){ $('prName').focus(); $('prStatus').textContent='Give this device a name first.'; return; }
+    body={pin, name, role:$('prAdmin').checked?'admin':'till', store:localStorage.getItem(LS.store)||''};
+  }else{
+    if(code.length!==8){ $('prCode').focus(); $('prStatus').textContent='The code is 8 letters and numbers.'; return; }
+    body={code};
+  }
+  const btn=$('prGo'); btn.disabled=true; $('prStatus').textContent='Pairing…';
+  try{
+    const res=await fetch(apiUrl('/api/devices', {pair:1}), {method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'}, body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok || !d.key){ $('prStatus').textContent=d.error||('The site said HTTP '+res.status+'.'); return; }
+    saveDevice(d.key, d.device);
+    closePair();
+    renderDeviceUi(); renderAuth();
+    toast('Paired as “'+d.device.name+'”');
+    flushUnsynced();
+  }catch(e){
+    $('prStatus').textContent='Can\'t reach the site — pairing needs the internet.';
+  }finally{ btn.disabled=false; }
+}
+function renderDeviceUi(){
+  const on=devMode!=='off', d=deviceInfo(), paired=devicePaired();
+  $('gatePair').style.display = on && !paired ? '' : 'none';
+  $('adDevTab').style.display = on ? '' : 'none';
+  if(!on && adTab==='devices') setAdminTab('takings');
+  $('sDevInfo').textContent = !on ? ''
+    : paired ? '🔑 Paired with the site as “'+d.name+'” ('+(d.role==='admin'?'Admin device':'till')+').'
+    : '🔑 Not paired yet — tap 🔑 Pair this device on the opening screen.';
+}
+
+/* Admin → Devices: pair, rename, revoke. */
+let dvList=[], dvCodeTimer=null, qrLib=null;
+function adminHeaders(json){ const h=shareHeaders(json); h['x-admin-pin']=adminPin(); return h; }
+async function loadDevices(){
+  $('dvStatus').textContent='Loading…';
+  renderDvStores();
+  try{
+    const res=await fetch(apiUrl('/api/devices'), {headers:adminHeaders(false)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ $('dvStatus').textContent=d.error||('HTTP '+res.status); noteAuth(d); return; }
+    if(d.mode!==devMode){ setDevMode(d.mode); renderDeviceUi(); }
+    dvList=d.devices||[];
+    renderDevices();
+  }catch(e){ $('dvStatus').textContent='Can\'t reach the site.'; }
+}
+function renderDvStores(){
+  const sel=$('dvStore'), keep=sel.value;
+  sel.innerHTML='<option value="">Any store</option>'+allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
+  sel.value = keep || (currentStore && currentStore.id) || '';
+}
+function ago(iso){
+  const t=Date.parse(iso); if(!isFinite(t)) return '—';
+  const m=Math.round((Date.now()-t)/60000);
+  if(m<90) return m<=1 ? 'just now' : m+' min ago';
+  const h=Math.round(m/60); if(h<36) return h+' h ago';
+  return Math.round(h/24)+' days ago';
+}
+function renderDevices(){
+  $('dvMode').innerHTML = devMode==='required'
+    ? '<b>Device keys are required.</b> Only paired devices can reach the site; the shared token no longer works. The Admin password still pairs a device if every paired one is lost.'
+    : '<b>Device keys are on, alongside the shared token.</b> Tills that aren\'t paired yet keep working, and ones that have the token pair themselves when they open (shown as “Till …” — rename them). Once every till, phone and sheet script is paired, set <b>DEVICE_KEYS=required</b> on Netlify.';
+  const mine=(deviceInfo()||{}).id, STALE=30*86400000;
+  const storeSel=(d)=>'<select data-store="'+esc(d.id)+'"'+(d.revokedAt?' disabled':'')+'><option value="">Any store</option>'+
+    allStores().map(s=>'<option value="'+esc(s.id)+'"'+(s.id===d.store?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select>';
+  const roleSel=(d)=>'<select data-role="'+esc(d.id)+'"'+(d.revokedAt?' disabled':'')+'>'+
+    [['till','Till'],['admin','Admin device']].map(([v,l])=>'<option value="'+v+'"'+(v===d.role?' selected':'')+'>'+l+'</option>').join('')+'</select>';
+  $('dvList').innerHTML = dvList.length ? '<tr><th>Device</th><th>Store</th><th>Kind</th><th>Last seen</th><th></th></tr>'+dvList.map(d=>{
+    const stale=!d.revokedAt && Date.now()-Date.parse(d.lastSeen)>STALE;
+    return '<tr'+(d.revokedAt?' style="opacity:.55"':'')+'>'+
+      '<td><b>'+esc(d.name)+'</b>'+(d.id===mine?' <span class="muted">(this device)</span>':'')+
+        (d.revokedAt?'<div class="muted">Revoked '+esc(ago(d.revokedAt))+'</div>':'')+'</td>'+
+      '<td>'+storeSel(d)+'</td><td>'+roleSel(d)+'</td>'+
+      '<td'+(stale?' class="warn" title="Not seen for over 30 days — lost or wiped? Revoke it."':'')+'>'+(stale?'⚠ ':'')+esc(ago(d.lastSeen))+'</td>'+
+      '<td style="white-space:nowrap">'+(d.revokedAt
+        ? '<button class="ghost" data-remove="'+esc(d.id)+'">Remove</button>'
+        : '<button class="ghost" data-rename="'+esc(d.id)+'">Rename</button> <button class="ghost" data-revoke="'+esc(d.id)+'">Revoke</button>')+'</td></tr>';
+  }).join('') : '';
+  $('dvStatus').textContent = dvList.length ? dvList.filter(d=>!d.revokedAt).length+' paired' : 'No devices paired yet.';
+}
+async function dvPost(what, body){
+  try{
+    const res=await fetch(apiUrl('/api/devices', {[what]:1}), {method:'POST', headers:adminHeaders(true), body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ alert(d.error||('HTTP '+res.status)); noteAuth(d); return null; }
+    return d;
+  }catch(e){ alert('Can\'t reach the site.'); return null; }
+}
+async function dvUpdate(id, change){
+  const d=await dvPost('update', {id, ...change});
+  if(d && d.device && d.device.id===(deviceInfo()||{}).id){ save(DEV_INFO, d.device); renderDeviceUi(); renderAuth(); }
+  loadDevices();
+}
+async function dvRevoke(id){
+  const d=dvList.find(x=>x.id===id); if(!d) return;
+  const me=id===(deviceInfo()||{}).id;
+  if(!confirm('Revoke “'+d.name+'”?\n\nIts key stops working within a minute. Sales it rang up before now still come in from its offline queue.'+
+    (me?'\n\nThis is the device you\'re using — it will need pairing again.':''))) return;
+  if(await dvPost('revoke', {id})) loadDevices();
+}
+async function dvRemove(id){
+  const d=dvList.find(x=>x.id===id); if(!d) return;
+  if(!confirm('Remove “'+d.name+'” from the list? Any sales still waiting in its offline queue won\'t be accepted after this.')) return;
+  if(await dvPost('remove', {id})) loadDevices();
+}
+async function dvInvite(){
+  const name=$('dvName').value.trim();
+  if(!name){ $('dvName').focus(); toast('Give the device a name first'); return; }
+  const d=await dvPost('invite', {name, store:$('dvStore').value, role:$('dvRole').value});
+  if(!d) return;
+  const pretty=d.code.slice(0,4)+'-'+d.code.slice(4);
+  const link=location.origin+location.pathname+'#pair='+d.code;
+  $('dvCodeFor').textContent=name; $('dvCodeTxt').textContent=pretty;
+  $('dvCodeExp').textContent=new Date(d.expires).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  $('dvCopy').dataset.link=link;
+  $('dvQr').innerHTML=''; $('dvQr').style.display='none';
+  $('dvCode').style.display='';
+  $('dvName').value='';
+  clearTimeout(dvCodeTimer);
+  dvCodeTimer=setTimeout(()=>{ $('dvCode').style.display='none'; loadDevices(); }, Date.parse(d.expires)-Date.now());
+  // The QR library is fetched only here (the till never needs it offline); without it, the code and link still work.
+  try{
+    const qrcode=await loadQr(), qr=qrcode(0, 'M');
+    qr.addData(link); qr.make();
+    $('dvQr').innerHTML=qr.createSvgTag({cellSize:5, margin:0}); $('dvQr').style.display='inline-block';
+  }catch(e){}
+}
+function loadQr(){
+  if(window.qrcode) return Promise.resolve(window.qrcode);
+  if(!qrLib) qrLib=new Promise((ok, no)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+    sc.onload=()=>window.qrcode ? ok(window.qrcode) : no(new Error('no qrcode'));
+    sc.onerror=()=>{ qrLib=null; no(new Error('QR library unreachable')); };
+    document.head.appendChild(sc);
+  });
+  return qrLib;
 }
 
 const DEMO = [
@@ -1768,6 +2050,7 @@ function applyLocalStock(stockItems, dir){
 function shareHeaders(json){
   const h = json ? {'Content-Type':'application/json','Accept':'application/json'} : {'Accept':'application/json'};
   if(settings.shareToken) h['x-sales-token']=settings.shareToken;
+  const k=deviceKey(); if(k) h['x-device-key']=k;
   return h;
 }
 function markSynced(no){
@@ -1778,8 +2061,8 @@ async function syncSale(sale){
   const url=salesUrl(); if(!url) return;
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
-    if(!res.ok) return;
     let d=null; try{ d=await res.json(); }catch(e){}
+    if(!res.ok){ noteAuth(d); return; }
     // The site only renames a sale when another sale already had its number —
     // take the site's number so a reprint from any device matches.
     if(d && d.no && String(d.no)!==String(sale.no)) renameSale(sale, String(d.no));
@@ -1935,6 +2218,7 @@ async function fetchServerSales(params){
     const res=await fetch(url, {headers:shareHeaders(false)});
     let d=null; try{ d=await res.json(); }catch(e){}
     if(res.ok) return d;
+    noteAuth(d);
     return (d && d.error) ? d : {error:'The sales log returned HTTP '+res.status+'.'};
   }catch(e){ return null; }
 }
@@ -3001,6 +3285,7 @@ function readAdminRange(){
 }
 // Reload whichever tab is showing. lazy = only if the store/period changed.
 function reloadAdmin(lazy){
+  if(adTab==='devices'){ if(!lazy || !dvList.length) loadDevices(); return; }
   readAdminRange();
   if(adTab==='insights'){
     if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
@@ -3011,10 +3296,12 @@ function setAdminTab(tab){
   $('adTabs').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.tab===tab));
   $('adTakings').style.display = tab==='takings' ? 'flex' : 'none';
   $('adInsights').style.display = tab==='insights' ? 'flex' : 'none';
-  $('adminSheet').classList.toggle('xl', tab!=='takings');
+  $('adDevices').style.display = tab==='devices' ? 'flex' : 'none';
+  document.querySelectorAll('#adminModal .adrange').forEach(e=>e.style.display = tab==='devices' ? 'none' : '');
+  $('adminSheet').classList.toggle('xl', tab==='insights');
   moveAdminInk();
   // The sheet widens as Insights opens; wait for it so the charts fit.
-  if(tab!=='takings') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
+  if(tab==='insights') setTimeout(()=>reloadAdmin(true), 180); else reloadAdmin(true);
 }
 function moveAdminInk(){
   const b=$('adTabs').querySelector('button.sel'), ink=$('adInk');
@@ -3985,7 +4272,37 @@ function bind(){
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.querySelector('.dd.open')){ closeMenus(); focusScan(); } });
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
-  $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else requireAdmin(); };
+  $('btnLogin').onclick=()=>{
+    if(deviceAdmin() && !adminPin()){ toast('This is an Admin device — change that in Admin → 🔑 Devices'); return; }
+    if(isAdmin()) logoutAdmin(); else requireAdmin();
+  };
+  $('gatePair').onclick=()=>openPair(false);
+  $('prGo').onclick=submitPair;
+  $('prCancel').onclick=()=>{ closePair(); focusScan(); };
+  $('prCode').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPair(); } });
+  $('prPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPair(); } });
+  $('dvInvite').onclick=dvInvite;
+  $('dvRefresh').onclick=loadDevices;
+  $('dvCodeDone').onclick=()=>{ clearTimeout(dvCodeTimer); $('dvCode').style.display='none'; loadDevices(); };
+  $('dvCopy').onclick=()=>{
+    const l=$('dvCopy').dataset.link||'';
+    (navigator.clipboard ? navigator.clipboard.writeText(l) : Promise.reject()).then(()=>toast('Link copied'), ()=>prompt('Copy this link:', l));
+  };
+  $('dvList').addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.revoke) dvRevoke(b.dataset.revoke);
+    else if(b.dataset.remove) dvRemove(b.dataset.remove);
+    else if(b.dataset.rename){
+      const d=dvList.find(x=>x.id===b.dataset.rename); if(!d) return;
+      const name=(prompt('New name for this device:', d.name)||'').trim();
+      if(name && name!==d.name) dvUpdate(d.id, {name});
+    }
+  });
+  $('dvList').addEventListener('change', e=>{
+    const t=e.target;
+    if(t.dataset.store) dvUpdate(t.dataset.store, {store:t.value});
+    else if(t.dataset.role) dvUpdate(t.dataset.role, {role:t.value});
+  });
   $('lgGo').onclick=submitLogin;
   $('lgCancel').onclick=cancelLogin;
   $('lgPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitLogin(); } else if(e.key==='Escape') cancelLogin(); });
@@ -4174,6 +4491,15 @@ function bind(){
   setInterval(()=>{ reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
   renderUnsent();
   recheckAdmin();
+  // Per-device keys: pick up the site's switch, and a pairing link (…#pair=CODE) opened on this device.
+  const pairLink=(/[#&]pair=([A-Za-z0-9-]{8,9})/.exec(location.hash)||[])[1];
+  if(pairLink) try{ history.replaceState(null, '', location.pathname+location.search); }catch(e){}
+  renderDeviceUi();
+  checkDevice().then(()=>{
+    if(!pairLink) return;
+    if(devMode==='off') toast('Device pairing isn\'t switched on for this site yet');
+    else openPair(!!$('pairModal').dataset.forced, '', pairLink);
+  });
 
   // Keep a copy of the page on the device so the till still opens with no internet.
   if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){

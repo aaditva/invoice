@@ -9,20 +9,22 @@
    DELETE ?day=YYYY-MM-DD&store=ID&id=ID */
 
 import { getStore } from '@netlify/blobs';
-import { corsHeaders, preflight, json, tokenOk, pinOk } from './http.mjs';
+import { corsHeaders, preflight, json } from './http.mjs';
+import { auth, adminOk } from './devices.mjs';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const ID_RE = /^[a-z0-9-]{1,40}$/;
 const MAX_RANGE_DAYS = 62;
 
-// adminWrites: POST/DELETE also need x-admin-pin (when ADMIN_PIN is set).
+// adminWrites: POST/DELETE also need x-admin-pin (when ADMIN_PIN is set) or an admin device.
 export function ledger({ store: storeName, prefix, adminWrites }) {
   return async (req) => {
     const headers = corsHeaders('GET, POST, DELETE');
     if (req.method === 'OPTIONS') return preflight(headers);
-    if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
-    if (adminWrites && req.method !== 'GET' && !pinOk(req)) return json({ error: 'Admin password required.' }, 401, headers);
+    const who = await auth(req);
+    if (!who.ok) return json({ error: who.error, code: who.code }, 401, headers);
+    if (adminWrites && req.method !== 'GET' && !adminOk(req, who)) return json({ error: 'Admin password required.' }, 401, headers);
 
     const st = getStore({ name: storeName, consistency: 'strong' });
     const q = new URL(req.url).searchParams;

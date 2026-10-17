@@ -32,7 +32,8 @@
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
-import { corsHeaders, preflight, json, tokenOk, pinOk } from '../lib/http.mjs';
+import { corsHeaders, preflight, json } from '../lib/http.mjs';
+import { auth, adminOk } from '../lib/devices.mjs';
 
 const KEY = 'costs';
 const MANUAL = 'manual';
@@ -43,8 +44,9 @@ export default async (req) => {
   const headers = corsHeaders('GET, POST');
   if (req.method === 'OPTIONS') return preflight(headers);
 
-  if (!tokenOk(req)) return json({ error: 'Bad or missing x-sales-token.' }, 401, headers);
-  if (!pinOk(req)) return json({ error: 'Admin password required.' }, 401, headers);
+  const who = await auth(req);
+  if (!who.ok) return json({ error: who.error, code: who.code }, 401, headers);
+  if (!adminOk(req, who)) return json({ error: 'Admin password required.' }, 401, headers);
 
   const st = getStore({ name: 'costs', consistency: 'strong' });
   try {
