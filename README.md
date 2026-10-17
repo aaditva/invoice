@@ -321,6 +321,18 @@ it can't clash with a number another till gets.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
+**🏷️ Barcodes** — for one-off things with no barcode (a single card, a second-hand item).
+Type the name, sell price, cost price and stock, pick a label size (50 × 25, 62 × 29 or 40 × 30 mm
+rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. For a
+single card in a toploader use **50 × 25 mm** on the **back** of the toploader — it fits inside the
+edges and leaves the front of the card clear. The
+site gives it a 12-digit barcode starting with **2** (the range kept for in-store codes, so it
+can't clash with a maker's barcode) and the labels print as Code 128. Every till scans it after its
+next ⟳ Sync, and its stock counts down on each sale (back up on a void/refund). The list underneath
+reprints labels, edits price/cost/stock (to restock) or deletes one. These products live **only on
+the website** (`/api/labels`) — not in Squarespace and not on the Google Sheet's Products tab. Their
+cost price is kept with the website's typed costs, so Insights counts their profit.
+
 Admin is **password-protected**, so a customer at the counter can't tap it and read the day's
 takings. The password is the Netlify environment variable **`ADMIN_PIN`** (Site configuration →
 Environment variables, then redeploy). It is **not** in `index.html`: the till sends what's typed
@@ -519,6 +531,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/catalog.js` | Netlify catalogue proxy (holds the Squarespace key). |
 | `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs), plus the Pick up later list. |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
+| `netlify/functions/labels.mjs` | One-off products given a barcode in Admin → 🏷️ Barcodes (`/api/labels`). |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify/functions/devices.mjs` + `netlify/lib/devices.mjs` | Per-device keys: pairing, Admin → Devices, and the key check every function uses (`DEVICE_KEYS`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
