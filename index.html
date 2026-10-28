@@ -1456,8 +1456,18 @@ function basketQty(sku){ return basket.filter(b=>normSku(b.sku)===normSku(sku)).
 function remainingStock(sku){ const s=stockOf(sku); return s===null?null:(s - basketQty(sku)); }
 
 /* ---------------- catalog ---------------- */
+// Only one sync runs at a time: a second call (the ⟳ button during a background
+// sync, or a scan of an unknown barcode) waits for the one already going.
+// Resolves true when the list came down.
+let catSyncing=null;
 async function syncCatalog(silent){
-  if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return; }
+  if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return false; }
+  if(!catSyncing) catSyncing=fetchCatalog().finally(()=>{ catSyncing=null; });
+  const err=await catSyncing;
+  if(err && !silent) alert('Could not sync products:\n'+err+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+  return !err;
+}
+async function fetchCatalog(){
   $('catDot').className='dot';
   try{
     const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json, text/csv, */*'}});
@@ -1469,9 +1479,10 @@ async function syncCatalog(silent){
     catalogAt = new Date().toISOString();
     save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
     rebuildSkuMap(); renderCatalogStatus(true);
+    return '';
   }catch(e){
     renderCatalogStatus(false);
-    if(!silent) alert('Could not sync products:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+    return e.message || String(e);
   }
 }
 // Products given a barcode in Admin → 🏷️ Barcodes live on the site (/api/labels),
@@ -1570,31 +1581,55 @@ function renderCatalogStatus(ok){
 }
 
 /* ---------------- basket ---------------- */
+// One audio context for every beep. Making a new one per scan opened the sound
+// device each time (which can hold the screen up for a moment) and never closed it.
+let beepCtx=null;
 function beep(ok){
   try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=beepCtx || (beepCtx=new (window.AudioContext||window.webkitAudioContext)());
+    if(ctx.state!=='running') ctx.resume();
     const o=ctx.createOscillator(), g=ctx.createGain();
     o.frequency.value = ok?880:220; o.connect(g); g.connect(ctx.destination);
     g.gain.setValueAtTime(.08,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.16);
     o.start(); o.stop(ctx.currentTime+.16);
   }catch(e){}
 }
-function flash(msg, ok){
-  const el=$('flash'); el.textContent=msg; el.className='flash show '+(ok?'ok':'bad');
-  clearTimeout(flash._t); flash._t=setTimeout(()=>{ el.className='flash'; }, 1400);
+// ok: true = green, false = red, null = plain. ms: how long it stays up.
+function flash(msg, ok, ms){
+  const el=$('flash'); el.textContent=msg; el.className='flash show'+(ok==null?'':ok?' ok':' bad');
+  clearTimeout(flash._t); flash._t=setTimeout(()=>{ el.className='flash'; }, ms||1400);
 }
 function addByBarcode(code){
   const key = normSku(code);
   if(!key) return;
   const p = skuMap.get(key);
   if(!p && isPickupCode(key)){ beep(true); openPickups(key); return; }
-  if(!p){ flash('Not found: '+code, false); beep(false); return; }
+  if(!p){ lookUpMissing(code, key); return; }
+  addScanned(p);
+}
+function addScanned(p){
   addItem(p);
   const rem = remainingStock(p.sku);         // after adding this unit
   if(rem!==null && rem<0){ flash('⚠ '+p.name+' · over by '+(-rem)+' (allowed)', false); beep(false); }
   else if(rem!==null){ flash('Added '+p.name+' · '+rem+' left', true); beep(true); }
   else { flash('Added '+p.name, true); beep(true); }
 }
+// A barcode this device doesn't know may just be new: added in Squarespace, or
+// given a label on another till, since the last sync. Fetch the list and look
+// again before calling it unknown. A list fetched in the last minute is taken as
+// current, so scanning a truly unknown code over and over doesn't re-fetch it.
+async function lookUpMissing(code, key){
+  const fresh = catalogAt && Date.now()-Date.parse(catalogAt) < 60000;
+  if(!settings.catUrl || navigator.onLine===false || (fresh && !catSyncing)){ notFound(code); return; }
+  const sale=saleSeq;
+  flash('Looking up '+code+'…', null, 20000);
+  await syncCatalog(true);
+  const p=skuMap.get(key);
+  if(!p){ notFound(code); return; }
+  if(sale===saleSeq) addScanned(p);
+  else { flash(p.name+' found. Scan it again', true); beep(true); }   // that sale's finished; don't slip it into the next one
+}
+function notFound(code){ flash('Not found: '+code, false); beep(false); }
 function addItem(p){
   const line = basket.find(b=>normSku(b.sku)===normSku(p.sku));
   if(line){ line.qty++; }
@@ -1611,7 +1646,8 @@ function addMisc(){
 function setMiscPrice(i, v){ const n=parseFloat(v); basket[i].price = isNaN(n)?0:round2(Math.max(0,n)); render(); }
 function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
 function removeItem(i){ basket.splice(i,1); render(); }
-function clearSale(){ basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
+let saleSeq=0;   // bumped each time the basket starts over
+function clearSale(){ saleSeq++; basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
   $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
 
@@ -4227,11 +4263,49 @@ function focusScan(){
 }
 function anyModalOpen(){ return document.querySelector('.modal.show'); }
 
+/* ---------------- scanner capture ----------------
+   A scanner is a keyboard: it types the code and presses Enter into whatever has
+   focus. After a tap on Card, a discount button or the customer box that isn't
+   the scan box, so the scan went nowhere (or Enter pressed the button again)
+   until someone tapped the screen. On the till screen this catches it:
+   - focus on a button, a drop-down or nothing: the keys go to the scan box;
+   - focus in a typing box: a scanner-speed run of keys ending in Enter is taken
+     back out of that box and scanned. Nobody types 4+ keys under 50ms apart. */
+const SCAN_GAP_MS = 50, SCAN_MIN_LEN = 4;
+let scanRun = null;          // {el, before, code, last} - keys landing in a typing box
+function isTypingBox(el){
+  return !!el && (el.tagName==='TEXTAREA' ||
+    (el.tagName==='INPUT' && !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/i.test(el.type)));
+}
+function catchScanner(e){
+  const el=document.activeElement, scan=$('scan');
+  if(e.key==='Shift' || e.key==='CapsLock') return;          // scanners hold Shift for capital letters
+  if(el===scan || !currentStore || anyModalOpen() || e.ctrlKey || e.metaKey || e.altKey){ scanRun=null; return; }
+  const key = e.key && e.key.length===1 && e.key!==' ';
+  if(!isTypingBox(el)){
+    if(key){ e.preventDefault(); scan.focus(); scan.value+=e.key; }
+    return;
+  }
+  const now=performance.now();
+  if(key && !e.repeat){
+    if(!scanRun || scanRun.el!==el || now-scanRun.last>SCAN_GAP_MS) scanRun={el, before:el.value, code:'', last:now};
+    scanRun.code+=e.key; scanRun.last=now;
+    return;
+  }
+  const run=scanRun; scanRun=null;
+  if(e.key!=='Enter' || !run || run.el!==el || now-run.last>SCAN_GAP_MS || run.code.length<SCAN_MIN_LEN) return;
+  e.preventDefault(); e.stopPropagation();
+  el.value=run.before; el.dispatchEvent(new Event('input', {bubbles:true}));
+  addByBarcode(run.code);
+  focusScan();
+}
+
 /* ---------------- wire up ---------------- */
 function bind(){
   adoptStorelessSales();
   rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
 
+  document.addEventListener('keydown', catchScanner, true);   // a scan with the focus somewhere else
   // scan input - a barcode scanner "types" the code then sends Enter, so this
   // auto-adds the item and keeps the cursor here, ready for the next scan. No button needed.
   $('scan').addEventListener('keydown', e=>{
@@ -4494,6 +4568,9 @@ function bind(){
   flushRestocks();               // put stock back for any voided sales that couldn't reach it yet
   // Auto-refresh the product list on open, so it's always current with Squarespace.
   if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
+  // …and again every 10 minutes while the till is idle, so a product added or
+  // re-priced in Squarespace is already on the device when it's first scanned.
+  setInterval(()=>{ if(settings.catUrl && navigator.onLine!==false && !basket.length && !anyModalOpen()) syncCatalog(true); }, 600000);
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
