@@ -208,6 +208,39 @@
   .dtable th.num,.dtable td.num{text-align:right}
   .dtable tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
   .scroller{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  /* Admin → Barcodes → Scan into Squarespace: big rows to tap with a thumb */
+  .sblist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;max-height:58vh;overflow:auto}
+  .sblist .sbrow{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;width:100%;text-align:left;
+    background:none;border-radius:0;border-bottom:1px solid var(--line);padding:10px 12px}
+  .sblist .sbrow:last-child{border-bottom:none}
+  .sblist .sbrow:hover{background:#f5f5f7}
+  .sbrow .th{width:44px;height:44px;border-radius:8px;background:#f0f0f4 center/cover no-repeat}
+  .sbrow .nm{font-weight:550;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .sbrow .cd{font-size:12px;color:var(--muted);font-family:Menlo,Consolas,monospace;margin-top:2px;word-break:break-all}
+  .sbrow .cd b{font-family:inherit;color:#b25e00;background:rgba(237,161,0,.16);border-radius:5px;padding:0 5px}
+  .sbrow .go{font-size:22px;padding:6px 4px}
+  .sblist .sbmore{padding:12px;text-align:center}
+  .camsheet .body{gap:12px}
+  .camview{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3;max-height:52vh}
+  .camview video{width:100%;height:100%;object-fit:cover;display:block}
+  .camaim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .camaim span{width:80%;height:40%;border:3px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.32);
+    position:relative;transition:border-color .15s}
+  .camaim span::after{content:"";position:absolute;left:8%;right:8%;top:50%;height:2px;background:rgba(255,59,48,.85)}
+  .camview.hit .camaim span{border-color:#34c759}
+  .camtorch{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5)!important;color:#fff!important;font-size:20px;padding:8px 11px}
+  .camtorch.on{background:#f5a623!important}
+  .cammsg{position:absolute;left:10px;right:10px;bottom:10px;text-align:center;color:#fff;font-size:13px;text-shadow:0 1px 2px #000}
+  .camprod{font-weight:600;line-height:1.3}
+  .camprod .cd{font-weight:400;font-size:12.5px;color:var(--muted);font-family:Menlo,Consolas,monospace}
+  .camfoot{display:flex;gap:10px}
+  .camfoot button{flex:1;padding:14px;font-size:16px}
+  .camfoot button:disabled{opacity:.5}
+  @media (max-width:640px){
+    #camModal{padding:0}
+    #camModal .sheet{max-width:none;height:100%;max-height:none;border-radius:0}
+    .camview{aspect-ratio:auto;height:46vh;max-height:none}
+  }
   /* Money in the header is blacked out until Admin logs in on this device */
   .redact{background:#111;color:transparent !important;border-radius:4px;user-select:none}
   .redact b{color:transparent !important}
@@ -508,6 +541,10 @@
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
   [data-theme="dark"] .cashpad button.coin,[data-theme="dark"] .unsent{background:rgba(237,161,0,.16);color:#f0c050;border-color:rgba(237,161,0,.35)}
+  [data-theme="dark"] .sblist .sbrow:hover{background:var(--soft)}
+  [data-theme="dark"] .sblist .sbrow{background:none}
+  [data-theme="dark"] .sbrow .th{background-color:var(--soft)}
+  [data-theme="dark"] .sbrow .cd b{color:#f0c050}
   [data-theme="dark"] .tick{background:var(--soft)}
   [data-theme="dark"] .tick.on{background:var(--ok)}
   [data-theme="dark"] .pulist .pr.hl{background:rgba(237,161,0,.14)}
@@ -796,6 +833,23 @@
       </div>
       <!-- BARCODES - give a one-off product (a single, anything with no barcode) its own barcode and print labels -->
       <div id="adLabels" style="display:none;flex-direction:column;gap:14px">
+        <div class="seg" id="lbModes">
+          <button data-mode="sq" class="sel">📷 Scan into Squarespace</button>
+          <button data-mode="own">🏷️ Make our own barcode</button>
+        </div>
+        <!-- SCAN INTO SQUARESPACE - a product's real barcode, read with the phone's camera, becomes its SKU and GTIN -->
+        <div id="sbPane" style="display:flex;flex-direction:column;gap:12px">
+          <div class="hint" style="margin:0">New products in Squarespace get a made-up SKU starting with <b>SQ</b>. Tap one, point the
+            camera at the product's barcode, and it becomes the SKU (and the GTIN) in Squarespace, so every till can scan it.
+            The SQ ones are at the top.</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input id="sbSearch" type="search" autocomplete="off" placeholder="Search name, SKU or barcode…" style="flex:1" />
+            <button class="ghost" id="sbReload" title="Read the list from Squarespace again">⟳</button>
+          </div>
+          <div class="muted" id="sbStatus"></div>
+          <div class="sblist" id="sbList"></div>
+        </div>
+        <div id="lbOwn" style="display:none;flex-direction:column;gap:14px">
         <div class="hint" style="margin:0">For one-off things with no barcode. Type it in, and the site gives it a barcode of its own
           and prints labels to stick on. Every till can scan it straight away (after its next ⟳ Sync); stock counts down as it sells.
           These live only on the website, not in Squarespace or the Google Sheet.</div>
@@ -827,6 +881,31 @@
           <label>Barcodes made here</label>
           <div class="scroller"><table class="dtable" id="lbList"></table></div>
         </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CAMERA BARCODE MODAL - Admin → Barcodes → Scan into Squarespace, made for a phone held in one hand -->
+<div class="modal" id="camModal">
+  <div class="sheet camsheet">
+    <header><span class="store" id="camTitle">Scan barcode</span><span class="spacer"></span><button class="ghost" id="camClose">Close</button></header>
+    <div class="body">
+      <div class="camview" id="camView">
+        <video id="camVideo" playsinline muted autoplay></video>
+        <div class="camaim"><span></span></div>
+        <button class="camtorch" id="camTorch" style="display:none" title="Torch">🔦</button>
+        <div class="cammsg" id="camMsg">Starting the camera…</div>
+      </div>
+      <div class="camprod" id="camProd"></div>
+      <div class="field" style="margin:0"><label for="camCode">Barcode</label>
+        <input id="camCode" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="numeric" maxlength="60"
+          placeholder="Point the camera, or type it / use the scanner" style="font-size:20px;letter-spacing:.04em" /></div>
+      <div class="muted" id="camStatus"></div>
+      <div class="camfoot">
+        <button class="ghost" id="camRescan">↺ Scan again</button>
+        <button class="primary" id="camSave" disabled>✓ Save to Squarespace</button>
       </div>
     </div>
   </div>
@@ -3426,6 +3505,219 @@ function printLabels(x, copies){
   setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ alert('Could not open printing: '+e.message); } setTimeout(()=>f.remove(), 120000); }, 300);
 }
 
+/* ---------------- admin: 🏷️ Barcodes → 📷 Scan into Squarespace ----------------
+   A product added in Squarespace has a made-up SKU (SQ…) until someone types its
+   barcode in. Here the phone's camera reads the barcode off the box and
+   /api/sq-barcodes writes it to the variant's SKU, and to its GTIN when it's a
+   real shop barcode. The SQ ones are nearly always the ones to do, so they're
+   listed first, newest first. The camera uses the browser's own barcode reader
+   (Chrome on Android) or, where there isn't one (iPhone), a ZXing reader loaded
+   the first time it's needed. */
+const SB_LIB = 'https://cdn.jsdelivr.net/npm/barcode-detector@3.0.8/dist/es/ponyfill.js/+esm';
+const SB_FORMATS = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','itf','codabar'];
+const SB_SHOW = 200;      // rows drawn at once; search narrows it down
+let lbMode = 'sq';
+let sb = { items:null, loading:null, q:'', all:false };
+let cam = { stream:null, det:null, timer:0, last:'', hits:0, item:null, format:'', torch:false, gen:0 };
+const isSq = sku => /^SQ/i.test(String(sku||''));
+
+function setLabelMode(mode){
+  lbMode=mode;
+  $('lbModes').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.mode===mode));
+  $('sbPane').style.display = mode==='sq' ? 'flex' : 'none';
+  $('lbOwn').style.display = mode==='own' ? 'flex' : 'none';
+  if(mode==='sq'){ if(!sb.items) loadSqBarcodes(); }
+  else if(!lb.items) loadLabels();
+}
+async function loadSqBarcodes(){
+  if(sb.loading) return sb.loading;
+  $('sbStatus').textContent='Reading the products from Squarespace…';
+  sb.loading=(async()=>{
+    try{
+      const res=await fetch(apiUrl('/api/sq-barcodes'), {headers:lbHeaders(false)});
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+      sb.items=sortSqItems(d.items || []);
+      const n=sb.items.filter(x=>isSq(x.sku)).length;
+      $('sbStatus').textContent = n ? n+' still on an SQ code.' : 'Every product has its barcode. 🎉';
+    }catch(e){ $('sbStatus').textContent='Could not read Squarespace: '+e.message; }
+    renderSqBarcodes();
+  })().finally(()=>{ sb.loading=null; });
+  return sb.loading;
+}
+// SQ codes first, then the rest; newest first within each.
+function sortSqItems(items){
+  return items.slice().sort((a,b)=> (isSq(b.sku)-isSq(a.sku)) || String(b.createdOn).localeCompare(String(a.createdOn)) || String(a.name).localeCompare(String(b.name)));
+}
+function renderSqBarcodes(){
+  const el=$('sbList');
+  if(!sb.items){ el.innerHTML=''; return; }
+  const q=sb.q.trim().toLowerCase(), qs=normSku(q);
+  const hit=sb.items.filter(x=>!q || String(x.name).toLowerCase().includes(q) || normSku(x.sku).includes(qs) || String(x.gtin).includes(qs));
+  if(!hit.length){ el.innerHTML='<div class="sbmore muted">'+(q ? 'Nothing matches “'+esc(sb.q)+'”.' : 'No products in Squarespace.')+'</div>'; return; }
+  const shown=sb.all || q ? hit : hit.slice(0, SB_SHOW);
+  el.innerHTML=shown.map(x=>{
+    const th=x.image ? ' style="background-image:url(&quot;'+esc(x.image+(x.image.indexOf('?')<0?'?format=100w':''))+'&quot;)"' : '';
+    const code=isSq(x.sku) ? '<b>'+esc(x.sku||'no SKU')+'</b>' : esc(x.sku||'no SKU');
+    return '<button class="sbrow" data-vid="'+esc(x.variantId)+'"><span class="th"'+th+'></span>'+
+      '<span><div class="nm">'+esc(x.name)+'</div><div class="cd">'+code+(x.gtin && x.gtin!==x.sku ? ' · GTIN '+esc(x.gtin) : '')+'</div></span>'+
+      '<span class="go" aria-hidden="true">📷</span></button>';
+  }).join('')+(shown.length<hit.length ? '<div class="sbmore"><button class="ghost" id="sbAll">Show all '+hit.length+'</button></div>' : '');
+}
+
+// The GTIN a scanned code stands for, or '' if it isn't a shop barcode (Code 128 text etc).
+// UPC-E is printed squashed to 8 digits; Squarespace wants it as the full 12-digit UPC-A.
+function upcE2A(c){
+  if(!/^[01]\d{7}$/.test(c)) return '';
+  const d=c.slice(1,7), l=d[5];
+  const m = l<='2' ? d[0]+d[1]+l+'0000'+d[2]+d[3]+d[4]
+          : l==='3' ? d[0]+d[1]+d[2]+'00000'+d[3]+d[4]
+          : l==='4' ? d[0]+d[1]+d[2]+d[3]+'00000'+d[4]
+          : d.slice(0,5)+'0000'+l;
+  return c[0]+m+c[7];
+}
+function gtinFor(code, format){
+  if(!/^\d+$/.test(code)) return '';
+  if(code.length===8 && (format==='upc_e' || !gtinKey(code))){ const a=upcE2A(code); if(a && gtinKey(a)) return a; }
+  if(!gtinKey(code)) return '';
+  return code.length===11 ? '0'+code : code;      // a UPC-A that lost its leading 0
+}
+
+async function openCam(item){
+  cam.item=item; cam.format=''; cam.last=''; cam.hits=0;
+  $('camTitle').textContent=isSq(item.sku) ? 'Scan its barcode' : 'Change its barcode';
+  $('camProd').innerHTML=esc(item.name)+'<div class="cd">Now: '+esc(item.sku||'no SKU')+(item.gtin ? ' · GTIN '+esc(item.gtin) : '')+'</div>';
+  $('camCode').value=''; $('camSave').disabled=true; $('camStatus').textContent='';
+  $('camModal').classList.add('show');
+  startCam();
+}
+async function startCam(){
+  stopCam();
+  const gen=++cam.gen;
+  $('camView').classList.remove('hit');
+  $('camMsg').textContent='Starting the camera…';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('camMsg').textContent='This browser can’t use the camera here. Type the barcode below.';
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}});
+    if(gen!==cam.gen || !$('camModal').classList.contains('show')){ stream.getTracks().forEach(t=>t.stop()); return; }
+    cam.stream=stream;
+    const v=$('camVideo'); v.srcObject=stream; await v.play().catch(()=>{});
+    const track=stream.getVideoTracks()[0], caps=track && track.getCapabilities ? track.getCapabilities() : {};
+    if(caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    cam.torch=false; $('camTorch').classList.remove('on');
+    $('camTorch').style.display = caps.torch ? '' : 'none';
+    $('camMsg').textContent='Loading the barcode reader…';
+    if(!cam.det) cam.det=await makeDetector();
+    if(gen!==cam.gen) return;
+    $('camMsg').textContent='Line the barcode up inside the box';
+    camLoop(gen);
+  }catch(e){
+    const why = e && e.name==='NotAllowedError' ? 'Camera blocked. Allow it for this site in the browser settings, or type the barcode below.'
+      : e && e.name==='NotFoundError' ? 'No camera found. Type the barcode below, or use the scanner.'
+      : 'Camera didn’t start ('+(e && e.message || e)+'). Type the barcode below.';
+    if(gen===cam.gen) $('camMsg').textContent=why;
+  }
+}
+async function makeDetector(){
+  if('BarcodeDetector' in window){
+    try{
+      const ok=await window.BarcodeDetector.getSupportedFormats();
+      const f=SB_FORMATS.filter(x=>ok.includes(x));
+      if(f.includes('ean_13')) return new window.BarcodeDetector({formats:f});
+    }catch(e){}
+  }
+  const m=await import(SB_LIB);
+  return new m.BarcodeDetector({formats:SB_FORMATS});
+}
+// Read a frame every ~120 ms; the same code twice in a row counts, so a half-seen
+// barcode can't slip through.
+function camLoop(gen){
+  const v=$('camVideo');
+  const tick=async()=>{
+    if(gen!==cam.gen) return;
+    if(v.readyState>=2){
+      try{
+        const found=await cam.det.detect(v);
+        if(gen!==cam.gen) return;
+        const b=found && found.find(x=>x.rawValue);
+        if(b){
+          const code=String(b.rawValue).trim();
+          cam.hits = code===cam.last ? cam.hits+1 : 1; cam.last=code;
+          if(cam.hits>=2){ camGot(code, b.format); return; }
+        }
+      }catch(e){}
+    }
+    cam.timer=setTimeout(tick, 120);
+  };
+  tick();
+}
+function camGot(code, format){
+  stopCam();
+  cam.format=format||'';
+  $('camView').classList.add('hit');
+  $('camMsg').textContent='Got it ✓';
+  try{ navigator.vibrate && navigator.vibrate(60); }catch(e){}
+  $('camCode').value=code;
+  camCheck();
+}
+function stopCam(){
+  cam.gen++;
+  clearTimeout(cam.timer);
+  if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
+  const v=$('camVideo'); if(v) v.srcObject=null;
+}
+function closeCam(){ stopCam(); $('camModal').classList.remove('show'); }
+async function toggleTorch(){
+  const t=cam.stream && cam.stream.getVideoTracks()[0]; if(!t) return;
+  cam.torch=!cam.torch;
+  try{ await t.applyConstraints({advanced:[{torch:cam.torch}]}); }catch(e){ cam.torch=false; }
+  $('camTorch').classList.toggle('on', cam.torch);
+}
+// What Save will do, and whether another product already has this code.
+function camCheck(){
+  const code=$('camCode').value.trim(), it=cam.item;
+  $('camSave').disabled=!code;
+  if(!code){ $('camStatus').textContent=''; return; }
+  const g=it.physical ? gtinFor(code, cam.format) : '';
+  const other=(sb.items||[]).find(x=>x.variantId!==it.variantId && (normSku(x.sku)===normSku(code) || (g && x.gtin===g)));
+  $('camStatus').innerHTML='SKU → <b>'+esc(code)+'</b>'+(g ? ' · GTIN → <b>'+esc(g)+'</b>' : it.physical ? ' · not a shop barcode, so the GTIN stays as it is' : '')+
+    (other ? '<div style="color:var(--danger);margin-top:4px">⚠ '+esc(other.name)+' already has this barcode.</div>' : '');
+}
+async function camSave(){
+  const it=cam.item, code=$('camCode').value.trim();
+  if(!it || !code) return;
+  if(code.length>60){ $('camStatus').textContent='That’s too long for a SKU (60 at most).'; return; }
+  const g=it.physical ? gtinFor(code, cam.format) : '';
+  const other=(sb.items||[]).find(x=>x.variantId!==it.variantId && normSku(x.sku)===normSku(code));
+  if(other && !confirm(other.name+' already has '+code+'.\nSquarespace may refuse it. Try anyway?')) return;
+  const btn=$('camSave'); btn.disabled=true;
+  $('camStatus').textContent='Saving to Squarespace…';
+  try{
+    const body={productId:it.productId, variantId:it.variantId, sku:code, oldSku:it.sku};
+    if(g) body.gtin=g;
+    const res=await fetch(apiUrl('/api/sq-barcodes'), {method:'POST', headers:lbHeaders(true), body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+    const was=it.sku;
+    it.sku=(d.item && d.item.sku) || code;
+    if(d.item && d.item.gtin) it.gtin=d.item.gtin;
+    // This till scans it straight away; the others pick it up on their next sync.
+    const p=variantMap.get(String(it.variantId));
+    if(p){ p.sku=it.sku; rebuildSkuMap(); save(LS.catalog, catalog); }
+    if(settings.catUrl) syncCatalog(true);
+    sb.items=sortSqItems(sb.items); renderSqBarcodes();
+    const left=sb.items.filter(x=>isSq(x.sku)).length;
+    $('sbStatus').textContent=left ? left+' still on an SQ code.' : 'Every product has its barcode. 🎉';
+    toast('Saved '+it.sku+' to '+it.name);
+    // Straight on to the next SQ product, so a pile of new stock goes quickly.
+    const next=isSq(was) && sb.items.find(x=>isSq(x.sku));
+    if(next) openCam(next); else closeCam();
+  }catch(e){ $('camStatus').textContent='Could not save: '+e.message; btn.disabled=false; }
+}
+
 /* ---------------- admin tabs: Takings | Insights | Barcodes ---------------- */
 let adTab = 'takings';
 function adKey(){ return (adState.store||'')+'|'+adState.from+'|'+adState.to; }
@@ -3442,7 +3734,8 @@ function readAdminRange(){
 function reloadAdmin(lazy){
   readAdminRange();
   if(adTab==='labels'){
-    if(!lazy || !lb.items) loadLabels();
+    if(lbMode==='sq'){ if(!lazy || !sb.items) loadSqBarcodes(); }
+    else if(!lazy || !lb.items) loadLabels();
   }else if(adTab==='insights'){
     if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
   }else if(!lazy || adState.key!==adKey()) loadAdmin();
@@ -4583,7 +4876,31 @@ function bind(){
   $('lbStock').addEventListener('input', ()=>{ if(!lb.editing && !$('lbCopies').dataset.touched) $('lbCopies').value=$('lbStock').value; });
   $('lbCopies').addEventListener('input', ()=>{ $('lbCopies').dataset.touched='1'; });
   $('adLabels').addEventListener('keydown', e=>{
-    if(e.key==='Enter' && e.target.matches('#adLabels input')){ e.preventDefault(); makeLabel(); }
+    if(e.key==='Enter' && e.target.matches('#lbOwn input')){ e.preventDefault(); makeLabel(); }
+  });
+  // 📷 Scan into Squarespace
+  $('lbModes').addEventListener('click', e=>{ const b=e.target.closest('[data-mode]'); if(b && b.dataset.mode!==lbMode) setLabelMode(b.dataset.mode); });
+  $('sbSearch').addEventListener('input', ()=>{ sb.q=$('sbSearch').value; renderSqBarcodes(); });
+  $('sbReload').onclick=()=>{ sb.items=null; loadSqBarcodes(); };
+  $('sbList').addEventListener('click', e=>{
+    if(e.target.closest('#sbAll')){ sb.all=true; renderSqBarcodes(); return; }
+    const r=e.target.closest('[data-vid]'); if(!r) return;
+    const it=(sb.items||[]).find(x=>String(x.variantId)===r.dataset.vid); if(it) openCam(it);
+  });
+  $('camClose').onclick=closeCam;
+  $('camRescan').onclick=()=>{ $('camCode').value=''; camCheck(); startCam(); };
+  $('camTorch').onclick=toggleTorch;
+  $('camSave').onclick=camSave;
+  // Typing (or a Bluetooth/USB scanner) works too: it stops the camera and Enter saves.
+  $('camCode').addEventListener('input', ()=>{
+    if(cam.stream){ stopCam(); $('camMsg').textContent='Typed in'; }
+    cam.format=''; camCheck();
+  });
+  $('camCode').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); if(!$('camSave').disabled) camSave(); } });
+  // A phone locked or switched away mid-scan: let the camera go, start it again on return.
+  document.addEventListener('visibilitychange', ()=>{
+    if(!$('camModal').classList.contains('show')) return;
+    if(document.hidden) stopCam(); else if(!$('camCode').value.trim()) startCam();
   });
   $('adInsights').addEventListener('click', e=>{
     const b=e.target.closest('#gxSort [data-sort]'); if(!b) return;

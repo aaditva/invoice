@@ -68,6 +68,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 1. Squarespace → **Settings → Developer API Keys** (or *Advanced → Developer API Keys*).
 2. **Generate Key** → give it a name → permission **Products: Read Only**.
    - To also use **live stock sync** ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)), give the *same* key **Inventory: Read/Write** as well.
+   - To scan barcodes into Squarespace from Admin → 🏷️ Barcodes, make it **Products: Read/Write** instead.
 3. Copy the key (you only see it once). Keep it secret — it is *not* pasted into the app.
 
 ---
@@ -332,7 +333,16 @@ it can't clash with a number another till gets.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
-**🏷️ Barcodes** — for one-off things with no barcode (a single card, a second-hand item).
+**🏷️ Barcodes → 📷 Scan into Squarespace** — a product added in Squarespace gets a made-up SKU
+starting with **SQ** until its barcode goes in. This lists every Squarespace product with the SQ
+ones on top (newest first). Tap one on a phone, point the camera at the box's barcode, and **Save**:
+the barcode becomes the variant's **SKU** and, for a real shop barcode (EAN/UPC with a valid check
+digit), its **GTIN** too. It then goes straight on to the next SQ product. The till you used scans
+it at once; the others after their next ⟳ Sync. You can also type the code or use a Bluetooth/USB
+scanner in the box. Needs the Squarespace key to have **Products: Read/Write** (section 2) and the
+site on https (Netlify is). On an iPhone the barcode reader loads from jsDelivr the first time.
+
+**🏷️ Barcodes → Make our own barcode** — for one-off things with no barcode (a single card, a second-hand item).
 Type the name, sell price, cost price and stock, pick a label size (50 × 25, 62 × 29 or 40 × 30 mm
 rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. For a
 single card in a toploader use **50 × 25 mm** on the **back** of the toploader — it fits inside the
@@ -551,6 +561,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs), plus the Pick up later list. |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify/functions/labels.mjs` | One-off products given a barcode in Admin → 🏷️ Barcodes (`/api/labels`). |
+| `netlify/functions/sq-barcodes.mjs` | Lists Squarespace products and writes a scanned barcode to a variant's SKU and GTIN (`/api/sq-barcodes`). |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |
