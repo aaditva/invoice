@@ -153,8 +153,8 @@ Requires a **Business** or **Commerce** Squarespace plan.
   type the card amount and the cash part (5¢-rounded) shows with its change. Takings count each
   part under Cash and Card.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
-- **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
-  **Finalise, no print** to record the sale without printing (still numbered & logged).
+- **Charge $… & print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
+  **Charge $…, no print** to record the sale without printing (still numbered & logged).
   A **Pick up later** order always prints — the button is hidden, since the customer needs the
   receipt's pick-up barcode to collect it.
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
@@ -168,7 +168,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Admin ▾ → Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin ▾ → Admin dashboard** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
-- **Pick up later** — set **Order → Pick up later** before finalising. The receipt then prints a
+- **Pick up later** — tap **Order → Pick up later / Pre order** (the switch beside *Take now*) before finalising. The receipt then prints a
   **pick-up barcode** (Code 128) with its own unique code, e.g. `PUMGB4K2X17Q`. See
   [Pick up later](#pick-up-later) below.
 - **⟲ Reprint** opens today's invoices at this store — from every device, newest first — and each
