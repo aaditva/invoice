@@ -197,6 +197,9 @@ sub build_receipt {
     }
     if (($sale->{order} // '') eq 'pickup') {
         $out .= $CMD{bold_on} . "Order: PICK UP LATER\n" . $CMD{bold_off};
+        if ($sale->{pickupWhen}) {
+            $out .= $CMD{bold_on} . "$_\n" . $CMD{bold_off} for wrap_text('Pick up ' . ascii($sale->{pickupWhen}));
+        }
     } else {
         $out .= "Order: Served on the spot\n";
     }
@@ -333,7 +336,7 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact', 'pickupCode', 'split', 'refund'] }));
+                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'split', 'refund'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';

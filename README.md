@@ -258,6 +258,11 @@ characters. It's printed under the totals as a **Code 128 barcode** (with the co
 underneath), and stays with the sale forever. It's separate from the invoice number on purpose:
 a number can still change after printing (a clash is renamed `…-2`), the code never does.
 
+- **Pick-up date.** Choosing *Pick up later* shows a **Pick-up date**, set to **today**. Move it
+  to a later day for a **pre-order**. The receipt prints *Pick up from <date>*, and the Pick ups
+  list shows it in orange until the day comes (*Ready* after that).
+- **Scanned too early?** If the barcode is scanned before the pick-up date, a message says
+  *Not ready yet. Pick-up for this order is on <date>.* Ticking ✓ early asks before handing it over.
 - **🛍 Pick ups** (header) lists this store's orders **waiting to be picked up** — from any day —
   with the customer's name and phone, invoice number, number of items and price. The red badge
   is how many are waiting. Search by name, phone, invoice # or item.

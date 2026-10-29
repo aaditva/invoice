@@ -457,6 +457,7 @@
   .tick:disabled{opacity:.5;cursor:wait}
   .pulist .pr.hl{background:#fff4d6;box-shadow:inset 4px 0 0 #eda100;animation:puflash 1.1s ease-in-out 3}
   @keyframes puflash{50%{background:#ffe08a}}
+  .pulist .pr .meta .later{color:#b26a00;font-weight:650}
   .puhead{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:4px 2px -6px}
 
   /* One invoice on its own (opened from Pick ups): no date, search or list */
@@ -665,6 +666,14 @@
             <option value="now">Served on the spot</option>
             <option value="pickup">Pick up later (keep it aside)</option>
           </select>
+        </div>
+
+        <div class="field" id="pickupOnField" style="display:none">
+          <label for="pickupOn">Pick-up date <span class="muted" id="pickupOnHint">(today)</span></label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input id="pickupOn" type="date" style="flex:1" />
+            <button class="ghost" id="pickupOnToday" title="Ready to collect today" style="padding:10px 13px">Today</button>
+          </div>
         </div>
 
         <div class="field" id="customerField">
@@ -1737,7 +1746,7 @@ function removeItem(i){ basket.splice(i,1); render(); }
 let saleSeq=0;   // bumped each time the basket starts over
 function clearSale(){ saleSeq++; basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
-  $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
+  $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; $('pickupOn').value=''; render(); }
 
 /* ---------------- totals ---------------- */
 function totals(){
@@ -1874,6 +1883,7 @@ function updateFinalizeState(){
   $('btnFinalize').disabled=!ok;
   // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
   const pickup=$('orderType').value==='pickup';
+  showPickupOn(pickup);
   $('btnFinalizeNoPrint').style.display=pickup?'none':'';
   $('btnFinalizeNoPrint').disabled=!ok || pickup;
 }
@@ -1917,6 +1927,18 @@ async function refreshToday(){
   renderToday();
 }
 
+/* ---------------- pick-up date ----------------
+   Defaults to today; a later day makes it a pre-order (scanning it early says so). */
+function chosenPickupOn(){ const v=$('pickupOn').value; return v && v>todayKey() ? v : todayKey(); }
+function showPickupOn(on){
+  $('pickupOnField').style.display=on?'':'none';
+  if(!on) return;
+  const today=todayKey(), el=$('pickupOn');
+  el.min=today;
+  if(!el.value || el.value<today) el.value=today;
+  $('pickupOnHint').textContent = el.value===today ? '(today)' : '(pre-order, '+niceDay(el.value)+')';
+}
+
 /* ---------------- finalise + print ---------------- */
 let suppressClearOnPrint=false;   // true while re-printing a sale or a report (keep current basket)
 
@@ -1956,7 +1978,7 @@ async function commitSale(){
     ...(method==='split' ? {cardPaid, cashPaid} : {}),
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
-  if(order==='pickup') sale.pickupCode = newPickupCode();
+  if(order==='pickup'){ sale.pickupCode = newPickupCode(); sale.pickupOn = chosenPickupOn(); }
   // Everything above is a snapshot of the basket; only now wait on the site for
   // the number, so a scan during the wait can't slip into this sale.
   // The store tag keeps the two locations' numbers apart; the device tag is optional.
@@ -2296,8 +2318,12 @@ function saleForBridge(sale, info){
                : 'SPLIT: card '+money(sale.cardPaid)+' + cash '+money(sale.cashPaid);
     sale=Object.assign({}, sale, {customer:[note, sale.customer].filter(Boolean).join(' / ')});
   }
+  if(sale.order==='pickup') sale=Object.assign({}, sale, {pickupWhen: pickupWhen(sale)});
+  // A bridge from before pick-up dates: put the date on the customer line.
+  if(sale.order==='pickup' && bridgeHas(info, 'order') && !bridgeHas(info, 'pickupWhen'))
+    sale=Object.assign({}, sale, {customer:[sale.customer, 'PICK UP '+sale.pickupWhen.toUpperCase()].filter(Boolean).join(' / ')});
   if(bridgeHas(info, 'order')) return sale;
-  const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)].filter(Boolean).join(' / ');
+  const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)+(sale.pickupWhen?' '+sale.pickupWhen:'')].filter(Boolean).join(' / ');
   return Object.assign({}, sale, {customer: extra});
 }
 function storeForBridge(sale){
@@ -2376,6 +2402,11 @@ function applyPageSize(){
 /* Order + buyer details shared by the receipt, the bridge and the invoice list.
    Older sales have no `order`, so they read as served on the spot. */
 function orderLabel(s){ return s.order==='pickup' ? 'PICK UP LATER' : 'Served on the spot'; }
+// The day a pick-up can be collected from. Older pick-ups have none: ready the day they were rung up.
+function pickupOnOf(s){ return (s && /^\d{4}-\d{2}-\d{2}$/.test(String(s.pickupOn||''))) ? s.pickupOn : (s && s.day) || todayKey(); }
+function pickupWhen(s){ return 'from '+niceDay(pickupOnOf(s)); }
+// Not ready yet: the pick-up date is still ahead (pre-orders).
+function pickupTooEarly(s){ return !!s && s.order==='pickup' && !s.pickedUp && pickupOnOf(s) > todayKey(); }
 function contactLabel(c){ return (/@/.test(c) ? 'Email: ' : 'Phone: ') + c; }
 
 function buildReceipt(s){
@@ -2397,6 +2428,7 @@ function buildReceipt(s){
   if(s.customer) h+='<div>Customer: '+esc(s.customer)+'</div>';
   if(s.contact)  h+='<div>'+esc(contactLabel(s.contact))+'</div>';
   h+='<div'+(s.order==='pickup'?' class="b big"':'')+'>Order: '+esc(orderLabel(s))+'</div>';
+  if(s.order==='pickup') h+='<div class="b big">Pick up '+esc(pickupWhen(s))+'</div>';
   h+='<hr>';
   s.items.forEach(it=>{
     h+='<div class="it"><div class="nm">'+esc(it.name)+'</div>'+
@@ -2559,7 +2591,8 @@ function puRow(s, done){
   const got = done && s.pickedUpAt ? ' · picked up '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(s.pickedUpBy?' by '+esc(s.pickedUpBy):'') : '';
   return '<div class="pr'+(done?' done':'')+(puHighlight && s.pickupCode===puHighlight?' hl':'')+'" data-code="'+esc(s.pickupCode)+'">'+
     '<div><div class="who">'+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
-      '<div class="meta">'+esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
+      '<div class="meta">'+(done?'':(pickupTooEarly(s)?'<span class="later">Pick up from '+esc(niceDay(pickupOnOf(s)))+'</span> · ':'Ready · '))+
+        esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
     '<div class="amt"><b>'+money(s.total)+'</b><span>'+items+' item'+(items===1?'':'s')+' · '+esc(s.method||'')+'</span></div>'+
     '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up. Tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
   '</div>';
@@ -2583,6 +2616,7 @@ async function findScannedPickup(code){
   if(s){
     renderPickups();
     if(s.pickedUp) toast('Already picked up'+(s.pickedUpAt?' · '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''));
+    else if(pickupTooEarly(s)){ beep(false); alert(tooEarlyMsg(s)); }
     else toast((s.customer||s.no)+' · '+money(s.total));
     return;
   }
@@ -2593,9 +2627,14 @@ async function findScannedPickup(code){
     (other.pickedUp?' and has already been picked up.':', not '+currentStore.name+'.'));
   else { toast('No pick-up found for '+code); beep(false); }
 }
+function tooEarlyMsg(s){
+  return 'Not ready yet. Pick-up for this order is on '+niceDay(pickupOnOf(s))+'.\n\n'+
+    s.no+(s.customer?' · '+s.customer:'')+' · '+money(s.total);
+}
 async function tickPickup(code, btn){
   const s=puFind(code); if(!s) return;
   const undo=!!s.pickedUp;
+  if(!undo && pickupTooEarly(s) && !confirm(tooEarlyMsg(s)+'\n\nHand it over early anyway?')) return;
   if(undo && !confirm('Mark '+s.no+(s.customer?' ('+s.customer+')':'')+' as NOT picked up?')) return;
   if(isTrainingSale(s)){                               // practice pick-up - tick it on this device only
     const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);
@@ -2717,7 +2756,7 @@ function showInvoiceDetail(ref){
   if(s.method==='split') h+='<div class="row"><span class="lbl">Card '+money(s.cardPaid)+' · Cash '+money(s.cashPaid)+'</span></div>';
   if(s.kind==='refund') h+='<div class="warn" style="margin-top:10px">↩ Refund of '+esc(s.refundOf)+', paid back by '+esc(s.method)+'.</div>';
   const refNos=(s.refunds||[]); if(refNos.length) h+='<div class="muted" style="margin-top:8px">Refunds: '+refNos.map(esc).join(', ')+'</div>';
-  if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up'+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
+  if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up '+esc(niceDay(pickupOnOf(s)))+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
     (s.pickedUp ? '<b style="color:var(--ok)">✓ Picked up</b>'+(s.pickedUpAt?' '+esc(new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):'') : '<b style="color:#b26a00">Waiting</b>')+'</span></div>';
   if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+'. Removed from takings, stock returned to Squarespace.</div>';
   h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
@@ -4453,6 +4492,8 @@ function bind(){
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
   $('orderType').addEventListener('change', ()=>updateFinalizeState());
+  $('pickupOn').addEventListener('change', ()=>showPickupOn(true));
+  $('pickupOnToday').onclick=()=>{ $('pickupOn').value=todayKey(); showPickupOn(true); };
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
   window.addEventListener('afterprint', afterPrint);
 
