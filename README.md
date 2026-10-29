@@ -258,6 +258,19 @@ characters. It's printed under the totals as a **Code 128 barcode** (with the co
 underneath), and stays with the sale forever. It's separate from the invoice number on purpose:
 a number can still change after printing (a clash is renamed `…-2`), the code never does.
 
+- **Order number on top.** Every pick-up also gets an **order number**, printed as the docket's
+  first line in big type: `SMP0001`, `SMP0002`… at South Melbourne, `RXP0001`… at Roxy. Write it
+  on the bag so the items are easy to find. Each store has its own sequence on the site, shared by
+  every till. One rung up offline carries the device id (`SMP0012-K7Q`), like an offline invoice number.
+- **Two receipts.** A new pick-up prints **twice**, one for the customer and one to keep with the
+  items, each **cut on its own**. With the receipt bridge they go as two print jobs. With the print
+  dialog each copy is its own page, so set the printer driver to cut after every page. A reprint
+  is one copy.
+- **Pick-up date.** Choosing *Pick up later* shows a **Pick-up date**, set to **today**. Move it
+  to a later day for a **pre-order**. The receipt prints *Pick up from <date>*, and the Pick ups
+  list shows it in orange until the day comes (*Ready* after that).
+- **Scanned too early?** If the barcode is scanned before the pick-up date, a message says
+  *Not ready yet. Pick-up for this order is on <date>.* Ticking ✓ early asks before handing it over.
 - **🛍 Pick ups** (header) lists this store's orders **waiting to be picked up** — from any day —
   with the customer's name and phone, invoice number, number of items and price. The red badge
   is how many are waiting. Search by name, phone, invoice # or item.
