@@ -61,6 +61,7 @@ export default async (req) => {
     });
     const text = await r.text();
     if (!r.ok) {
+      console.log(`Squarespace refused ${variantId}: ${r.status} ${text.slice(0, 500)}`);
       const why = r.status === 409 ? 'Another product in Squarespace already has that SKU.'
         : r.status === 401 || r.status === 403 ? `Squarespace ${r.status}: the key needs the Products: Read/Write permission. (${text.slice(0, 160)})`
         : `Squarespace ${r.status}: ${text.slice(0, 300)}`;
@@ -72,6 +73,7 @@ export default async (req) => {
     if (oldSku && norm(oldSku) !== norm(sku)) await forget(oldSku);
     return json({ ok: true, item: { productId, variantId, sku: v.sku || sku, gtin: v.gtin != null ? v.gtin : gtin } }, 200, headers);
   } catch (e) {
+    console.log('sq-barcodes failed: ' + ((e && e.stack) || e));
     return json({ error: String((e && e.message) || e) }, 502, headers);
   }
 };
