@@ -51,8 +51,9 @@ export default async (req) => {
     if (!sku || sku.length > 60) return json({ error: 'The barcode must be 1 to 60 characters.' }, 400, headers);
     if (gtin !== null && !validGtin(gtin)) return json({ error: 'Not a valid GTIN: ' + gtin }, 400, headers);
 
-    const change = { sku: { present: true, value: sku } };
-    if (gtin !== null) change.gtin = { present: true, value: gtin };
+    // Plain strings: the API rejects the { present, value } wrappers its docs show.
+    const change = { sku };
+    if (gtin !== null) change.gtin = gtin;
     const url = `${SQ}/v2/commerce/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`;
     const r = await fetch(url, {
       method: 'POST',
