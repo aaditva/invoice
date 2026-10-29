@@ -97,7 +97,7 @@
   .paybtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .paybtns button{height:68px;padding:6px;font-size:16px;font-weight:700;border:2px solid transparent;border-radius:12px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
-  .paybtns button .em,.ordseg button .em,.finalize .em{font-size:20px;line-height:1}
+  .ico{flex-shrink:0}
   /* Order: Take now | Pick up later / Pre order - a sliding segmented switch */
   .ordseg{position:relative;display:grid;grid-template-columns:1fr 1fr;background:#f0f0f4;border-radius:12px;padding:4px}
   .ordseg::before{content:"";position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:#fff;border-radius:9px;
@@ -722,8 +722,8 @@
           <label>Order</label>
           <input type="hidden" id="orderType" value="now" />
           <div class="ordseg" id="orderSeg" role="group" aria-label="Order">
-            <button type="button" data-order="now" class="sel"><span class="em">🛒</span>Take now</button>
-            <button type="button" data-order="pickup"><span class="em">🛍️</span>Pick up later / Pre order</button>
+            <button type="button" data-order="now" class="sel"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M3 4h2l2.4 11h10.2L20 8H6.2"/></svg>Take now</button>
+            <button type="button" data-order="pickup"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/></svg>Pick up later / Pre order</button>
           </div>
         </div>
 
@@ -748,9 +748,9 @@
         <div class="field">
           <label>Payment method</label>
           <div class="paybtns">
-            <button class="cash" id="payCash"><span class="em">💵</span>Cash</button>
-            <button class="card" id="payCard"><span class="em">💳</span>Card</button>
-            <button class="split" id="paySplit"><span class="em">✂️</span>Split</button>
+            <button class="cash" id="payCash"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>Cash</button>
+            <button class="card" id="payCard"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Card</button>
+            <button class="split" id="paySplit"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M8 3H3v5M21 3l-9 9M3 3l9 9v9"/></svg>Split</button>
           </div>
         </div>
 
@@ -768,8 +768,8 @@
         </div>
 
         <div class="warn" id="finalizeWarn"></div>
-        <button class="primary finalize" id="btnFinalize" disabled><span class="em">🖨️</span><span id="finalizeLbl">Charge &amp; print</span></button>
-        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled><span class="em">✅</span><span id="finalizeNoPrintLbl">Charge, no print</span></button>
+        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled><span id="finalizeNoPrintLbl">Charge, no print</span></button>
+        <button class="primary finalize" id="btnFinalize" disabled><svg class="ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg><span id="finalizeLbl">Charge &amp; print</span></button>
         <button class="ghost" id="btnClear">Clear sale</button>
       </div>
     </aside>
