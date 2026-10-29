@@ -26,6 +26,10 @@
  *  rewritten, so the Cost and Brand you type are never touched. Margin and
  *  stock value are formulas and update the moment you type.
  *
+ *  Barcode changed? If a new product has EXACTLY the same name as a row
+ *  already in the tab (e.g. the old barcode's row), its Cost is copied from
+ *  that row, so you don't type it again. No exact name match = no copy.
+ *
  *  A product is never removed from the tab — even if you delete it from
  *  Squarespace. Its row stays with its name, last price, cost and brand
  *  (so the site's profit and brand charts keep counting its past sales);
@@ -133,6 +137,7 @@ function refreshProducts() {
     updateProducts();
     let copied = [];
     try { copied = fillSiteCosts(); } catch (e) { console.log('Website costs skipped: ' + e.message); }
+    fillSameNameCosts();
     fillInvoiceCosts();
     try {
       pushCosts();
@@ -250,6 +255,14 @@ function updateProducts() {
   const rowOf = {};
   vals.forEach((r, i) => { const s = String(r[0]).trim(); if (s && !(s in rowOf)) rowOf[s] = i; });
 
+  // Costs already in the tab by exact product name, so a product whose
+  // barcode changed on Squarespace keeps the cost of its old row.
+  const costByName = {};
+  vals.forEach(r => {
+    const k = nameKey(r[1]);
+    if (k && !(k in costByName) && r[4] !== '' && r[4] !== null && isFinite(Number(r[4]))) costByName[k] = Number(r[4]);
+  });
+
   const seen = {}, fresh = [], reBrand = [];
   items.forEach(it => {
     const sku = String(it.sku).trim();
@@ -269,7 +282,8 @@ function updateProducts() {
         if (g !== b) reBrand.push([rowOf[sku] + 2, g]);
       }
     } else {
-      const cost = invoiceCostFor(it.name);
+      const k = nameKey(it.name);
+      const cost = k in costByName ? costByName[k] : invoiceCostFor(it.name);
       fresh.push([sku, it.name, guessBrand(it.name), price, cost === null ? '' : cost, stock]);
     }
   });
@@ -685,6 +699,46 @@ function invoiceCostFor(name) {
     if (all.every(w => n.includes(w)) && !none.some(w => n.includes(w))) return cost;
   }
   return null;
+}
+
+/* ---------------- same product, new barcode ---------------- */
+
+// A product name, ready to compare: the old "no longer in catalog" prefix
+// and spaces at the ends are dropped, runs of spaces count as one. Nothing
+// else is changed, so only names that are exactly the same match.
+function nameKey(name) {
+  return String(name || '').replace(GONE, '').replace(/\s+/g, ' ').trim();
+}
+
+// When a barcode changes on Squarespace the product comes in as a new row
+// with an empty Cost. This copies the Cost from the row with exactly the
+// same name (the old barcode's row), so you don't type it again. It never
+// guesses: no row with that exact name and a cost = the cell stays empty.
+// Only EMPTY Cost cells are filled; if several rows share the name, the top
+// (newest) one with a cost is used.
+function fillSameNameCosts() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(PRODUCTS_TAB);
+  const last = sheet ? lastDataRow(sheet) : 0;
+  if (last < 3) return;
+  const vals = sheet.getRange(1, 1, last, sheet.getLastColumn()).getValues();
+  const heads = vals[0].map(h => String(h).trim().toLowerCase());
+  const cName = heads.indexOf('name'), cCost = heads.indexOf('cost');
+  if (cName < 0 || cCost < 0) return;
+  const has = v => v !== '' && v !== null && isFinite(Number(v));
+  const costByName = {};
+  vals.slice(1).forEach(r => {
+    const k = nameKey(r[cName]);
+    if (k && !(k in costByName) && has(r[cCost])) costByName[k] = Number(r[cCost]);
+  });
+  let filled = 0;
+  vals.slice(1).forEach((r, i) => {
+    if (r[cCost] !== '' && r[cCost] !== null) return;
+    const k = nameKey(r[cName]);
+    if (!k || !(k in costByName)) return;
+    sheet.getRange(i + 2, cCost + 1).setValue(costByName[k]).setNumberFormat('$#,##0.00');
+    filled++;
+  });
+  console.log('Costs copied from same-name products: ' + filled);
 }
 
 // Run once from the editor (or it runs after each Products refresh).
