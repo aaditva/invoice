@@ -143,6 +143,10 @@ Requires a **Business** or **Commerce** Squarespace plan.
   takes the code out of that box. A barcode the device doesn't know yet (just added in
   Squarespace, or labelled on another till) is looked up once (**Looking up…**) and added if
   it's there. The list also refreshes itself every 10 minutes while the till is idle.
+- **Search on a phone or tablet opens the camera.** Point it at the product's barcode and the
+  item goes straight into the sale, as if it had been scanned. **🔍 Search by name** in the camera
+  screen opens the usual typed search. On a computer (PC or Mac) Search is always the typed search
+  and the camera never opens.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
 - Pick **Cash** or **Card**. Cash shows the **5¢-rounded** total, quick-tender buttons,
   and **change**. Card is charged exact. **Split** takes part by card and the rest in cash:

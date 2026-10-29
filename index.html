@@ -902,7 +902,7 @@
   </div>
 </div>
 
-<!-- CAMERA BARCODE MODAL - Admin → Barcodes → Scan into Squarespace, made for a phone held in one hand -->
+<!-- CAMERA BARCODE MODAL - Admin → Barcodes → Scan into Squarespace, and the till's Search button on a phone; made for a phone held in one hand -->
 <div class="modal" id="camModal">
   <div class="sheet camsheet">
     <header><span class="store" id="camTitle">Scan barcode</span><span class="spacer"></span><button class="ghost" id="camClose">Close</button></header>
@@ -921,6 +921,7 @@
       <div class="camfoot">
         <button class="ghost" id="camRescan">↺ Scan again</button>
         <button class="primary" id="camSave" disabled>✓ Save to Squarespace</button>
+        <button class="ghost" id="camFind" style="display:none">🔍 Search by name</button>
       </div>
     </div>
   </div>
@@ -3585,7 +3586,7 @@ const SB_FORMATS = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_
 const SB_SHOW = 200;      // rows drawn at once; search narrows it down
 let lbMode = 'sq';
 let sb = { items:null, loading:null, q:'', all:false, done:'' };
-let cam = { stream:null, det:null, timer:0, last:'', hits:0, item:null, format:'', torch:false, gen:0 };
+let cam = { stream:null, det:null, timer:0, last:'', hits:0, item:null, format:'', torch:false, gen:0, sell:false };
 const isSq = sku => /^SQ/i.test(String(sku||''));
 
 function setLabelMode(mode){
@@ -3652,6 +3653,7 @@ function gtinFor(code, format){
 
 async function openCam(item){
   if($('camModal').classList.contains('show')) return;    // a second tap while it opens
+  camSellMode(false);
   cam.item=item; cam.format=''; cam.last=''; cam.hits=0;
   $('camTitle').textContent=isSq(item.sku) ? 'Scan its barcode' : 'Change its barcode';
   $('camProd').innerHTML=esc(item.name)+'<div class="cd">Now: '+esc(item.sku||'no SKU')+(item.gtin ? ' · GTIN '+esc(item.gtin) : '')+'</div>';
@@ -3724,6 +3726,7 @@ function camLoop(gen){
 }
 function camGot(code, format){
   stopCam();
+  if(cam.sell){ closeCam(); addByBarcode(code); return; }
   cam.format=format||'';
   $('camView').classList.add('hit');
   $('camMsg').textContent='Got it ✓';
@@ -3737,7 +3740,36 @@ function stopCam(){
   if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
   const v=$('camVideo'); if(v) v.srcObject=null;
 }
-function closeCam(){ stopCam(); $('camModal').classList.remove('show'); }
+function closeCam(){ stopCam(); $('camModal').classList.remove('show'); if(cam.sell) focusScan(); }
+
+/* ---------------- till: Search on a phone opens the camera ----------------
+   On a phone or tablet the till's Search button reads the product's barcode with
+   the camera and adds it to the sale, the same as the scanner would. A computer
+   (PC or Mac) never does: Search there is the typed search as before. Mobile
+   means a touch screen with no mouse AND a phone/tablet browser, so a touch-screen
+   laptop doesn't count. iPads say "Macintosh" but have touch points; Macs don't. */
+function isMobileDevice(){
+  const ua=navigator.userAgent || '';
+  const touchOnly=!!(window.matchMedia && matchMedia('(pointer: coarse) and (hover: none)').matches);
+  const mobileUa=(navigator.userAgentData && navigator.userAgentData.mobile) ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints>1);
+  return touchOnly && !!mobileUa;
+}
+function camSellMode(on){
+  cam.sell=on;
+  $('camProd').style.display=$('camStatus').style.display=$('camSave').style.display=$('camRescan').style.display = on ? 'none' : '';
+  $('camFind').style.display = on ? '' : 'none';
+}
+function openSellCam(){
+  if($('camModal').classList.contains('show')) return;
+  camSellMode(true);
+  cam.item=null; cam.format=''; cam.last=''; cam.hits=0;
+  $('camTitle').textContent='Scan to sell';
+  $('camCode').value='';
+  $('camModal').classList.add('show');
+  startCam();
+}
 async function toggleTorch(){
   const t=cam.stream && cam.stream.getVideoTracks()[0]; if(!t) return;
   cam.torch=!cam.torch;
@@ -4963,9 +4995,14 @@ function bind(){
   // Typing (or a Bluetooth/USB scanner) works too: it stops the camera and Enter saves.
   $('camCode').addEventListener('input', ()=>{
     if(cam.stream){ stopCam(); $('camMsg').textContent='Typed in'; }
-    cam.format=''; camCheck();
+    cam.format=''; if(!cam.sell) camCheck();
   });
-  $('camCode').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); if(!$('camSave').disabled) camSave(); } });
+  $('camCode').addEventListener('keydown', e=>{
+    if(e.key!=='Enter') return;
+    e.preventDefault();
+    if(cam.sell){ const v=$('camCode').value.trim(); if(v){ closeCam(); addByBarcode(v); } }
+    else if(!$('camSave').disabled) camSave();
+  });
   // A phone locked or switched away mid-scan: let the camera go, start it again on return.
   document.addEventListener('visibilitychange', ()=>{
     if(!$('camModal').classList.contains('show')) return;
@@ -4997,7 +5034,8 @@ function bind(){
   });
 
   // search / misc
-  $('btnFind').onclick=openSearch;
+  $('btnFind').onclick=()=>{ if(isMobileDevice()) openSellCam(); else openSearch(); };
+  $('camFind').onclick=()=>{ closeCam(); openSearch(); };
   $('btnMisc').onclick=addMisc;
   $('closeSearch').onclick=()=>{ $('searchModal').classList.remove('show'); focusScan(); };
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
