@@ -1236,6 +1236,7 @@ let settings = loadSettings();
 let catalog = load(LS.catalog, []);
 let catalogAt = localStorage.getItem(LS.catalogAt) || '';
 let skuMap = new Map();
+let gtinMap = new Map();     // 14-digit GTIN form -> product (see gtinKey)
 let variantMap = new Map();  // variantId -> product (so stock reconcile doesn't scan the catalog)
 let searchIndex = [];        // [{p, name, sku}] with the match keys pre-lowered/normalised once per sync
 let basket = [];             // {sku,name,price,qty}
@@ -1437,18 +1438,35 @@ function closeAllModals(){
 // slow down scanning, searching or stock reconciliation.
 function rebuildSkuMap(){
   skuMap = new Map();
+  gtinMap = new Map();
   variantMap = new Map();
   searchIndex = new Array(catalog.length);
   for(let i=0;i<catalog.length;i++){
     const p = catalog[i];
     skuMap.set(normSku(p.sku), p);
+    const g = gtinKey(normSku(p.sku));
+    if(g && !gtinMap.has(g)) gtinMap.set(g, p);
     if(p.variantId) variantMap.set(String(p.variantId), p);
     searchIndex[i] = { p:p, name:String(p.name||'').toLowerCase(), sku:normSku(p.sku) };
   }
 }
 
+// One product barcode can reach the till in more than one shape: a scanner may
+// drop the leading 0 of an EAN-13 (sending the 12-digit UPC-A), or of a UPC-A
+// (11 digits), or add one, and Squarespace may have either typed in. So shop
+// barcodes (8 or 11-14 digits, with a valid check digit) are also filed under
+// their 14-digit GTIN form, the zero-padded number GS1 treats as the same item,
+// and every shape finds the same product. An exact match always wins.
+function gtinKey(code){
+  if(!/^(\d{8}|\d{11,14})$/.test(code)) return '';
+  let sum=0;
+  for(let i=code.length-2, w=3; i>=0; i--, w=4-w) sum += Number(code[i])*w;
+  return (10 - sum%10)%10 === Number(code[code.length-1]) ? code.padStart(14,'0') : '';
+}
+function findSku(key){ return skuMap.get(key) || gtinMap.get(gtinKey(key)) || null; }
+
 /* ---------------- stock lookups ---------------- */
-function catItem(sku){ return skuMap.get(normSku(sku)) || null; }
+function catItem(sku){ return findSku(normSku(sku)); }
 // current Squarespace stock for a sku, or null if unlimited / unknown / not tracked
 function stockOf(sku){ const p=catItem(sku); if(!p) return null; const s=p.stock; return (s===null||s===undefined)?null:Number(s); }
 function basketQty(sku){ return basket.filter(b=>normSku(b.sku)===normSku(sku)).reduce((n,b)=>n+b.qty,0); }
@@ -1602,7 +1620,7 @@ function flash(msg, ok, ms){
 function addByBarcode(code){
   const key = normSku(code);
   if(!key) return;
-  const p = skuMap.get(key);
+  const p = findSku(key);
   if(!p && isPickupCode(key)){ beep(true); openPickups(key); return; }
   if(!p){ lookUpMissing(code, key); return; }
   addScanned(p);
@@ -1624,7 +1642,7 @@ async function lookUpMissing(code, key){
   const sale=saleSeq;
   flash('Looking up '+code+'…', null, 20000);
   await syncCatalog(true);
-  const p=skuMap.get(key);
+  const p=findSku(key);
   if(!p){ notFound(code); return; }
   if(sale===saleSeq) addScanned(p);
   else { flash(p.name+' found. Scan it again', true); beep(true); }   // that sale's finished; don't slip it into the next one

@@ -135,6 +135,8 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
   The whole product list is kept on the device, so a scan never waits on the internet.
+  A barcode matches however the scanner sends it: with or without the leading 0 that some
+  scanners add or drop (EAN-13 vs UPC-A), the same way big-store tills match on the 14-digit GTIN.
   A scan still lands in the basket after tapping a button (Card, a discount…) or while the
   cursor is in a box like the customer's name: the till recognises the scanner's speed and
   takes the code out of that box. A barcode the device doesn't know yet (just added in
