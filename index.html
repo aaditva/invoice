@@ -1092,7 +1092,7 @@
 
       <fieldset><legend>This device's copy of the log</legend>
         <div class="muted" id="logInfo">No sales recorded yet.</div>
-        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from. It holds the last 60 days of sales rung up here, plus anything not on the site yet (older sales stay on the site), so <b>Export this device's CSV</b> covers just that; use <b>Admin → Export range CSV</b> for the full record.</div>
+        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from. It holds the last 14 days of sales rung up here, plus anything not on the site yet (older sales stay on the site), so <b>Export this device's CSV</b> covers just that; use <b>Admin → Export range CSV</b> for the full record.</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="ghost" id="btnExport">Export this device's CSV</button>
           <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear local copy</button>
@@ -1378,7 +1378,7 @@ function storeItem(k, str, sales){
    offline fallback, so synced sales older than LOCAL_KEEP_DAYS are dropped here (they stay
    on the site). That keeps localStorage well under its quota and every load(LS.sales) cheap. */
 const SALES_KEY = 'inv_sales';      // the real log; Training's practice log is never pruned
-const LOCAL_KEEP_DAYS = 60;
+const LOCAL_KEEP_DAYS = 14;
 // Still needed on this device: not on the site yet, stock not adjusted or put back yet,
 // a pick-up not collected yet, or a practice sale (those never go anywhere else).
 function mustKeepLocal(s){

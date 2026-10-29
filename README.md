@@ -171,7 +171,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
   row has its own **⟲ Reprint** button. Tap the one you want and it prints exactly as it was saved:
   same invoice number, time and lines. It never reprints "whatever came last".
 - Admin → **Export range CSV** gives your accountant a file covering both stores; Settings →
-  **Export this device's CSV** dumps just the local copy (the last 60 days rung up here, plus
+  **Export this device's CSV** dumps just the local copy (the last 14 days rung up here, plus
   anything not on the site yet).
 
 Everything above reads the sales record **kept on the site**, not the browser — so the Today
@@ -556,7 +556,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
   the sales this device rang up — that copy is what it falls back on when the site is
   unreachable, and the queue it re-sends from.
 - **The local copy is kept small.** Once a sale is on the site, its local copy is dropped after
-  **60 days** (`LOCAL_KEEP_DAYS` in `index.html`); it stays on the site. A sale is never dropped
+  **14 days** (`LOCAL_KEEP_DAYS` in `index.html`); it stays on the site. A sale is never dropped
   while it still needs this device: not sent yet, its Squarespace stock not adjusted (or, for a
   void/refund, not put back) yet, a pick-up not collected yet, or a 🎓 Training sale. If the
   browser's storage ever fills up, the till prunes harder (a week, then everything already on
