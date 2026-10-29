@@ -98,14 +98,22 @@
   .paybtns button{height:68px;padding:6px;font-size:16px;font-weight:700;border:2px solid transparent;border-radius:12px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
   .ico{flex-shrink:0}
-  /* Order: Take now | Pick up later / Pre order - a sliding segmented switch */
-  .ordseg{position:relative;display:grid;grid-template-columns:1fr 1fr;background:#f0f0f4;border-radius:12px;padding:4px}
-  .ordseg::before{content:"";position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:#fff;border-radius:9px;
-    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .25s cubic-bezier(.2,0,0,1)}
-  .ordseg.pickup::before{transform:translateX(100%)}
-  .ordseg button{position:relative;z-index:1;background:none;min-height:44px;padding:6px 8px;font-size:14.5px;color:var(--muted);
-    display:flex;align-items:center;justify-content:center;gap:7px;line-height:1.2}
-  .ordseg button.sel{color:var(--ink);font-weight:650}
+  /* Order: Take now | Pick up / Pre order - a glass pill that slides over the labels */
+  .ordseg{position:relative;display:grid;grid-template-columns:1fr 1fr;border-radius:999px;padding:4px;isolation:isolate;
+    background:linear-gradient(180deg,#e6e6eb,#efeff3);box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
+  .ordseg::after{content:"";position:absolute;z-index:2;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:999px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.18) 55%,rgba(255,255,255,.32));
+    -webkit-backdrop-filter:saturate(1.8) brightness(1.06);backdrop-filter:saturate(1.8) brightness(1.06);
+    border:1px solid rgba(255,255,255,.7);
+    box-shadow:0 4px 14px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 2px rgba(0,0,0,.05);
+    transition:transform .45s cubic-bezier(.34,1.45,.64,1)}
+  .ordseg.pickup::after{transform:translateX(100%)}
+  .ordseg button{position:relative;z-index:1;background:none;min-height:44px;padding:6px 8px;border-radius:999px;font-size:14px;font-weight:600;
+    color:var(--muted);display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2;white-space:nowrap;
+    min-width:0;transition:color .25s}
+  .ordseg button.sel{color:var(--ink)}
+  @media (max-width:380px){ .ordseg .ico{display:none} }
+  @media (prefers-reduced-motion:reduce){ .ordseg::after{transition:none} }
   /* Category tag under each basket line, in the brand's Insights colour */
   .ctag{display:inline-block;font-size:11.5px;font-weight:650;border-radius:6px;padding:1px 7px;margin-right:6px;
     background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--ink))}
@@ -559,8 +567,11 @@
   [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
   [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
   [data-theme="dark"] #btnFinalizeNoPrint{background:#7d7aff;border-color:#7d7aff;color:#fff}
-  [data-theme="dark"] .ordseg{background:rgba(255,255,255,.08)}
-  [data-theme="dark"] .ordseg::before{background:rgba(255,255,255,.16);box-shadow:none}
+  [data-theme="dark"] .ordseg{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.09));box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+  [data-theme="dark"] .ordseg::after{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.06) 55%,rgba(255,255,255,.12));
+    border-color:rgba(255,255,255,.22);box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.3)}
+  [data-theme="dark"] .ordseg button{background:none;color:var(--muted)}
+  [data-theme="dark"] .ordseg button.sel{color:var(--ink)}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
@@ -727,7 +738,7 @@
           <input type="hidden" id="orderType" value="now" />
           <div class="ordseg" id="orderSeg" role="group" aria-label="Order">
             <button type="button" data-order="now" class="sel"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M3 4h2l2.4 11h10.2L20 8H6.2"/></svg>Take now</button>
-            <button type="button" data-order="pickup"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/></svg>Pick up later / Pre order</button>
+            <button type="button" data-order="pickup"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/></svg>Pick up / Pre order</button>
           </div>
         </div>
 
