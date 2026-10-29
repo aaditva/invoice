@@ -134,6 +134,14 @@ Requires a **Business** or **Commerce** Squarespace plan.
   basket belongs to one store).
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
+  The whole product list is kept on the device, so a scan never waits on the internet.
+  A barcode matches however the scanner sends it: with or without the leading 0 that some
+  scanners add or drop (EAN-13 vs UPC-A), the same way big-store tills match on the 14-digit GTIN.
+  A scan still lands in the basket after tapping a button (Card, a discount…) or while the
+  cursor is in a box like the customer's name: the till recognises the scanner's speed and
+  takes the code out of that box. A barcode the device doesn't know yet (just added in
+  Squarespace, or labelled on another till) is looked up once (**Looking up…**) and added if
+  it's there. The list also refreshes itself every 10 minutes while the till is idle.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
 - Pick **Cash** or **Card**. Cash shows the **5¢-rounded** total, quick-tender buttons,
   and **change**. Card is charged exact. **Split** takes part by card and the rest in cash:
