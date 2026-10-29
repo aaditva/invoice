@@ -3701,7 +3701,6 @@ async function camSave(){
     const res=await fetch(apiUrl('/api/sq-barcodes'), {method:'POST', headers:lbHeaders(true), body:JSON.stringify(body)});
     const d=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
-    const was=it.sku;
     it.sku=(d.item && d.item.sku) || code;
     if(d.item && d.item.gtin) it.gtin=d.item.gtin;
     // This till scans it straight away; the others pick it up on their next sync.
@@ -3712,9 +3711,8 @@ async function camSave(){
     const left=sb.items.filter(x=>isSq(x.sku)).length;
     $('sbStatus').textContent=left ? left+' still on an SQ code.' : 'Every product has its barcode. 🎉';
     toast('Saved '+it.sku+' to '+it.name);
-    // Straight on to the next SQ product, so a pile of new stock goes quickly.
-    const next=isSq(was) && sb.items.find(x=>isSq(x.sku));
-    if(next) openCam(next); else closeCam();
+    // Back to the list: the next product is always picked by hand, so a barcode can't land on the wrong one.
+    closeCam();
   }catch(e){ $('camStatus').textContent='Could not save: '+e.message; btn.disabled=false; }
 }
 

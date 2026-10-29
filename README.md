@@ -337,7 +337,7 @@ it can't clash with a number another till gets.
 starting with **SQ** until its barcode goes in. This lists every Squarespace product with the SQ
 ones on top (newest first). Tap one on a phone, point the camera at the box's barcode, and **Save**:
 the barcode becomes the variant's **SKU** and, for a real shop barcode (EAN/UPC with a valid check
-digit), its **GTIN** too. It then goes straight on to the next SQ product. The till you used scans
+digit), its **GTIN** too, and you're back at the list to pick the next one. The till you used scans
 it at once; the others after their next ⟳ Sync. You can also type the code or use a Bluetooth/USB
 scanner in the box. Needs the Squarespace key to have **Products: Read/Write** (section 2) and the
 site on https (Netlify is). On an iPhone the barcode reader loads from jsDelivr the first time.
