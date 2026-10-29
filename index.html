@@ -95,7 +95,20 @@
   .row.total{font-size:26px;font-weight:700;padding-top:8px;border-top:1px solid var(--line);margin-top:2px}
   .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
   .paybtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .paybtns button{padding:16px;font-size:16px;font-weight:600;border:2px solid transparent}
+  .paybtns button{height:68px;padding:6px;font-size:16px;font-weight:700;border:2px solid transparent;border-radius:12px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+  .paybtns button .em,.ordseg button .em,.finalize .em{font-size:20px;line-height:1}
+  /* Order: Take now | Pick up later / Pre order - a sliding segmented switch */
+  .ordseg{position:relative;display:grid;grid-template-columns:1fr 1fr;background:#f0f0f4;border-radius:12px;padding:4px}
+  .ordseg::before{content:"";position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);background:#fff;border-radius:9px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .25s cubic-bezier(.2,0,0,1)}
+  .ordseg.pickup::before{transform:translateX(100%)}
+  .ordseg button{position:relative;z-index:1;background:none;min-height:44px;padding:6px 8px;font-size:14.5px;color:var(--muted);
+    display:flex;align-items:center;justify-content:center;gap:7px;line-height:1.2}
+  .ordseg button.sel{color:var(--ink);font-weight:650}
+  /* Category tag under each basket line, in the brand's Insights colour */
+  .ctag{display:inline-block;font-size:11.5px;font-weight:650;border-radius:6px;padding:1px 7px;margin-right:6px;
+    background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--ink))}
   .paybtns button.cash{background:#e9f7ef;color:var(--cash)}
   .paybtns button.card{background:#e8f1fd;color:var(--card)}
   .paybtns button.split{background:#fff6d6;color:#9a6b00}
@@ -103,7 +116,7 @@
   .cashbox{display:flex;flex-direction:column;gap:10px;background:#f7f7f9;border-radius:12px;padding:14px}
   .quicktender{display:flex;flex-wrap:wrap;gap:6px}
   .quicktender button{padding:8px 10px;font-size:13px;background:#fff;border:1px solid var(--line)}
-  .finalize{padding:18px;font-size:18px;font-weight:700}
+  .finalize{padding:18px;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
   .finalize:disabled{opacity:.45;cursor:not-allowed}
   /* Finalise, no print: indigo, a sibling of the blue Finalise & Print (green/red mean cash/danger) */
   #btnFinalizeNoPrint{background:#5e5ce6;color:#fff;border-color:#5e5ce6}
@@ -269,10 +282,10 @@
   @media (max-width:480px){ .addpad{grid-template-columns:repeat(3,1fr)} }
 
   /* ---------- Admin tabs + Insights (Google-style dashboard) ---------- */
-  #adminModal{--g-blue:#1a73e8;--g-ink:#202124;--g-ink2:#5f6368;--g-line:#dadce0;--g-soft:#f8f9fa;
-    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
+  :root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
     --s9:#0097a7;--s10:#8e24aa;--s11:#795548;--s12:#c0ca33;--s13:#3949ab;--s14:#f06292;--s15:#00695c;--s16:#ff7043;
     --s17:#5c6bc0;--s18:#9e9d24;--s19:#ad1457;--s20:#26a69a;--s21:#6d4c41;--s22:#ffb300;--s23:#1e88e5;--s24:#7cb342}
+  #adminModal{--g-blue:#1a73e8;--g-ink:#202124;--g-ink2:#5f6368;--g-line:#dadce0;--g-soft:#f8f9fa}
   #adminModal .sheet{transition:max-width .35s cubic-bezier(.2,0,0,1)}
   #adminModal .sheet.xl{max-width:1200px}
   #adminModal header{flex-wrap:wrap;row-gap:0;padding-bottom:0}
@@ -542,6 +555,8 @@
   [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
   [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
   [data-theme="dark"] #btnFinalizeNoPrint{background:#7d7aff;border-color:#7d7aff;color:#fff}
+  [data-theme="dark"] .ordseg{background:rgba(255,255,255,.08)}
+  [data-theme="dark"] .ordseg::before{background:rgba(255,255,255,.16);box-shadow:none}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
@@ -704,11 +719,12 @@
         </div>
 
         <div class="field">
-          <label for="orderType">Order</label>
-          <select id="orderType">
-            <option value="now">Served on the spot</option>
-            <option value="pickup">Pick up later (keep it aside)</option>
-          </select>
+          <label>Order</label>
+          <input type="hidden" id="orderType" value="now" />
+          <div class="ordseg" id="orderSeg" role="group" aria-label="Order">
+            <button type="button" data-order="now" class="sel"><span class="em">🛒</span>Take now</button>
+            <button type="button" data-order="pickup"><span class="em">🛍️</span>Pick up later / Pre order</button>
+          </div>
         </div>
 
         <div class="field" id="pickupOnField" style="display:none">
@@ -732,9 +748,9 @@
         <div class="field">
           <label>Payment method</label>
           <div class="paybtns">
-            <button class="cash" id="payCash">Cash</button>
-            <button class="card" id="payCard">Card</button>
-            <button class="split" id="paySplit">Split</button>
+            <button class="cash" id="payCash"><span class="em">💵</span>Cash</button>
+            <button class="card" id="payCard"><span class="em">💳</span>Card</button>
+            <button class="split" id="paySplit"><span class="em">✂️</span>Split</button>
           </div>
         </div>
 
@@ -752,8 +768,8 @@
         </div>
 
         <div class="warn" id="finalizeWarn"></div>
-        <button class="primary finalize" id="btnFinalize" disabled>Finalise &amp; Print</button>
-        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled>Finalise, no print</button>
+        <button class="primary finalize" id="btnFinalize" disabled><span class="em">🖨️</span><span id="finalizeLbl">Charge &amp; print</span></button>
+        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled><span class="em">✅</span><span id="finalizeNoPrintLbl">Charge, no print</span></button>
         <button class="ghost" id="btnClear">Clear sale</button>
       </div>
     </aside>
@@ -1868,7 +1884,8 @@ function render(){
     let sub;
     if(b.misc){ sub='custom item'; }
     else {
-      sub = esc(b.sku);
+      const brand=basketBrand(b);
+      sub = (brand ? '<span class="ctag" style="--c:'+brandColor(brand)+'">'+esc(brand)+'</span>' : '')+esc(b.sku);
       const s = stockOf(b.sku);
       if(s!==null){
         const rem = s - b.qty;                 // left in Squarespace after this line
@@ -1980,6 +1997,11 @@ function updateFinalizeState(){
   $('btnFinalize').disabled=!ok;
   // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
   const pickup=$('orderType').value==='pickup';
+  $('orderSeg').classList.toggle('pickup', pickup);
+  $('orderSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', (b.dataset.order==='pickup')===pickup));
+  const due = basket.length ? ' '+money(method==='cash' ? round5(t.total) : t.total) : '';
+  $('finalizeLbl').textContent='Charge'+due+' & print';
+  $('finalizeNoPrintLbl').textContent='Charge'+due+', no print';
   showPickupOn(pickup);
   $('btnFinalizeNoPrint').style.display=pickup?'none':'';
   $('btnFinalizeNoPrint').disabled=!ok || pickup;
@@ -4003,6 +4025,12 @@ const BRAND_RULES = [
   ['Wrestling & UFC',    /\bwwe\b|\baew\b|wrestl|\bufc\b/i],
   ['Harry Potter',       /harry\s*potter/i],
 ];
+// The category tag on a basket line: the brand the sheet gave the product, else a guess from its name.
+function basketBrand(b){
+  const p=catItem(b.sku);
+  const brand=(p && p.brand && !OTHERISH.has(p.brand)) ? p.brand : guessBrand(b.name);
+  return OTHERISH.has(brand) ? '' : brand;
+}
 function guessBrand(name){
   const n=String(name||'');
   for(const r of BRAND_RULES){ if(r.slice(1).every(re=>re.test(n))) return r[0]; }
@@ -4844,7 +4872,7 @@ function bind(){
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
-  $('orderType').addEventListener('change', ()=>updateFinalizeState());
+  $('orderSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('orderType').value=b.dataset.order; updateFinalizeState(); });
   $('pickupOn').addEventListener('change', ()=>showPickupOn(true));
   $('pickupOnToday').onclick=()=>{ $('pickupOn').value=todayKey(); showPickupOn(true); };
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
