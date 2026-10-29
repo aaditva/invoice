@@ -62,7 +62,7 @@ export default async (req) => {
     const text = await r.text();
     if (!r.ok) {
       const why = r.status === 409 ? 'Another product in Squarespace already has that SKU.'
-        : r.status === 401 || r.status === 403 ? 'The Squarespace key needs the Products: Read/Write permission.'
+        : r.status === 401 || r.status === 403 ? `Squarespace ${r.status}: the key needs the Products: Read/Write permission. (${text.slice(0, 160)})`
         : `Squarespace ${r.status}: ${text.slice(0, 300)}`;
       return json({ error: why }, r.status === 409 ? 409 : 502, headers);
     }
