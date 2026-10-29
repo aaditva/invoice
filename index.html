@@ -998,7 +998,7 @@
 
       <fieldset><legend>This device's copy of the log</legend>
         <div class="muted" id="logInfo">No sales recorded yet.</div>
-        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from.</div>
+        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from. It holds the last 60 days of sales rung up here, plus anything not on the site yet (older sales stay on the site), so <b>Export this device's CSV</b> covers just that; use <b>Admin → Export range CSV</b> for the full record.</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="ghost" id="btnExport">Export this device's CSV</button>
           <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear local copy</button>
@@ -1249,7 +1249,77 @@ let allTally = null;         // today's takings across every store (admin only)
 
 /* ---------------- helpers ---------------- */
 function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
-function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); if(k===LS.sales) renderUnsent(); }
+// A full localStorage must never stop a sale being finished: storeItem() makes room and
+// retries, and if that still fails the write is skipped with a warning rather than thrown.
+function save(k, v){
+  const ok = storeItem(k, JSON.stringify(v), k===SALES_KEY && Array.isArray(v) ? v : null);
+  if(k===LS.sales) renderUnsent(v);
+  return ok;
+}
+function isQuotaError(e){
+  return !!e && (e.name==='QuotaExceededError' || e.name==='NS_ERROR_DOM_QUOTA_REACHED' || e.code===22 || e.code===1014);
+}
+// Write one key. When storage is full, prune the sales log harder each round (the usual
+// window, then a week, then every sale that's already safely on the site) and try again.
+// `sales` is the log itself when that's what is being written: it's pruned in place, since
+// writing back the caller's full copy would undo a prune of the stored one.
+function storeItem(k, str, sales){
+  for(const days of [null, LOCAL_KEEP_DAYS, 7, -1]){
+    if(days!==null){
+      if(sales){ if(!pruneSales(sales, days)) continue; str=JSON.stringify(sales); }
+      else if(!pruneLocalLog(days)) continue;
+    }
+    try{ localStorage.setItem(k, str); return true; }
+    catch(e){ if(!isQuotaError(e)) break; }
+  }
+  console.warn('Couldn\'t save '+k+': storage is full');
+  try{ toast('This device\'s storage is full. Sales still go to the site, but connect to the internet soon'); }catch(e){}
+  return false;
+}
+
+/* ---------------- keeping the local log small ----------------
+   Every sale stays on this device until it's safely on the site (and Squarespace's stock
+   has caught up). After that the site's copy is the record and the local one is only the
+   offline fallback, so synced sales older than LOCAL_KEEP_DAYS are dropped here (they stay
+   on the site). That keeps localStorage well under its quota and every load(LS.sales) cheap. */
+const SALES_KEY = 'inv_sales';      // the real log; Training's practice log is never pruned
+const LOCAL_KEEP_DAYS = 60;
+// Still needed on this device: not on the site yet, stock not adjusted or put back yet,
+// a pick-up not collected yet, or a practice sale (those never go anywhere else).
+function mustKeepLocal(s){
+  if(!s || typeof s!=='object') return false;
+  const stock = (s.stockItems||[]).length>0;
+  return !s.synced
+    || (stock && !s.stockAdjusted)
+    || (stock && (s.voided || s.kind==='refund') && !s.restocked)
+    || (s.order==='pickup' && !!s.pickupCode && !s.voided && !s.pickedUp)
+    || isTrainingSale(s);
+}
+// Drop the sales from before `days` ago that mustKeepLocal() lets go (days<0: all of them,
+// today's too). In place, so a caller holding the array or a sale in it keeps the same
+// objects. Returns how many went.
+function pruneSales(sales, days){
+  const cutoff = shiftDay(todayKey(), -days);
+  let w=0;
+  for(const s of sales){
+    const day = s && (s.day || (s.ts ? dayOf(new Date(s.ts)) : ''));
+    if(mustKeepLocal(s) || (s && !day) || day>=cutoff) sales[w++]=s;
+  }
+  const n=sales.length-w; sales.length=w;
+  return n;
+}
+// Prune the stored log (whichever store is open - Training's own log is a different key).
+function pruneLocalLog(days){
+  const sales=load(SALES_KEY, []);
+  const n = Array.isArray(sales) ? pruneSales(sales, days) : 0;
+  if(!n) return 0;
+  try{ localStorage.setItem(SALES_KEY, JSON.stringify(sales)); return n; }catch(e){ return 0; }
+}
+let prunedDay='';
+function pruneDaily(){
+  const d=todayKey(); if(d===prunedDay) return;
+  prunedDay=d; pruneLocalLog(LOCAL_KEEP_DAYS);
+}
 function loadSettings(){
   const saved = load(LS.settings, {}) || {};
   const s = Object.assign({}, DEFAULTS, saved);
@@ -1400,7 +1470,7 @@ function renderGate(){
 function selectStore(id){
   const s = storeById(id); if(!s) return;
   currentStore = s;
-  localStorage.setItem(LS.store, s.id);
+  storeItem(LS.store, s.id);
   document.body.classList.toggle('training', isTraining());
   $('gateModal').classList.remove('show');
   clearSale();                    // a basket belongs to one store, never both
@@ -1467,7 +1537,7 @@ async function syncCatalog(silent){
     if(!items.length) throw new Error('No products found at that link (need columns: barcode/SKU, name, price).');
     catalog = withOwnLabels(items, await fetchOwnLabels());
     catalogAt = new Date().toISOString();
-    save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+    save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
     rebuildSkuMap(); renderCatalogStatus(true);
   }catch(e){
     renderCatalogStatus(false);
@@ -1546,14 +1616,14 @@ function parseCsvText(text){
 function loadDemo(){
   catalog = DEMO.map(x=>Object.assign({}, x));
   catalogAt = new Date().toISOString();
-  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
   rebuildSkuMap(); renderCatalogStatus(true);
 }
 function importCsv(text){
   const out = parseCsvText(text);
   if(!out.length){ alert('No valid rows found. Format: barcode,name,price (one per line).'); return; }
   catalog = out; catalogAt = new Date().toISOString();
-  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
   rebuildSkuMap(); renderCatalogStatus(true);
   alert('Imported '+out.length+' products.');
 }
@@ -1845,7 +1915,7 @@ async function commitSale(){
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
   sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite || isTraining() ? '' : '-'+deviceId());
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
-  localStorage.setItem(counterKey(), String(counter+1));
+  storeItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
   syncSale(sale);                 // write to the site's record (retried later if offline)
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
@@ -1914,9 +1984,10 @@ async function flushUnsynced(){
 // Header badge: sales rung up here that haven't reached the site yet (no wifi).
 // Hidden whenever there are none, so it only appears while the till is offline
 // or catching up. Tapping it retries now.
-function renderUnsent(){
+// `sales` = the log when the caller already has it (save), to skip parsing it again.
+function renderUnsent(sales){
   const b=$('btnUnsent'); if(!b) return;
-  const n = settings.shareUrl && !isTraining() ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
+  const n = settings.shareUrl && !isTraining() ? (Array.isArray(sales) ? sales : load(LS.sales,[])).filter(s=>!s.synced).length : 0;
   b.classList.toggle('on', n>0);
   b.textContent='⚠ '+n+' unsent';
   b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet. Tap to send now' : '';
@@ -1973,14 +2044,14 @@ async function flushRestocks(){
   for(const s of load(LS.sales,[])){ if((s.voided || s.kind==='refund') && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
 }
 // Void a sale (immediate refund): drops it from takings, puts the stock back, keeps a voided record.
-// `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till isn't in this
-// device's own log, so an admin can void it from that site copy: it's adopted locally, then voided as usual.
+// `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till (or one
+// pruned from here after LOCAL_KEEP_DAYS) isn't in this device's own log, so an admin can void it from that site copy: it's adopted locally, then voided as usual.
 function voidSale(no, ref){
   const sales=load(LS.sales,[]);
   let s=sales.find(x=>x.no===no && (!ref || (x.day===ref.day && String(x.store||'')===String(ref.store||''))));
   if(!s){
     if(!ref){ alert('This invoice was rung up on the other till. Void it from that device.'); return; }
-    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to void it from here.'); return; }
+    if(!isAdmin()){ alert('This invoice isn\'t on this device (it was rung up on another till, or more than '+LOCAL_KEEP_DAYS+' days ago). Log in as admin to void it from here.'); return; }
     s=JSON.parse(JSON.stringify(ref));
     // The site doesn't store the till's stock bookkeeping, so rebuild it: the sale went through
     // (it's on the site), so its Squarespace decrement is treated as applied and gets put back.
@@ -2365,6 +2436,23 @@ function localPickups(storeId){
   return load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && !s.synced && !s.pickedUp &&
     (!storeId || String(s.store||'')===storeId));
 }
+// The site's collected list, copied onto this device's own copies of those sales. An open
+// pick-up is never pruned from the local log, so without this one collected on another
+// till would stay here for good. `notedDone` skips the ones already copied, so the log is
+// only read when something new has been collected.
+const notedDone = new Set();
+function notePickedUp(done){
+  const fresh = done.filter(x=>x && x.pickupCode && !notedDone.has(x.pickupCode+'|'+(x.pickedUpAt||x.pickedUpDay||'')));
+  if(!fresh.length) return;
+  const byCode = new Map(fresh.map(x=>[String(x.store||'')+'|'+x.pickupCode, x]));
+  const sales=load(LS.sales,[]); let n=0;
+  for(const s of sales){
+    const x = s && s.pickupCode && !s.pickedUp && byCode.get(String(s.store||'')+'|'+s.pickupCode);
+    if(x){ s.pickedUp=true; s.pickedUpDay=x.pickedUpDay||''; s.pickedUpAt=x.pickedUpAt||''; n++; }
+  }
+  if(n) save(LS.sales, sales);
+  fresh.forEach(x=>notedDone.add(x.pickupCode+'|'+(x.pickedUpAt||x.pickedUpDay||'')));
+}
 async function fetchPickups(storeId){
   if(storeId===TRAINING.id){
     const all=load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && isTrainingSale(s));
@@ -2373,6 +2461,7 @@ async function fetchPickups(storeId){
   const d = await fetchServerSales(salesPickupParams(storeId));
   const local = localPickups(storeId);
   if(d && Array.isArray(d.open)){
+    notePickedUp(d.done||[]);
     const have = new Set([...d.open, ...(d.done||[])].map(s=>s.pickupCode));
     return { open: d.open.concat(local.filter(s=>!have.has(s.pickupCode))), done: d.done||[], online:true };
   }
@@ -2471,6 +2560,8 @@ async function tickPickup(code, btn){
       body:JSON.stringify({store:s.store||currentStore.id, code, done:!undo, day: undo ? s.pickedUpDay : todayKey(), by:$('servedBy').value||''})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok){ alert(d.error || ('Couldn\'t update (HTTP '+res.status+')')); btn.disabled=false; return; }
+    const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);   // so the local copy can be pruned in time
+    if(x && !!x.pickedUp===undo){ x.pickedUp=!undo; x.pickedUpDay=undo ? '' : todayKey(); x.pickedUpAt=undo ? '' : new Date().toISOString(); save(LS.sales, sales); }
     savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
   }catch(e){ alert('Can\'t reach the site. Try again when back online.'); btn.disabled=false; return; }
   puHighlight='';
@@ -2649,7 +2740,7 @@ async function refundSale(ref, picks, method, by){
   const sales=load(LS.sales,[]);
   let orig=sales.find(x=>sameSale(x,ref));
   if(!orig){
-    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to refund it from here.'); return null; }
+    if(!isAdmin()){ alert('This invoice isn\'t on this device (it was rung up on another till, or more than '+LOCAL_KEEP_DAYS+' days ago). Log in as admin to refund it from here.'); return null; }
     // Adopt the site's copy so the refund can be noted on it. Its stock was already handled where it was sold.
     orig=JSON.parse(JSON.stringify(ref)); orig.stockItems=[]; orig.stockAdjusted=true; orig.restocked=true; orig.synced=true;
     sales.push(orig);
@@ -4125,7 +4216,8 @@ function openSettings(tokenFix){
   const pending=sales.filter(s=>!s.synced).length;
   $('logInfo').textContent = sales.length
     ? (sales.length+' sales held locally. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.'+
-       (pending? ' '+pending+' still waiting to reach the site.' : ' All sent to the site.'))
+       (pending? ' '+pending+' still waiting to reach the site.' : ' All sent to the site.')+
+       (isTraining() ? '' : ' Sales already on the site are cleared from here after '+LOCAL_KEEP_DAYS+' days.'))
     : 'No sales on this device yet.';
   $('settingsModal').classList.add('show');
 }
@@ -4155,7 +4247,7 @@ async function loadSiteCounter(){
     // Only if the field hasn't been touched since Settings opened.
     if(n>0 && $('sCounter').value===$('sCounter').dataset.was){
       $('sCounter').value=String(n); $('sCounter').dataset.was=String(n);
-      localStorage.setItem(counterKey(), String(n));
+      storeItem(counterKey(), String(n));
     }
   }catch(e){}
 }
@@ -4186,7 +4278,7 @@ function saveSettingsUI(){
   settings.stores=stores;
   const c=parseInt($('sCounter').value,10);
   if(!isNaN(c) && c>0){
-    localStorage.setItem(counterKey(),String(c));
+    storeItem(counterKey(), String(c));
     if(String(c)!==$('sCounter').dataset.was){                     // changed by hand → every device follows
       try{ localStorage.removeItem(reservedKey()); }catch(e){}      // a number held from the old sequence is stale
       setSiteCounter(c).then(reserveNumber);
@@ -4229,6 +4321,7 @@ function anyModalOpen(){ return document.querySelector('.modal.show'); }
 
 /* ---------------- wire up ---------------- */
 function bind(){
+  pruneDaily();                  // let go of synced sales older than LOCAL_KEEP_DAYS (they stay on the site)
   adoptStorelessSales();
   rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
 
@@ -4497,7 +4590,7 @@ function bind(){
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  setInterval(()=>{ pruneDaily(); reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
   renderUnsent();
   recheckAdmin();
 
