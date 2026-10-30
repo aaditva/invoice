@@ -338,7 +338,7 @@
   .gx .ggrid.dim{opacity:.45}
   .gx .gcard{grid-column:span 12;background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:18px 20px;
     min-width:0;opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;
-    animation-delay:calc(var(--i,0) * 70ms);transition:box-shadow .2s}
+    animation-delay:calc(var(--i,0) * 70ms);transition:box-shadow .2s,scale .18s cubic-bezier(.2,0,0,1)}
   .gx .gcard:hover{box-shadow:0 1px 3px rgba(60,64,67,.15),0 4px 12px rgba(60,64,67,.1)}
   @keyframes gin{to{opacity:1;transform:none}}
   .gx .span6{grid-column:span 6} .gx .span7{grid-column:span 7} .gx .span5{grid-column:span 5}
@@ -430,8 +430,10 @@
   .gx .kpi{background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden;
     opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms);
     transition:box-shadow .2s,scale .18s cubic-bezier(.2,0,0,1)}
-  /* `scale`, not transform: the fade-in animation holds transform, which would win over a hover transform */
+  /* `scale`, not transform: the fade-in animation holds transform, which would win over a hover transform.
+     Chart cards are far wider than the KPIs, so they grow by less to look about the same. */
   .gx .kpi:hover{scale:1.04}
+  .gx .gcard:hover{scale:1.015}
   .gx .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--g-blue))}
   .gx .kpi .kl{font-size:13px;color:var(--g-ink2);font-weight:500}
   .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums;
@@ -508,7 +510,7 @@
   @media (prefers-reduced-motion:reduce){
     .gx .gcard,.gx .kpi{animation:none;opacity:1;transform:none}
     .gx .draw,.gx .hb .bar,.gx .donut circle.seg,.gx table.gt .mini,.gx .kpi .kv{transition:none}
-    .gx .kpi:hover{scale:none} .gx .kpi:hover .kv{transform:none}
+    .gx .kpi:hover,.gx .gcard:hover{scale:none} .gx .kpi:hover .kv{transform:none}
   }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
@@ -4613,6 +4615,12 @@ function agoText(iso){
   if(m<60*24) return Math.round(m/60)+' h ago';
   return new Date(iso).toLocaleDateString('en-AU', {day:'numeric', month:'short'});
 }
+// Pointer position inside a chart host, in the host's own (unscaled) pixels -
+// the card around it grows a little on hover, which the screen rect includes.
+function hostXY(host, e){
+  const b=host.getBoundingClientRect(), k=b.width ? host.offsetWidth/b.width : 1;
+  return {x:(e.clientX-b.left)*k, y:(e.clientY-b.top)*k};
+}
 // One shared tooltip per chart host.
 function tipFor(host){
   let t=host.querySelector(':scope > .gtip');
@@ -4669,7 +4677,7 @@ function lineChart(host, labels, longLabels, series, anim){
   const tip=tipFor(host), xh=svg.querySelector('.xh'), dots=[...svg.querySelectorAll('.xd')];
   const hit=svg.querySelector('.hit');
   const move=e=>{
-    const bx=svg.getBoundingClientRect(), px=e.clientX-bx.left;
+    const px=hostXY(host, e).x;
     const k=n===1 ? 0 : Math.max(0, Math.min(n-1, Math.round((px-P.l)/iw*(n-1))));
     xh.setAttribute('x1', x(k)); xh.setAttribute('x2', x(k)); xh.style.display='';
     dots.forEach((dt, si)=>{ dt.setAttribute('cx', x(k)); dt.setAttribute('cy', y(series[si].values[k])); dt.style.display=''; });
@@ -4713,8 +4721,7 @@ function columnChart(host, labels, longLabels, series, anim){
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.colbar').forEach(b=>{ b.style.transform=''; })));
   const tip=tipFor(host), svg=host.querySelector('svg'), bands=[...svg.querySelectorAll('.band')];
   const move=e=>{
-    const bx=svg.getBoundingClientRect();
-    const k=Math.max(0, Math.min(n-1, Math.floor((e.clientX-bx.left-P.l)/band)));
+    const k=Math.max(0, Math.min(n-1, Math.floor((hostXY(host, e).x-P.l)/band)));
     bands.forEach((b,j)=>b.classList.toggle('on', j===k));
     tip.innerHTML=tipRows(longLabels[k], series.map(ser=>({name:ser.name, color:ser.color, value:moneySigned(ser.values[k])})));
     tip.classList.add('on');
@@ -4760,7 +4767,7 @@ function donutChart(host, r, anim){
     const g=segs[k];
     tip.innerHTML=tipRows(g.name, [{name:'Revenue', color:brandColor(g.name), value:moneySigned(g.v)}, {name:'Share', value:pct(g.v/tot)}]);
     tip.classList.add('on');
-    const hb=host.getBoundingClientRect(); placeTip(host, tip, e.clientX-hb.left, e.clientY-hb.top);
+    const p=hostXY(host, e); placeTip(host, tip, p.x, p.y);
   };
   circles.forEach(c=>{ c.addEventListener('pointermove', e=>hl(c.dataset.k, e)); c.addEventListener('pointerleave', ()=>hl(null)); });
   rows.forEach(rw=>{ rw.addEventListener('pointerenter', ()=>hl(rw.dataset.k)); rw.addEventListener('pointerleave', ()=>hl(null)); });
@@ -4782,7 +4789,7 @@ function hbars(host, rows, anim){
     const show=e=>{
       tip.innerHTML=tipRows(r.name, r.tip || [{name:'Value', color:r.color, value:r.label}]);
       tip.classList.add('on');
-      const hb=host.getBoundingClientRect(); placeTip(host, tip, e.clientX-hb.left, e.clientY-hb.top);
+      const p=hostXY(host, e); placeTip(host, tip, p.x, p.y);
     };
     el.addEventListener('pointermove', show);
     el.addEventListener('pointerdown', show);
