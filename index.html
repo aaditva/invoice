@@ -612,35 +612,32 @@
   [data-theme="dark"] .gx table.gt td{border-bottom-color:var(--line)}
   }
 
-  /* ---------- Liquid glass: every button and overlay, like the Order switch ----------
-     Clear, not frosted: a light tint, only a little blur, and the look comes from the light
-     on the edges - a bright rim on top, a softer one underneath, a lens highlight and a
-     faint glow at the bottom (the ::after layer, behind the label). Buttons keep their own
-     colours. Screen only - receipts print plain. */
+  /* ---------- Liquid glass (Apple's "clear" variant): every button and overlay ----------
+     Almost no fill and no blur; the glass is the light on the edges - a bright specular line
+     along the top, a faint bounce along the bottom, a hairline round the rest and a soft lift.
+     Buttons keep their own colours. Screen only - receipts print plain. */
   @media screen{
   :root{
-    --rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),inset 0 0 0 .5px rgba(255,255,255,.55),
-      inset 0 0 0 1px rgba(0,0,0,.035);
-    --lift:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(0,0,0,.07);
-    --lens:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0) 45%,rgba(255,255,255,0) 70%,rgba(255,255,255,.24));
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(0,0,0,.06);
+    --lift:0 6px 18px rgba(0,0,0,.08);
+    --fill:rgba(255,255,255,.25);
   }
-  button{position:relative;isolation:isolate;box-shadow:var(--rim),var(--lift);
+  button{box-shadow:var(--rim),var(--lift);
     transition:box-shadow .2s,transform .3s cubic-bezier(.34,1.56,.64,1),filter .2s}
-  button::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:var(--lens)}
   button:active{transform:scale(.97);filter:brightness(1.04)}
-  button{background-color:rgba(120,120,128,.12)}
-  button.ghost{background:rgba(255,255,255,.35);border-color:rgba(0,0,0,.05)}
+  button{background-color:var(--fill)}
+  button.ghost{background:var(--fill);border-color:transparent}
+  :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),#adminModal .seg button:not(.sel),.tick:not(.on){background-color:var(--fill)}
   button.primary{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
   #btnFinalizeNoPrint{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(94,92,230,.28)}
   .tile{box-shadow:var(--rim),var(--shadow)}
   /* Stay flat: they sit inside a glass track/menu, or are plain list rows and links */
   html :is(.ordseg,.gtabs) button,html .ddmenu > button:not(.storechip),html .sblist .sbrow,html button.rm{box-shadow:none}
-  html :is(.ordseg,.gtabs) button::after,html .ddmenu > button:not(.storechip)::after,html .sblist .sbrow::after,html button.rm::after{content:none}
   html :is(.ordseg,.gtabs) button:active,html .sblist .sbrow:active{transform:none;filter:none}
 
   /* The Order switch itself: a clear thumb that swells a little while pressed */
   .ordseg{background:rgba(120,120,128,.12);box-shadow:inset 0 1px 2px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.04)}
-  .ordseg::after{background:var(--lens),rgba(255,255,255,.14);border:0;
+  .ordseg::after{background:rgba(255,255,255,.14);border:0;
     -webkit-backdrop-filter:saturate(1.8) brightness(1.12);backdrop-filter:saturate(1.8) brightness(1.12);
     box-shadow:var(--rim),0 2px 6px rgba(0,0,0,.08),0 8px 20px rgba(0,0,0,.08);
     transition:transform .45s cubic-bezier(.34,1.45,.64,1),scale .3s cubic-bezier(.34,1.56,.64,1)}
@@ -668,20 +665,19 @@
     border:0;box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.08)}
   .gx .gtip{background:rgba(255,255,255,.9);box-shadow:var(--rim),0 4px 16px rgba(60,64,67,.18)}
 
-  /* Dark: as clear as glass gets - a barely-there fill and one thin even edge, no white sheen
-     top or bottom (it read as frost on dark). Filled controls go clear too. */
+  /* Dark: the same clear glass, with the specular line dimmed so it doesn't read as frost */
   [data-theme="dark"]{
-    --rim:inset 0 0 0 1px rgba(255,255,255,.1);
-    --lift:0 1px 2px rgba(0,0,0,.25);
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(255,255,255,.07);
+    --lift:0 6px 18px rgba(0,0,0,.35);
+    --fill:rgba(255,255,255,.03);
   }
   [data-theme="dark"] button{box-shadow:var(--rim),var(--lift)}
-  [data-theme="dark"] button::after{content:none}
-  [data-theme="dark"] button{background-color:rgba(255,255,255,.035)}
-  [data-theme="dark"] button.ghost{background:rgba(255,255,255,.02);border-color:transparent}
+  [data-theme="dark"] button{background-color:var(--fill)}
+  [data-theme="dark"] button.ghost{background:var(--fill);border-color:transparent}
   [data-theme="dark"] :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),[data-theme="dark"] #adminModal .seg button:not(.sel),
-  [data-theme="dark"] .tick:not(.on){background-color:rgba(255,255,255,.035)}
+  [data-theme="dark"] .tick:not(.on){background-color:var(--fill)}
   [data-theme="dark"] .ordseg{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
-  [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.09);box-shadow:var(--rim),0 2px 10px rgba(0,0,0,.3)}
+  [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.115);box-shadow:var(--rim),var(--lift)}
   [data-theme="dark"] .modal:not(.gate){background:rgba(0,0,0,.4)}
   [data-theme="dark"] .sheet{background:transparent;box-shadow:var(--rim),0 28px 70px rgba(0,0,0,.55)}
   [data-theme="dark"] .sheet::before{background:rgba(44,44,42,.92)}
