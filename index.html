@@ -701,6 +701,18 @@
   [data-theme="dark"] .toast{background:rgba(236,235,231,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 28px rgba(0,0,0,.4)}
   [data-theme="dark"] .saved{box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.3)}
   [data-theme="dark"] .gx .gtip{background:rgba(48,48,46,.92);box-shadow:var(--rim),0 4px 16px rgba(0,0,0,.4)}
+  /* Insights: the KPI and chart cards are glass too (fill, lit rim, lift - no blur, they scroll).
+     The Admin sheet itself is solid, so the till never shows through behind the cards:
+     glass over ghosted till text read as things overlapping. */
+  #adminModal .sheet::before{background:#fff}
+  [data-theme="dark"] #adminModal .sheet::before{background:rgb(44,44,42)}
+  .gx .gcard,.gx .kpi,[data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:var(--fill);border-color:transparent;
+    box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
+  /* a small lift only: big soft shadows on cards this size dropped frames while scrolling */
+  [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
+  .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.12)}
+  [data-theme="dark"] .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.45)}
+  .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
   /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
   @media (max-width:600px){
     .sheet::before{background:rgba(255,255,255,.88)}
