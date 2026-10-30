@@ -89,6 +89,15 @@
 
   /* Totals (right) */
   .totals{padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+  /* Totals stay pinned at the top of the panel while discount, order and payment scroll under them */
+  .totals > .lines{position:sticky;top:-18px;z-index:3;margin:-18px -18px 0;padding:18px 18px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  /* One-column layout: the page scrolls, not the panel, so pin against the screen
+     (under the header where that sticks too - its height is set in --hdrH by JS) */
+  @media (max-width:900px){
+    main > aside.panel,main > aside .totals{overflow:visible}
+    .totals > .lines{top:var(--hdrH,0px);border-radius:var(--radius) var(--radius) 0 0}
+  }
   .lines{display:flex;flex-direction:column;gap:8px}
   .row{display:flex;justify-content:space-between;font-size:14.5px}
   .row .lbl{color:var(--muted)}
@@ -5156,6 +5165,12 @@ function bind(){
     const r=computeInsights();
     topProducts($('gxTop'), r, !!gx.costs, true);
   });
+  // The pinned totals sit just under the header when the header sticks too (one-column tablets).
+  const setHdrH=()=>{
+    const h=document.querySelector('.app > header');
+    document.documentElement.style.setProperty('--hdrH', h && getComputedStyle(h).position==='sticky' ? h.offsetHeight+'px' : '0px');
+  };
+  setHdrH(); window.addEventListener('resize', setHdrH);
   // Charts are drawn to the width they have; redraw (without the intro) on resize.
   let gxResize=0;
   window.addEventListener('resize', ()=>{
