@@ -89,13 +89,43 @@
 
   /* Totals (right) */
   .totals{padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+  /* Totals stay pinned at the top of the panel while discount, order and payment scroll under them */
+  .totals > .lines{position:sticky;top:-18px;z-index:3;margin:-18px -18px 0;padding:18px 18px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  /* One-column layout: the page scrolls, not the panel, so pin against the screen
+     (under the header where that sticks too - its height is set in --hdrH by JS) */
+  @media (max-width:900px){
+    main > aside.panel,main > aside .totals{overflow:visible}
+    .totals > .lines{top:var(--hdrH,0px);border-radius:var(--radius) var(--radius) 0 0}
+  }
   .lines{display:flex;flex-direction:column;gap:8px}
   .row{display:flex;justify-content:space-between;font-size:14.5px}
   .row .lbl{color:var(--muted)}
   .row.total{font-size:26px;font-weight:700;padding-top:8px;border-top:1px solid var(--line);margin-top:2px}
   .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
   .paybtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .paybtns button{padding:16px;font-size:16px;font-weight:600;border:2px solid transparent}
+  .paybtns button{height:68px;padding:6px;font-size:16px;font-weight:700;border:2px solid transparent;border-radius:12px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+  .ico{flex-shrink:0}
+  /* Order: Take now | Pick up / Pre order - a glass pill that slides over the labels */
+  .ordseg{position:relative;display:grid;grid-template-columns:1fr 1fr;border-radius:999px;padding:4px;isolation:isolate;
+    background:linear-gradient(180deg,#e6e6eb,#efeff3);box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
+  .ordseg::after{content:"";position:absolute;z-index:2;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:999px;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.18) 55%,rgba(255,255,255,.32));
+    -webkit-backdrop-filter:saturate(1.8) brightness(1.06);backdrop-filter:saturate(1.8) brightness(1.06);
+    border:1px solid rgba(255,255,255,.7);
+    box-shadow:0 4px 14px rgba(0,0,0,.10),0 1px 2px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 2px rgba(0,0,0,.05);
+    transition:transform .45s cubic-bezier(.34,1.45,.64,1)}
+  .ordseg.pickup::after{transform:translateX(100%)}
+  .ordseg button{position:relative;z-index:1;background:none;min-height:44px;padding:6px 8px;border-radius:999px;font-size:14px;font-weight:600;
+    color:var(--muted);display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2;white-space:nowrap;
+    min-width:0;transition:color .25s}
+  .ordseg button.sel{color:var(--ink)}
+  @media (max-width:380px){ .ordseg .ico{display:none} }
+  @media (prefers-reduced-motion:reduce){ .ordseg::after{transition:none} }
+  /* Category tag under each basket line, in the brand's Insights colour */
+  .ctag{display:inline-block;font-size:11.5px;font-weight:650;border-radius:6px;padding:1px 7px;margin-right:6px;
+    background:color-mix(in srgb,var(--c) 16%,transparent);color:color-mix(in srgb,var(--c) 70%,var(--ink))}
   .paybtns button.cash{background:#e9f7ef;color:var(--cash)}
   .paybtns button.card{background:#e8f1fd;color:var(--card)}
   .paybtns button.split{background:#fff6d6;color:#9a6b00}
@@ -103,7 +133,7 @@
   .cashbox{display:flex;flex-direction:column;gap:10px;background:#f7f7f9;border-radius:12px;padding:14px}
   .quicktender{display:flex;flex-wrap:wrap;gap:6px}
   .quicktender button{padding:8px 10px;font-size:13px;background:#fff;border:1px solid var(--line)}
-  .finalize{padding:18px;font-size:18px;font-weight:700}
+  .finalize{padding:18px;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
   .finalize:disabled{opacity:.45;cursor:not-allowed}
   /* Finalise, no print: indigo, a sibling of the blue Finalise & Print (green/red mean cash/danger) */
   #btnFinalizeNoPrint{background:#5e5ce6;color:#fff;border-color:#5e5ce6}
@@ -211,6 +241,42 @@
   .dtable th.num,.dtable td.num{text-align:right}
   .dtable tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
   .scroller{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  /* Admin → Barcodes → Scan into Squarespace: big rows to tap with a thumb */
+  /* No scroll box of its own: one inside the scrolling admin page overlapped rows on a phone, and a tap hit the wrong one */
+  .sblist{display:block;border:1px solid var(--line);border-radius:10px}
+  .sblist .sbrow{touch-action:manipulation;display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;width:100%;text-align:left;
+    background:none;border-radius:0;border-bottom:1px solid var(--line);padding:10px 12px}
+  .sblist .sbrow:last-child{border-bottom:none}
+  .sblist .sbrow:hover{background:#f5f5f7}
+  .sblist .sbrow:active{transform:none}
+  .sblist .sbrow.done{background:rgba(52,199,89,.12)}
+  .sbrow .th{width:44px;height:44px;border-radius:8px;background:#f0f0f4 center/cover no-repeat}
+  .sbrow .nm{font-weight:550;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .sbrow .cd{font-size:12px;color:var(--muted);font-family:Menlo,Consolas,monospace;margin-top:2px;word-break:break-all}
+  .sbrow .cd b{font-family:inherit;color:#b25e00;background:rgba(237,161,0,.16);border-radius:5px;padding:0 5px}
+  .sbrow .go{font-size:22px;padding:6px 4px}
+  .sblist .sbmore{padding:12px;text-align:center}
+  .camsheet .body{gap:12px}
+  .camview{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3;max-height:52vh}
+  .camview video{width:100%;height:100%;object-fit:cover;display:block}
+  .camaim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .camaim span{width:80%;height:40%;border:3px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.32);
+    position:relative;transition:border-color .15s}
+  .camaim span::after{content:"";position:absolute;left:8%;right:8%;top:50%;height:2px;background:rgba(255,59,48,.85)}
+  .camview.hit .camaim span{border-color:#34c759}
+  .camtorch{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5)!important;color:#fff!important;font-size:20px;padding:8px 11px}
+  .camtorch.on{background:#f5a623!important}
+  .cammsg{position:absolute;left:10px;right:10px;bottom:10px;text-align:center;color:#fff;font-size:13px;text-shadow:0 1px 2px #000}
+  .camprod{font-weight:600;line-height:1.3}
+  .camprod .cd{font-weight:400;font-size:12.5px;color:var(--muted);font-family:Menlo,Consolas,monospace}
+  .camfoot{display:flex;gap:10px}
+  .camfoot button{flex:1;padding:14px;font-size:16px}
+  .camfoot button:disabled{opacity:.5}
+  @media (max-width:640px){
+    #camModal{padding:0}
+    #camModal .sheet{max-width:none;height:100%;max-height:none;border-radius:0}
+    .camview{aspect-ratio:auto;height:46vh;max-height:none}
+  }
   /* Money in the header is blacked out until Admin logs in on this device */
   .redact{background:#111;color:transparent !important;border-radius:4px;user-select:none}
   .redact b{color:transparent !important}
@@ -236,10 +302,10 @@
   @media (max-width:480px){ .addpad{grid-template-columns:repeat(3,1fr)} }
 
   /* ---------- Admin tabs + Insights (Google-style dashboard) ---------- */
-  #adminModal{--g-blue:#1a73e8;--g-ink:#202124;--g-ink2:#5f6368;--g-line:#dadce0;--g-soft:#f8f9fa;
-    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
+  :root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
     --s9:#0097a7;--s10:#8e24aa;--s11:#795548;--s12:#c0ca33;--s13:#3949ab;--s14:#f06292;--s15:#00695c;--s16:#ff7043;
     --s17:#5c6bc0;--s18:#9e9d24;--s19:#ad1457;--s20:#26a69a;--s21:#6d4c41;--s22:#ffb300;--s23:#1e88e5;--s24:#7cb342}
+  #adminModal{--g-blue:#1a73e8;--g-ink:#202124;--g-ink2:#5f6368;--g-line:#dadce0;--g-soft:#f8f9fa}
   #adminModal .sheet{transition:max-width .35s cubic-bezier(.2,0,0,1)}
   #adminModal .sheet.xl{max-width:1200px}
   #adminModal header{flex-wrap:wrap;row-gap:0;padding-bottom:0}
@@ -275,7 +341,7 @@
   .gx .ggrid.dim{opacity:.45}
   .gx .gcard{grid-column:span 12;background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:18px 20px;
     min-width:0;opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;
-    animation-delay:calc(var(--i,0) * 70ms);transition:box-shadow .2s}
+    animation-delay:calc(var(--i,0) * 70ms);transition:box-shadow .2s,scale .18s cubic-bezier(.2,0,0,1)}
   .gx .gcard:hover{box-shadow:0 1px 3px rgba(60,64,67,.15),0 4px 12px rgba(60,64,67,.1)}
   @keyframes gin{to{opacity:1;transform:none}}
   .gx .span6{grid-column:span 6} .gx .span7{grid-column:span 7} .gx .span5{grid-column:span 5}
@@ -300,7 +366,11 @@
     .sheet .body{padding:14px 12px;padding-bottom:max(14px,env(safe-area-inset-bottom))}
     .grid2{gap:8px}
     .grid2 > *{min-width:0}
-    input[type=date]{min-width:0;font-size:16px}
+    /* iOS Safari draws date inputs at their native width and ignores width/min-width,
+       so the From/To pair overlapped. Dropping the native look lets them fit their column. */
+    input[type=date]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;
+      min-height:44px;font-size:16px;text-align:left}
+    input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
     input,select{font-size:16px}
     #adminModal header > .store{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
     #adminModal header .spacer{display:none}
@@ -361,10 +431,17 @@
   .gx .band{fill:transparent}
   .gx .band.on{fill:#f1f3f4}
   .gx .kpi{background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden;
-    opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms)}
+    opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms);
+    transition:box-shadow .2s,scale .18s cubic-bezier(.2,0,0,1)}
+  /* `scale`, not transform: the fade-in animation holds transform, which would win over a hover transform.
+     Chart cards are far wider than the KPIs, so they grow by less to look about the same. */
+  .gx .kpi:hover{scale:1.04}
+  .gx .gcard:hover{scale:1.015}
   .gx .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--g-blue))}
   .gx .kpi .kl{font-size:13px;color:var(--g-ink2);font-weight:500}
-  .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums}
+  .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums;
+    transform-origin:0 50%;transition:transform .18s cubic-bezier(.2,0,0,1)}
+  .gx .kpi:hover .kv{transform:scale(1.06)}
   .gx .kpi .ks{font-size:12px;color:var(--g-ink2);margin-top:2px}
   .gx .gempty{padding:40px 10px;text-align:center;color:var(--g-ink2)}
   .gx .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--g-ink2);margin-bottom:6px}
@@ -400,12 +477,15 @@
   .gx .dlist .sw{width:12px;height:12px;border-radius:3px}
   .gx .dlist .dr > span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gx .dlist .pc{color:var(--g-ink2);text-align:right;font-size:12.5px}
-  .gx .hbars{display:flex;flex-direction:column;gap:10px}
-  .gx .hb{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:12px;align-items:center;font-size:13.5px}
+  .gx .hbars{display:flex;flex-direction:column;gap:2px}
+  .gx .hb{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:12px;align-items:center;font-size:13.5px;
+    padding:5px 8px;margin:0 -8px;border-radius:8px;cursor:default;transition:background .15s}
+  .gx .hb:hover{background:#f1f3f4}
   .gx .hb .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gx .hb .track{height:14px;position:relative}
   .gx .hb .bar{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:0 4px 4px 0;
-    transition:width .9s cubic-bezier(.2,0,0,1)}
+    transition:width .9s cubic-bezier(.2,0,0,1),top .15s,bottom .15s}
+  .gx .hb:hover .bar{top:-3px;bottom:-3px}
   .gx .hb .bar.neg{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.55) 0 3px,transparent 3px 7px)}
   .gx .hb .val{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .gx .hb .val small{color:var(--g-ink2);margin-left:6px}
@@ -432,7 +512,8 @@
   .gx .ggrid.still .gcard,.gx .ggrid.still .kpi{animation:none;opacity:1;transform:none}
   @media (prefers-reduced-motion:reduce){
     .gx .gcard,.gx .kpi{animation:none;opacity:1;transform:none}
-    .gx .draw,.gx .hb .bar,.gx .donut circle.seg,.gx table.gt .mini{transition:none}
+    .gx .draw,.gx .hb .bar,.gx .donut circle.seg,.gx table.gt .mini,.gx .kpi .kv{transition:none}
+    .gx .kpi:hover,.gx .gcard:hover{scale:none} .gx .kpi:hover .kv{transform:none}
   }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
@@ -460,6 +541,13 @@
   .tick:disabled{opacity:.5;cursor:wait}
   .pulist .pr.hl{background:#fff4d6;box-shadow:inset 4px 0 0 #eda100;animation:puflash 1.1s ease-in-out 3}
   @keyframes puflash{50%{background:#ffe08a}}
+  /* Admin login: a wrong password shakes the field side to side and turns it red until they type again */
+  #lgPin.bad{border-color:var(--danger);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--danger) 25%,transparent)}
+  #lgPin.shake{animation:shake .45s cubic-bezier(.36,.07,.19,.97)}
+  @keyframes shake{15%,85%{transform:translateX(-3px)} 30%,70%{transform:translateX(7px)} 45%,55%{transform:translateX(-9px)} 50%{transform:translateX(9px)}}
+  @media (prefers-reduced-motion:reduce){ #lgPin.shake{animation:none} }
+  .pulist .pr .who .ono{font-weight:800;letter-spacing:.02em;margin-right:4px}
+  .pulist .pr .meta .later{color:#b26a00;font-weight:650}
   .puhead{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:4px 2px -6px}
 
   /* One invoice on its own (opened from Pick ups): no date, search or list */
@@ -507,10 +595,19 @@
   [data-theme="dark"] .paybtns button.cash{background:rgba(76,195,138,.15)}
   [data-theme="dark"] .paybtns button.split{background:rgba(237,161,0,.15);color:#f0c050}
   [data-theme="dark"] #btnFinalizeNoPrint{background:#7d7aff;border-color:#7d7aff;color:#fff}
+  [data-theme="dark"] .ordseg{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.09));box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+  [data-theme="dark"] .ordseg::after{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.06) 55%,rgba(255,255,255,.12));
+    border-color:rgba(255,255,255,.22);box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.3)}
+  [data-theme="dark"] .ordseg button{background:none;color:var(--muted)}
+  [data-theme="dark"] .ordseg button.sel{color:var(--ink)}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
   [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
   [data-theme="dark"] .cashpad button.coin,[data-theme="dark"] .unsent{background:rgba(237,161,0,.16);color:#f0c050;border-color:rgba(237,161,0,.35)}
+  [data-theme="dark"] .sblist .sbrow:hover{background:var(--soft)}
+  [data-theme="dark"] .sblist .sbrow{background:none}
+  [data-theme="dark"] .sbrow .th{background-color:var(--soft)}
+  [data-theme="dark"] .sbrow .cd b{color:#f0c050}
   [data-theme="dark"] .tick{background:var(--soft)}
   [data-theme="dark"] .tick.on{background:var(--ok)}
   [data-theme="dark"] .pulist .pr.hl{background:rgba(237,161,0,.14)}
@@ -518,7 +615,7 @@
   [data-theme="dark"] #adminModal{--g-blue:#6aaeff;--g-ink:var(--ink);--g-ink2:var(--muted);--g-line:var(--line);--g-soft:var(--soft2)}
   [data-theme="dark"] .gtabs button{background:none}
   [data-theme="dark"] .gtabs button:hover,[data-theme="dark"] #adminModal .seg button:hover,
-  [data-theme="dark"] .gx .dlist .dr:hover,[data-theme="dark"] .gx .dlist .dr.hl,[data-theme="dark"] .gx table.gt tbody tr:hover{background:var(--soft)}
+  [data-theme="dark"] .gx .dlist .dr:hover,[data-theme="dark"] .gx .dlist .dr.hl,[data-theme="dark"] .gx .hb:hover,[data-theme="dark"] .gx table.gt tbody tr:hover{background:var(--soft)}
   [data-theme="dark"] .gbar.on{background:rgba(75,156,255,.25)}
   [data-theme="dark"] #adminModal .seg button,[data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi,
   [data-theme="dark"] .gx .gtip,[data-theme="dark"] .gx table.gt th,[data-theme="dark"] .gx .gseg button{background:var(--panel);color:var(--ink)}
@@ -534,6 +631,126 @@
   [data-theme="dark"] .gx table.gt td{border-bottom-color:var(--line)}
   }
 
+  /* ---------- Liquid glass (Apple's "clear" variant): every button and overlay ----------
+     Almost no fill and no blur; the glass is the light on the edges - a bright specular line
+     along the top, a faint bounce along the bottom, a hairline round the rest and a soft lift.
+     Buttons keep their own colours. Screen only - receipts print plain. */
+  @media screen{
+  :root{
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(0,0,0,.06);
+    --lift:0 6px 18px rgba(0,0,0,.08);
+    --fill:rgba(255,255,255,.25);
+  }
+  button{box-shadow:var(--rim),var(--lift);
+    transition:box-shadow .2s,transform .3s cubic-bezier(.34,1.56,.64,1),filter .2s}
+  button:active{transform:scale(.97);filter:brightness(1.04)}
+  button{background-color:var(--fill)}
+  button.ghost{background:var(--fill);border-color:transparent}
+  :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),#adminModal .seg button:not(.sel),.tick:not(.on){background-color:var(--fill)}
+  button.primary{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
+  #btnFinalizeNoPrint{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(94,92,230,.28)}
+  .tile{box-shadow:var(--rim),var(--shadow)}
+  /* Selected payment method: a soft glow in its own colour (green cash, blue card, amber split).
+     Same shadow layers selected or not (just transparent), so the glow fades rather than pops:
+     it comes in quickly and lets go slowly when another method is picked. */
+  .paybtns .cash{--glow:#1a9e57} .paybtns .card{--glow:#0071e3} .paybtns .split{--glow:#c48a00}
+  html .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent);
+    transition:box-shadow .9s ease-out,border-color .7s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
+  html .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 14%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 32%,transparent);
+    transition:box-shadow .3s ease-out,border-color .2s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
+  /* Stay flat: they sit inside a glass track/menu, or are plain list rows and links */
+  html :is(.ordseg,.gtabs) button,html .ddmenu > button:not(.storechip),html .sblist .sbrow,html button.rm{box-shadow:none}
+  html :is(.ordseg,.gtabs) button:active,html .sblist .sbrow:active{transform:none;filter:none}
+
+  /* The Order switch itself: a clear thumb that swells a little while pressed */
+  .ordseg{background:rgba(120,120,128,.12);box-shadow:inset 0 1px 2px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.04)}
+  .ordseg::after{background:rgba(255,255,255,.14);border:0;
+    -webkit-backdrop-filter:saturate(1.8) brightness(1.12);backdrop-filter:saturate(1.8) brightness(1.12);
+    box-shadow:var(--rim),0 2px 6px rgba(0,0,0,.08),0 8px 20px rgba(0,0,0,.08);
+    transition:transform .45s cubic-bezier(.34,1.45,.64,1),scale .3s cubic-bezier(.34,1.56,.64,1)}
+  .ordseg:active::after{scale:1.05 1.1}
+
+  /* Overlays, like Apple's sheets: the whole page behind a pop-up is frosted (one full-screen
+     blur on .modal::before, behind the sheet) and the sheet is a light tint over that same frost,
+     with lit edges - so the frost looks the same beside the sheet and through it. The sheet has
+     no blur of its own (one blur, not two).
+     A live blur under scrolling content is redrawn every frame (56ms/frame measured; fading it
+     in and out still 34ms), so while a sheet scrolls JS marks the modal .moving and the frost is
+     swapped for a flat wash in its own average colour (back to 60fps), and it returns ~0.2s after
+     scrolling stops. Only the backdrop fades in on open: fading the modal itself would hide the
+     blur until the fade ends. */
+  .modal:not(.gate){background:transparent;isolation:isolate;--frost:rgba(28,28,32,.12);--wash:rgba(208,208,212,.97)}
+  .modal:not(.gate)::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--frost);
+    -webkit-backdrop-filter:blur(7px) saturate(1.8);backdrop-filter:blur(7px) saturate(1.8)}
+  .modal.moving:not(.gate)::before{background:var(--wash);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .modal.show .sheet{animation:glassin .45s cubic-bezier(.34,1.4,.64,1)}
+  .modal.show:not(.gate)::before{animation:glassfade .25s ease-out}
+  @keyframes glassin{from{opacity:0;transform:translateY(16px) scale(.96)}}
+  @keyframes glassfade{from{opacity:0}}
+  .sheet{position:relative;isolation:isolate;background:transparent;border:0;
+    box-shadow:var(--rim),0 2px 8px rgba(0,0,0,.08),0 28px 70px rgba(0,0,0,.2)}
+  .sheet{--glass:rgba(255,255,255,.68)}
+  .sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:var(--glass)}
+  .sheet > header{background:transparent;border-bottom-color:rgba(0,0,0,.06)}
+  .sheet .foot{background:transparent;border-top-color:rgba(0,0,0,.06)}
+  .ddmenu{background:rgba(255,255,255,.45);-webkit-backdrop-filter:blur(3px) saturate(1.8);backdrop-filter:blur(3px) saturate(1.8);
+    border:0;box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.16)}
+  .toast{background:rgba(30,30,32,.7);-webkit-backdrop-filter:blur(10px) saturate(1.6);backdrop-filter:blur(10px) saturate(1.6);
+    border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(255,255,255,.1),0 8px 28px rgba(0,0,0,.22)}
+  .saved{background:rgba(230,244,234,.75);-webkit-backdrop-filter:blur(10px) saturate(1.8);backdrop-filter:blur(10px) saturate(1.8);
+    border:0;box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.08)}
+  .gx .gtip{background:rgba(255,255,255,.9);box-shadow:var(--rim),0 4px 16px rgba(60,64,67,.18)}
+
+  /* Dark: the same clear glass, with the specular line dimmed so it doesn't read as frost */
+  [data-theme="dark"]{
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(255,255,255,.07);
+    --lift:0 6px 18px rgba(0,0,0,.35);
+    --fill:rgba(255,255,255,.03);
+  }
+  [data-theme="dark"] button{box-shadow:var(--rim),var(--lift)}
+  [data-theme="dark"] .paybtns .cash{--glow:#4cc38a} [data-theme="dark"] .paybtns .card{--glow:#6aaeff} [data-theme="dark"] .paybtns .split{--glow:#f0c050}
+  [data-theme="dark"] .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent)}
+  [data-theme="dark"] .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 18%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 38%,transparent)}
+  [data-theme="dark"] button{background-color:var(--fill)}
+  [data-theme="dark"] button.ghost{background:var(--fill);border-color:transparent}
+  [data-theme="dark"] :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),[data-theme="dark"] #adminModal .seg button:not(.sel),
+  [data-theme="dark"] .tick:not(.on){background-color:var(--fill)}
+  [data-theme="dark"] .ordseg{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+  [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.115);box-shadow:var(--rim),var(--lift)}
+  [data-theme="dark"] .modal:not(.gate){--frost:rgba(0,0,0,.26);--wash:rgba(38,38,37,.97)}
+  [data-theme="dark"] .sheet{background:transparent;box-shadow:var(--rim),0 28px 70px rgba(0,0,0,.55)}
+  [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.68)}
+  [data-theme="dark"] .sheet > header,[data-theme="dark"] .sheet .foot{background:transparent;border-color:rgba(255,255,255,.08)}
+  [data-theme="dark"] .ddmenu{background:rgba(44,44,42,.48);box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.45)}
+  [data-theme="dark"] .toast{background:rgba(236,235,231,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 28px rgba(0,0,0,.4)}
+  [data-theme="dark"] .saved{box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.3)}
+  [data-theme="dark"] .gx .gtip{background:rgba(48,48,46,.92);box-shadow:var(--rim),0 4px 16px rgba(0,0,0,.4)}
+  /* Insights: the KPI and chart cards are glass too (fill, lit rim, small lift - no blur, they scroll).
+     The Admin sheet is see-through, but less than other pop-ups, and the cards are near-solid:
+     the till shows in the gaps between cards, never through the figures and charts (that read as
+     things overlapping). Big soft shadows on cards this size dropped frames while scrolling. */
+  #adminModal .sheet{--glass:rgba(255,255,255,.78)}
+  [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.8)}
+  .gx .gcard,.gx .kpi{background:rgba(255,255,255,.9);border-color:transparent;box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
+  [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:rgba(50,50,48,.85);border-color:transparent;
+    box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
+  .gx .gcard:hover,.gx .kpi:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.12)}
+  [data-theme="dark"] .gx .gcard:hover,[data-theme="dark"] .gx .kpi:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.45)}
+  .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
+  /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
+  @media (max-width:600px){
+    .sheet{--glass:rgba(255,255,255,.8)}
+    [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.82)}
+    #adminModal .sheet{--glass:rgba(255,255,255,.87)}
+    [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.89)}
+  }
+  @media (prefers-reduced-motion:reduce){ .modal.show .sheet,.modal.show:not(.gate){animation:none} }
+  }
+
   .receipt{display:none}
   @media print{
     /* The real @page rule is injected at print time by applyPageSize() into
@@ -546,6 +763,8 @@
     .receipt .c{text-align:center}
     .receipt .b{font-weight:700}
     .receipt .big{font-size:15px}
+    .receipt .orderno{text-align:center;font-size:40px;font-weight:800;line-height:1.1;letter-spacing:.03em;margin-bottom:6px}
+    .receipt .copybrk{break-before:page;page-break-before:always;height:0}
     .receipt hr{border:none;border-top:1px dashed #000;margin:6px 0}
     .receipt .it{margin:2px 0}
     .receipt .it .nm{}
@@ -663,11 +882,20 @@
         </div>
 
         <div class="field">
-          <label for="orderType">Order</label>
-          <select id="orderType">
-            <option value="now">Served on the spot</option>
-            <option value="pickup">Pick up later (keep it aside)</option>
-          </select>
+          <label>Order</label>
+          <input type="hidden" id="orderType" value="now" />
+          <div class="ordseg" id="orderSeg" role="group" aria-label="Order">
+            <button type="button" data-order="now" class="sel"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M3 4h2l2.4 11h10.2L20 8H6.2"/></svg>Take now</button>
+            <button type="button" data-order="pickup"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.1a1 1 0 0 1-1 .9H7.2a1 1 0 0 1-1-.9z"/><path d="M9 11V6a3 3 0 0 1 6 0v5"/></svg>Pick up / Pre order</button>
+          </div>
+        </div>
+
+        <div class="field" id="pickupOnField" style="display:none">
+          <label for="pickupOn">Pick-up date <span class="muted" id="pickupOnHint">(today)</span></label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input id="pickupOn" type="date" style="flex:1" />
+            <button class="ghost" id="pickupOnToday" title="Ready to collect today" style="padding:10px 13px">Today</button>
+          </div>
         </div>
 
         <div class="field" id="customerField">
@@ -683,9 +911,9 @@
         <div class="field">
           <label>Payment method</label>
           <div class="paybtns">
-            <button class="cash" id="payCash">Cash</button>
-            <button class="card" id="payCard">Card</button>
-            <button class="split" id="paySplit">Split</button>
+            <button class="cash" id="payCash"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>Cash</button>
+            <button class="card" id="payCard"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Card</button>
+            <button class="split" id="paySplit"><svg class="ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M8 3H3v5M21 3l-9 9M3 3l9 9v9"/></svg>Split</button>
           </div>
         </div>
 
@@ -703,8 +931,8 @@
         </div>
 
         <div class="warn" id="finalizeWarn"></div>
-        <button class="primary finalize" id="btnFinalize" disabled>Finalise &amp; Print</button>
-        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled>Finalise, no print</button>
+        <button class="ghost finalize" id="btnFinalizeNoPrint" disabled><span id="finalizeNoPrintLbl">Charge, no print</span></button>
+        <button class="primary finalize" id="btnFinalize" disabled><svg class="ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg><span id="finalizeLbl">Charge &amp; print</span></button>
         <button class="ghost" id="btnClear">Clear sale</button>
       </div>
     </aside>
@@ -801,6 +1029,23 @@
       </div>
       <!-- BARCODES - give a one-off product (a single, anything with no barcode) its own barcode and print labels -->
       <div id="adLabels" style="display:none;flex-direction:column;gap:14px">
+        <div class="seg" id="lbModes">
+          <button data-mode="sq" class="sel">📷 Scan into Squarespace</button>
+          <button data-mode="own">🏷️ Make our own barcode</button>
+        </div>
+        <!-- SCAN INTO SQUARESPACE - a product's real barcode, read with the phone's camera, becomes its SKU and GTIN -->
+        <div id="sbPane" style="display:flex;flex-direction:column;gap:12px">
+          <div class="hint" style="margin:0">New products in Squarespace get a made-up SKU starting with <b>SQ</b>. Tap one, point the
+            camera at the product's barcode, and it becomes the SKU (and the GTIN) in Squarespace, so every till can scan it.
+            The SQ ones are at the top.</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input id="sbSearch" type="search" autocomplete="off" placeholder="Search name, SKU or barcode…" style="flex:1" />
+            <button class="ghost" id="sbReload" title="Read the list from Squarespace again">⟳</button>
+          </div>
+          <div class="muted" id="sbStatus"></div>
+          <div class="sblist" id="sbList"></div>
+        </div>
+        <div id="lbOwn" style="display:none;flex-direction:column;gap:14px">
         <div class="hint" style="margin:0">For one-off things with no barcode. Type it in, and the site gives it a barcode of its own
           and prints labels to stick on. Every till can scan it straight away (after its next ⟳ Sync); stock counts down as it sells.
           These live only on the website, not in Squarespace or the Google Sheet.</div>
@@ -832,6 +1077,7 @@
           <label>Barcodes made here</label>
           <div class="scroller"><table class="dtable" id="lbList"></table></div>
         </div>
+        </div>
       </div>
       <!-- DEVICES - each till / phone / sheet script has its own key (DEVICE_KEYS on the site) -->
       <div id="adDevices" style="display:none;flex-direction:column;gap:14px">
@@ -859,6 +1105,31 @@
         <div class="muted" id="dvStatus"></div>
         <div class="scroller"><table class="dtable" id="dvList"></table></div>
         <div><button class="ghost" id="dvRefresh">Refresh</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CAMERA BARCODE MODAL - Admin → Barcodes → Scan into Squarespace, and the till's Search button on a phone; made for a phone held in one hand -->
+<div class="modal" id="camModal">
+  <div class="sheet camsheet">
+    <header><span class="store" id="camTitle">Scan barcode</span><span class="spacer"></span><button class="ghost" id="camClose">Close</button></header>
+    <div class="body">
+      <div class="camview" id="camView">
+        <video id="camVideo" playsinline muted autoplay></video>
+        <div class="camaim"><span></span></div>
+        <button class="camtorch" id="camTorch" style="display:none" title="Torch">🔦</button>
+        <div class="cammsg" id="camMsg">Starting the camera…</div>
+      </div>
+      <div class="camprod" id="camProd"></div>
+      <div class="field" style="margin:0"><label for="camCode">Barcode</label>
+        <input id="camCode" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="numeric" maxlength="60"
+          placeholder="Point the camera, or type it / use the scanner" style="font-size:20px;letter-spacing:.04em" /></div>
+      <div class="muted" id="camStatus"></div>
+      <div class="camfoot">
+        <button class="ghost" id="camRescan">↺ Scan again</button>
+        <button class="primary" id="camSave" disabled>✓ Save to Squarespace</button>
+        <button class="ghost" id="camFind" style="display:none">🔍 Search by name</button>
       </div>
     </div>
   </div>
@@ -938,6 +1209,11 @@
         <div class="field"><label for="bxScan">Scan a box to open it</label>
           <input id="bxScan" autocomplete="off" placeholder="Scan box barcode…" style="font-size:18px;padding:14px" />
           <div class="hint">Scanning opens it straight away: box stock −1, single packs +N (Squarespace and every till).</div>
+        </div>
+        <div class="field"><label for="bxFind">Or search by name / barcode (box or single pack)</label>
+          <input id="bxFind" type="search" autocomplete="off" placeholder="Search boxes and cards…" />
+          <div class="hint">Filters the box list below. Catalog matches can be picked as the box or the pack when adding one.</div>
+          <div id="bxFindRes"></div>
         </div>
         <div class="muted" id="bxStatus"></div>
         <div class="field"><label>Add a new box: scan the box, then one pack, then type packs per box</label></div>
@@ -1031,7 +1307,7 @@
 
       <fieldset><legend>This device's copy of the log</legend>
         <div class="muted" id="logInfo">No sales recorded yet.</div>
-        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from.</div>
+        <div class="hint">The site keeps the real record (see <b>Sales memory</b> above, and the <b>Admin</b> tab). This is the local copy the till falls back on when it's offline, and the queue it re-sends from. It holds the last 14 days of sales rung up here, plus anything not on the site yet (older sales stay on the site), so <b>Export this device's CSV</b> covers just that; use <b>Admin → Export range CSV</b> for the full record.</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
           <button class="ghost" id="btnExport">Export this device's CSV</button>
           <button class="ghost" id="btnClearLog" style="color:var(--danger)">Clear local copy</button>
@@ -1208,7 +1484,7 @@ let loginThen=null;
 function requireAdmin(then){
   if(isAdmin()) return true;
   loginThen = typeof then==='function' ? then : null;
-  $('lgPin').value=''; $('lgStatus').textContent='';
+  $('lgPin').value=''; $('lgPin').classList.remove('bad','shake'); $('lgStatus').textContent='';
   $('loginModal').classList.add('show');
   setTimeout(()=>$('lgPin').focus(), 30);
   return false;
@@ -1230,6 +1506,13 @@ async function checkAdminPin(pin){
   }
   throw new Error(d.error || ('HTTP '+res.status));
 }
+// Shake the password field, like a wrong password anywhere else.
+function wrongPin(){
+  const el=$('lgPin');
+  el.classList.remove('shake'); void el.offsetWidth;   // restart the shake on a second wrong try
+  el.classList.add('bad','shake'); el.select();
+  if(navigator.vibrate) navigator.vibrate(60);
+}
 async function submitLogin(){
   const pin=$('lgPin').value.trim(), btn=$('lgGo');
   if(!pin){ $('lgPin').focus(); return; }
@@ -1244,7 +1527,7 @@ async function submitLogin(){
       alert('The site rejected this device\'s sales token, so the password can\'t be checked yet.\n\nFix "Sales token" under Sales memory, Save, then log in.');
       return;
     }
-    if(r.bad){ $('lgStatus').textContent=r.bad; $('lgPin').select(); return; }
+    if(r.bad){ $('lgStatus').textContent=r.bad; wrongPin(); return; }
     try{ localStorage.setItem(ADMIN_KEY, pin); }catch(e){}
     $('loginModal').classList.remove('show');
     renderAuth(); toast('Logged in');
@@ -1521,6 +1804,7 @@ let settings = loadSettings();
 let catalog = load(LS.catalog, []);
 let catalogAt = localStorage.getItem(LS.catalogAt) || '';
 let skuMap = new Map();
+let gtinMap = new Map();     // 14-digit GTIN form -> product (see gtinKey)
 let variantMap = new Map();  // variantId -> product (so stock reconcile doesn't scan the catalog)
 let searchIndex = [];        // [{p, name, sku}] with the match keys pre-lowered/normalised once per sync
 let basket = [];             // {sku,name,price,qty}
@@ -1534,7 +1818,77 @@ let allTally = null;         // today's takings across every store (admin only)
 
 /* ---------------- helpers ---------------- */
 function load(k, dflt){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?dflt:v; }catch(e){ return dflt; } }
-function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); if(k===LS.sales) renderUnsent(); }
+// A full localStorage must never stop a sale being finished: storeItem() makes room and
+// retries, and if that still fails the write is skipped with a warning rather than thrown.
+function save(k, v){
+  const ok = storeItem(k, JSON.stringify(v), k===SALES_KEY && Array.isArray(v) ? v : null);
+  if(k===LS.sales) renderUnsent(v);
+  return ok;
+}
+function isQuotaError(e){
+  return !!e && (e.name==='QuotaExceededError' || e.name==='NS_ERROR_DOM_QUOTA_REACHED' || e.code===22 || e.code===1014);
+}
+// Write one key. When storage is full, prune the sales log harder each round (the usual
+// window, then a week, then every sale that's already safely on the site) and try again.
+// `sales` is the log itself when that's what is being written: it's pruned in place, since
+// writing back the caller's full copy would undo a prune of the stored one.
+function storeItem(k, str, sales){
+  for(const days of [null, LOCAL_KEEP_DAYS, 7, -1]){
+    if(days!==null){
+      if(sales){ if(!pruneSales(sales, days)) continue; str=JSON.stringify(sales); }
+      else if(!pruneLocalLog(days)) continue;
+    }
+    try{ localStorage.setItem(k, str); return true; }
+    catch(e){ if(!isQuotaError(e)) break; }
+  }
+  console.warn('Couldn\'t save '+k+': storage is full');
+  try{ toast('This device\'s storage is full. Sales still go to the site, but connect to the internet soon'); }catch(e){}
+  return false;
+}
+
+/* ---------------- keeping the local log small ----------------
+   Every sale stays on this device until it's safely on the site (and Squarespace's stock
+   has caught up). After that the site's copy is the record and the local one is only the
+   offline fallback, so synced sales older than LOCAL_KEEP_DAYS are dropped here (they stay
+   on the site). That keeps localStorage well under its quota and every load(LS.sales) cheap. */
+const SALES_KEY = 'inv_sales';      // the real log; Training's practice log is never pruned
+const LOCAL_KEEP_DAYS = 14;
+// Still needed on this device: not on the site yet, stock not adjusted or put back yet,
+// a pick-up not collected yet, or a practice sale (those never go anywhere else).
+function mustKeepLocal(s){
+  if(!s || typeof s!=='object') return false;
+  const stock = (s.stockItems||[]).length>0;
+  return !s.synced
+    || (stock && !s.stockAdjusted)
+    || (stock && (s.voided || s.kind==='refund') && !s.restocked)
+    || (s.order==='pickup' && !!s.pickupCode && !s.voided && !s.pickedUp)
+    || isTrainingSale(s);
+}
+// Drop the sales from before `days` ago that mustKeepLocal() lets go (days<0: all of them,
+// today's too). In place, so a caller holding the array or a sale in it keeps the same
+// objects. Returns how many went.
+function pruneSales(sales, days){
+  const cutoff = shiftDay(todayKey(), -days);
+  let w=0;
+  for(const s of sales){
+    const day = s && (s.day || (s.ts ? dayOf(new Date(s.ts)) : ''));
+    if(mustKeepLocal(s) || (s && !day) || day>=cutoff) sales[w++]=s;
+  }
+  const n=sales.length-w; sales.length=w;
+  return n;
+}
+// Prune the stored log (whichever store is open - Training's own log is a different key).
+function pruneLocalLog(days){
+  const sales=load(SALES_KEY, []);
+  const n = Array.isArray(sales) ? pruneSales(sales, days) : 0;
+  if(!n) return 0;
+  try{ localStorage.setItem(SALES_KEY, JSON.stringify(sales)); return n; }catch(e){ return 0; }
+}
+let prunedDay='';
+function pruneDaily(){
+  const d=todayKey(); if(d===prunedDay) return;
+  prunedDay=d; pruneLocalLog(LOCAL_KEEP_DAYS);
+}
 function loadSettings(){
   const saved = load(LS.settings, {}) || {};
   const s = Object.assign({}, DEFAULTS, saved);
@@ -1598,6 +1952,17 @@ function readCounter(){
   const legacy = parseInt(localStorage.getItem(LS.counter)||'1', 10);
   return isNaN(legacy) ? 1 : legacy;
 }
+// Pick-up order numbers (SMP0001, RXP0001…) are their own sequence per store,
+// printed big on top of the docket so the bagged items are easy to find.
+function pickupCounterKey(store){ return 'inv_pucounter:'+((store||currentStore||{}).id||''); }
+function readPickupCounter(store){ let n=NaN; try{ n=parseInt(localStorage.getItem(pickupCounterKey(store))||'1', 10); }catch(e){} return n>0 ? n : 1; }
+async function newOrderNo(store){
+  const fromSite = await nextServerNumber(1500, 'pickup');
+  const n = fromSite || readPickupCounter(store);
+  try{ localStorage.setItem(pickupCounterKey(store), String(n+1)); }catch(e){}
+  // Offline it carries this device's id, like an offline invoice number, so it can't clash.
+  return store.tag + 'P' + String(n).padStart(4,'0') + (fromSite || isTraining() ? '' : '-'+deviceId());
+}
 // Short random id for this browser. Only used to keep an offline-numbered sale
 // from ever matching a number the site hands another till.
 function deviceId(){
@@ -1613,12 +1978,12 @@ function deviceId(){
 // Ask the site for this store's next invoice number. Every device draws from
 // the same sequence, so a number is only ever printed for one sale. null =
 // couldn't reach the site in time.
-async function nextServerNumber(waitMs){
+async function nextServerNumber(waitMs, kind){
   const url=salesUrl({counter:'next'}); if(!url || !currentStore || isTraining()) return null;
   const c=new AbortController(); const t=setTimeout(()=>c.abort(), waitMs||5000);
   try{
     const res=await fetch(url, {method:'POST', headers:shareHeaders(true), signal:c.signal,
-      body:JSON.stringify({store:currentStore.id, min:readCounter()})});
+      body:JSON.stringify(kind==='pickup' ? {store:currentStore.id, kind, min:readPickupCounter()} : {store:currentStore.id, min:readCounter()})});
     if(!res.ok) return null;
     const d=await res.json();
     const n=parseInt(d && d.n, 10);
@@ -1685,7 +2050,7 @@ function renderGate(){
 function selectStore(id){
   const s = storeById(id); if(!s) return;
   currentStore = s;
-  localStorage.setItem(LS.store, s.id);
+  storeItem(LS.store, s.id);
   document.body.classList.toggle('training', isTraining());
   $('gateModal').classList.remove('show');
   clearSale();                    // a basket belongs to one store, never both
@@ -1722,18 +2087,35 @@ function closeAllModals(){
 // slow down scanning, searching or stock reconciliation.
 function rebuildSkuMap(){
   skuMap = new Map();
+  gtinMap = new Map();
   variantMap = new Map();
   searchIndex = new Array(catalog.length);
   for(let i=0;i<catalog.length;i++){
     const p = catalog[i];
     skuMap.set(normSku(p.sku), p);
+    const g = gtinKey(normSku(p.sku));
+    if(g && !gtinMap.has(g)) gtinMap.set(g, p);
     if(p.variantId) variantMap.set(String(p.variantId), p);
     searchIndex[i] = { p:p, name:String(p.name||'').toLowerCase(), sku:normSku(p.sku) };
   }
 }
 
+// One product barcode can reach the till in more than one shape: a scanner may
+// drop the leading 0 of an EAN-13 (sending the 12-digit UPC-A), or of a UPC-A
+// (11 digits), or add one, and Squarespace may have either typed in. So shop
+// barcodes (8 or 11-14 digits, with a valid check digit) are also filed under
+// their 14-digit GTIN form, the zero-padded number GS1 treats as the same item,
+// and every shape finds the same product. An exact match always wins.
+function gtinKey(code){
+  if(!/^(\d{8}|\d{11,14})$/.test(code)) return '';
+  let sum=0;
+  for(let i=code.length-2, w=3; i>=0; i--, w=4-w) sum += Number(code[i])*w;
+  return (10 - sum%10)%10 === Number(code[code.length-1]) ? code.padStart(14,'0') : '';
+}
+function findSku(key){ return skuMap.get(key) || gtinMap.get(gtinKey(key)) || null; }
+
 /* ---------------- stock lookups ---------------- */
-function catItem(sku){ return skuMap.get(normSku(sku)) || null; }
+function catItem(sku){ return findSku(normSku(sku)); }
 // current Squarespace stock for a sku, or null if unlimited / unknown / not tracked
 function stockOf(sku){ const p=catItem(sku); if(!p) return null; const s=p.stock; return (s===null||s===undefined)?null:Number(s); }
 function basketQty(sku){ return basket.filter(b=>normSku(b.sku)===normSku(sku)).reduce((n,b)=>n+b.qty,0); }
@@ -1741,8 +2123,18 @@ function basketQty(sku){ return basket.filter(b=>normSku(b.sku)===normSku(sku)).
 function remainingStock(sku){ const s=stockOf(sku); return s===null?null:(s - basketQty(sku)); }
 
 /* ---------------- catalog ---------------- */
+// Only one sync runs at a time: a second call (the ⟳ button during a background
+// sync, or a scan of an unknown barcode) waits for the one already going.
+// Resolves true when the list came down.
+let catSyncing=null;
 async function syncCatalog(silent){
-  if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return; }
+  if(!settings.catUrl){ if(!silent) alert('No products link set. Open Settings to add it, or load demo products.'); return false; }
+  if(!catSyncing) catSyncing=fetchCatalog().finally(()=>{ catSyncing=null; });
+  const err=await catSyncing;
+  if(err && !silent) alert('Could not sync products:\n'+err+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+  return !err;
+}
+async function fetchCatalog(){
   $('catDot').className='dot';
   try{
     const res = await fetch(settings.catUrl, {headers:{'Accept':'application/json, text/csv, */*'}});
@@ -1752,11 +2144,12 @@ async function syncCatalog(silent){
     if(!items.length) throw new Error('No products found at that link (need columns: barcode/SKU, name, price).');
     catalog = withOwnLabels(items, await fetchOwnLabels());
     catalogAt = new Date().toISOString();
-    save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+    save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
     rebuildSkuMap(); renderCatalogStatus(true);
+    return '';
   }catch(e){
     renderCatalogStatus(false);
-    if(!silent) alert('Could not sync products:\n'+e.message+'\n\nUsing the last saved copy ('+catalog.length+' products).');
+    return e.message || String(e);
   }
 }
 // Products given a barcode in Admin → 🏷️ Barcodes live on the site (/api/labels),
@@ -1831,14 +2224,14 @@ function parseCsvText(text){
 function loadDemo(){
   catalog = DEMO.map(x=>Object.assign({}, x));
   catalogAt = new Date().toISOString();
-  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
   rebuildSkuMap(); renderCatalogStatus(true);
 }
 function importCsv(text){
   const out = parseCsvText(text);
   if(!out.length){ alert('No valid rows found. Format: barcode,name,price (one per line).'); return; }
   catalog = out; catalogAt = new Date().toISOString();
-  save(LS.catalog, catalog); localStorage.setItem(LS.catalogAt, catalogAt);
+  save(LS.catalog, catalog); storeItem(LS.catalogAt, catalogAt);
   rebuildSkuMap(); renderCatalogStatus(true);
   alert('Imported '+out.length+' products.');
 }
@@ -1855,31 +2248,55 @@ function renderCatalogStatus(ok){
 }
 
 /* ---------------- basket ---------------- */
+// One audio context for every beep. Making a new one per scan opened the sound
+// device each time (which can hold the screen up for a moment) and never closed it.
+let beepCtx=null;
 function beep(ok){
   try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=beepCtx || (beepCtx=new (window.AudioContext||window.webkitAudioContext)());
+    if(ctx.state!=='running') ctx.resume();
     const o=ctx.createOscillator(), g=ctx.createGain();
     o.frequency.value = ok?880:220; o.connect(g); g.connect(ctx.destination);
     g.gain.setValueAtTime(.08,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.16);
     o.start(); o.stop(ctx.currentTime+.16);
   }catch(e){}
 }
-function flash(msg, ok){
-  const el=$('flash'); el.textContent=msg; el.className='flash show '+(ok?'ok':'bad');
-  clearTimeout(flash._t); flash._t=setTimeout(()=>{ el.className='flash'; }, 1400);
+// ok: true = green, false = red, null = plain. ms: how long it stays up.
+function flash(msg, ok, ms){
+  const el=$('flash'); el.textContent=msg; el.className='flash show'+(ok==null?'':ok?' ok':' bad');
+  clearTimeout(flash._t); flash._t=setTimeout(()=>{ el.className='flash'; }, ms||1400);
 }
 function addByBarcode(code){
   const key = normSku(code);
   if(!key) return;
-  const p = skuMap.get(key);
+  const p = findSku(key);
   if(!p && isPickupCode(key)){ beep(true); openPickups(key); return; }
-  if(!p){ flash('Not found: '+code, false); beep(false); return; }
+  if(!p){ lookUpMissing(code, key); return; }
+  addScanned(p);
+}
+function addScanned(p){
   addItem(p);
   const rem = remainingStock(p.sku);         // after adding this unit
   if(rem!==null && rem<0){ flash('⚠ '+p.name+' · over by '+(-rem)+' (allowed)', false); beep(false); }
   else if(rem!==null){ flash('Added '+p.name+' · '+rem+' left', true); beep(true); }
   else { flash('Added '+p.name, true); beep(true); }
 }
+// A barcode this device doesn't know may just be new: added in Squarespace, or
+// given a label on another till, since the last sync. Fetch the list and look
+// again before calling it unknown. A list fetched in the last minute is taken as
+// current, so scanning a truly unknown code over and over doesn't re-fetch it.
+async function lookUpMissing(code, key){
+  const fresh = catalogAt && Date.now()-Date.parse(catalogAt) < 60000;
+  if(!settings.catUrl || navigator.onLine===false || (fresh && !catSyncing)){ notFound(code); return; }
+  const sale=saleSeq;
+  flash('Looking up '+code+'…', null, 20000);
+  await syncCatalog(true);
+  const p=findSku(key);
+  if(!p){ notFound(code); return; }
+  if(sale===saleSeq) addScanned(p);
+  else { flash(p.name+' found. Scan it again', true); beep(true); }   // that sale's finished; don't slip it into the next one
+}
+function notFound(code){ flash('Not found: '+code, false); beep(false); }
 function addItem(p){
   const line = basket.find(b=>normSku(b.sku)===normSku(p.sku));
   if(line){ line.qty++; }
@@ -1896,9 +2313,10 @@ function addMisc(){
 function setMiscPrice(i, v){ const n=parseFloat(v); basket[i].price = isNaN(n)?0:round2(Math.max(0,n)); render(); }
 function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
 function removeItem(i){ basket.splice(i,1); render(); }
-function clearSale(){ basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
+let saleSeq=0;   // bumped each time the basket starts over
+function clearSale(){ saleSeq++; basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
-  $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; render(); }
+  $('tender').value=''; $('splitCard').value=''; $('customer').value=''; $('contact').value=''; $('orderType').value='now'; $('pickupOn').value=''; render(); }
 
 /* ---------------- totals ---------------- */
 function totals(){
@@ -1923,7 +2341,8 @@ function render(){
     let sub;
     if(b.misc){ sub='custom item'; }
     else {
-      sub = esc(b.sku);
+      const brand=basketBrand(b);
+      sub = (brand ? '<span class="ctag" style="--c:'+brandColor(brand)+'">'+esc(brand)+'</span>' : '')+esc(b.sku);
       const s = stockOf(b.sku);
       if(s!==null){
         const rem = s - b.qty;                 // left in Squarespace after this line
@@ -2035,6 +2454,12 @@ function updateFinalizeState(){
   $('btnFinalize').disabled=!ok;
   // A pick-up order always prints: the customer needs the receipt's barcode to collect it.
   const pickup=$('orderType').value==='pickup';
+  $('orderSeg').classList.toggle('pickup', pickup);
+  $('orderSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', (b.dataset.order==='pickup')===pickup));
+  const due = basket.length ? ' '+money(method==='cash' ? round5(t.total) : t.total) : '';
+  $('finalizeLbl').textContent='Charge'+due+' & print';
+  $('finalizeNoPrintLbl').textContent='Charge'+due+', no print';
+  showPickupOn(pickup);
   $('btnFinalizeNoPrint').style.display=pickup?'none':'';
   $('btnFinalizeNoPrint').disabled=!ok || pickup;
 }
@@ -2078,6 +2503,18 @@ async function refreshToday(){
   renderToday();
 }
 
+/* ---------------- pick-up date ----------------
+   Defaults to today; a later day makes it a pre-order (scanning it early says so). */
+function chosenPickupOn(){ const v=$('pickupOn').value; return v && v>todayKey() ? v : todayKey(); }
+function showPickupOn(on){
+  $('pickupOnField').style.display=on?'':'none';
+  if(!on) return;
+  const today=todayKey(), el=$('pickupOn');
+  el.min=today;
+  if(!el.value || el.value<today) el.value=today;
+  $('pickupOnHint').textContent = el.value===today ? '(today)' : '(pre-order, '+niceDay(el.value)+')';
+}
+
 /* ---------------- finalise + print ---------------- */
 let suppressClearOnPrint=false;   // true while re-printing a sale or a report (keep current basket)
 
@@ -2117,20 +2554,22 @@ async function commitSale(){
     ...(method==='split' ? {cardPaid, cashPaid} : {}),
     stockItems, stockAdjusted: stockItems.length ? false : true
   };
-  if(order==='pickup') sale.pickupCode = newPickupCode();
+  if(order==='pickup'){ sale.pickupCode = newPickupCode(); sale.pickupOn = chosenPickupOn(); }
   // Everything above is a snapshot of the basket; only now wait on the site for
   // the number, so a scan during the wait can't slip into this sale.
   // The store tag keeps the two locations' numbers apart; the device tag is optional.
   const tag = store.tag + (settings.device||'').trim() + '-';
   // A number fetched in advance is used at once; without one, wait a moment for
   // the site, then fall back to an offline (device-tagged) number.
+  const orderNoP = order==='pickup' ? newOrderNo(store) : null;
   const fromSite = takeReserved() || await nextServerNumber(1500);
   const counter = fromSite || readCounter();
+  if(orderNoP) sale.orderNo = await orderNoP;
   // Offline the number can't come from the shared sequence, so it carries this
   // device's id (INV-SM-0042-K7Q) and can never clash with one another till prints.
   sale.no = settings.prefix + tag + String(counter).padStart(4,'0') + (fromSite || isTraining() ? '' : '-'+deviceId());
   const sales=load(LS.sales,[]); sales.push(sale); save(LS.sales, sales);
-  localStorage.setItem(counterKey(), String(counter+1));
+  storeItem(counterKey(), String(counter+1));
   applyLocalStock(stockItems);    // optimistic: drop the on-screen counts now
   syncSale(sale);                 // write to the site's record (retried later if offline)
   adjustStock(sale);              // decrement Squarespace stock (no-op if not configured; retried later if offline)
@@ -2200,9 +2639,10 @@ async function flushUnsynced(){
 // Header badge: sales rung up here that haven't reached the site yet (no wifi).
 // Hidden whenever there are none, so it only appears while the till is offline
 // or catching up. Tapping it retries now.
-function renderUnsent(){
+// `sales` = the log when the caller already has it (save), to skip parsing it again.
+function renderUnsent(sales){
   const b=$('btnUnsent'); if(!b) return;
-  const n = settings.shareUrl && !isTraining() ? load(LS.sales,[]).filter(s=>!s.synced).length : 0;
+  const n = settings.shareUrl && !isTraining() ? (Array.isArray(sales) ? sales : load(LS.sales,[])).filter(s=>!s.synced).length : 0;
   b.classList.toggle('on', n>0);
   b.textContent='⚠ '+n+' unsent';
   b.title = n ? n+' sale'+(n===1?'':'s')+' saved on this device but not on the site yet. Tap to send now' : '';
@@ -2259,14 +2699,14 @@ async function flushRestocks(){
   for(const s of load(LS.sales,[])){ if((s.voided || s.kind==='refund') && !s.restocked && (s.stockItems||[]).length) await restockInventory(s); }
 }
 // Void a sale (immediate refund): drops it from takings, puts the stock back, keeps a voided record.
-// `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till isn't in this
-// device's own log, so an admin can void it from that site copy: it's adopted locally, then voided as usual.
+// `ref` is the invoice as the site has it (Invoices list). An invoice rung up on another till (or one
+// pruned from here after LOCAL_KEEP_DAYS) isn't in this device's own log, so an admin can void it from that site copy: it's adopted locally, then voided as usual.
 function voidSale(no, ref){
   const sales=load(LS.sales,[]);
   let s=sales.find(x=>x.no===no && (!ref || (x.day===ref.day && String(x.store||'')===String(ref.store||''))));
   if(!s){
     if(!ref){ alert('This invoice was rung up on the other till. Void it from that device.'); return; }
-    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to void it from here.'); return; }
+    if(!isAdmin()){ alert('This invoice isn\'t on this device (it was rung up on another till, or more than '+LOCAL_KEEP_DAYS+' days ago). Log in as admin to void it from here.'); return; }
     s=JSON.parse(JSON.stringify(ref));
     // The site doesn't store the till's stock bookkeeping, so rebuild it: the sale went through
     // (it's on the site), so its Squarespace decrement is treated as applied and gets put back.
@@ -2458,8 +2898,15 @@ function saleForBridge(sale, info){
                : 'SPLIT: card '+money(sale.cardPaid)+' + cash '+money(sale.cashPaid);
     sale=Object.assign({}, sale, {customer:[note, sale.customer].filter(Boolean).join(' / ')});
   }
+  if(sale.order==='pickup') sale=Object.assign({}, sale, {pickupWhen: pickupWhen(sale)});
+  // A bridge from before order numbers: lead the customer line with it.
+  if(sale.orderNo && !bridgeHas(info, 'orderNo'))
+    sale=Object.assign({}, sale, {customer:['ORDER '+sale.orderNo, sale.customer].filter(Boolean).join(' / ')});
+  // A bridge from before pick-up dates: put the date on the customer line.
+  if(sale.order==='pickup' && bridgeHas(info, 'order') && !bridgeHas(info, 'pickupWhen'))
+    sale=Object.assign({}, sale, {customer:[sale.customer, 'PICK UP '+sale.pickupWhen.toUpperCase()].filter(Boolean).join(' / ')});
   if(bridgeHas(info, 'order')) return sale;
-  const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)].filter(Boolean).join(' / ');
+  const extra=[sale.customer, sale.contact, 'Order: '+orderLabel(sale)+(sale.pickupWhen?' '+sale.pickupWhen:'')].filter(Boolean).join(' / ');
   return Object.assign({}, sale, {customer: extra});
 }
 function storeForBridge(sale){
@@ -2475,10 +2922,14 @@ function finishPrint(isReprint){
 }
 
 async function printSale(sale, isReprint){
+  // A new pick-up prints twice: one for the customer, one kept with the items. A reprint is one copy.
+  const twoCopies = sale.order==='pickup' && !isReprint;
   if(await bridgeReady()){
     try{
-      await bridgeSend({type:'receipt', store:storeForBridge(sale), sale:saleForBridge(sale, bridgeInfo),
-                        options:{cut:true, drawer:true}});
+      const job={type:'receipt', store:storeForBridge(sale), sale:saleForBridge(sale, bridgeInfo)};
+      await bridgeSend(Object.assign({}, job, {options:{cut:true, drawer:true}}));
+      // Two separate jobs, so the printer cuts after each.
+      if(twoCopies) await bridgeSend(Object.assign({}, job, {options:{cut:true, drawer:false}}));
       // A bridge installed before pick-up barcodes prints the docket without one.
       if(sale.pickupCode && !bridgeHas(bridgeInfo, 'pickupCode'))
         toast('Printed ' + sale.no + ', but with no barcode. Re-run the receipt printer installer');
@@ -2497,7 +2948,7 @@ async function printSale(sale, isReprint){
       '. Start it via receipt-bridge/, and open the till over http:// or https:// ' +
       '- a file:// page is not allowed to reach localhost.');
   }
-  buildReceipt(sale);
+  buildReceipt(sale, twoCopies ? 2 : 1);
   if(isReprint) suppressClearOnPrint = true;
   window.print();
 }
@@ -2538,14 +2989,20 @@ function applyPageSize(){
 /* Order + buyer details shared by the receipt, the bridge and the invoice list.
    Older sales have no `order`, so they read as served on the spot. */
 function orderLabel(s){ return s.order==='pickup' ? 'PICK UP LATER' : 'Served on the spot'; }
+// The day a pick-up can be collected from. Older pick-ups have none: ready the day they were rung up.
+function pickupOnOf(s){ return (s && /^\d{4}-\d{2}-\d{2}$/.test(String(s.pickupOn||''))) ? s.pickupOn : (s && s.day) || todayKey(); }
+function pickupWhen(s){ return 'from '+niceDay(pickupOnOf(s)); }
+// Not ready yet: the pick-up date is still ahead (pre-orders).
+function pickupTooEarly(s){ return !!s && s.order==='pickup' && !s.pickedUp && pickupOnOf(s) > todayKey(); }
 function contactLabel(c){ return (/@/.test(c) ? 'Email: ' : 'Phone: ') + c; }
 
-function buildReceipt(s){
+function buildReceipt(s, copies){
   setReceiptWidth();
   const d=new Date(s.ts);
   const dt = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   const st=receiptStore(s);
   let h='';
+  if(s.order==='pickup' && s.orderNo) h+='<div class="orderno">'+esc(s.orderNo)+'</div>';
   h+='<div class="c b big">'+esc(st.name)+'</div>';
   if(st.location) h+='<div class="c b">'+esc(st.location)+'</div>';
   if(st.address)  h+='<div class="c">'+esc(st.address)+'</div>';
@@ -2559,6 +3016,7 @@ function buildReceipt(s){
   if(s.customer) h+='<div>Customer: '+esc(s.customer)+'</div>';
   if(s.contact)  h+='<div>'+esc(contactLabel(s.contact))+'</div>';
   h+='<div'+(s.order==='pickup'?' class="b big"':'')+'>Order: '+esc(orderLabel(s))+'</div>';
+  if(s.order==='pickup') h+='<div class="b big">Pick up '+esc(pickupWhen(s))+'</div>';
   h+='<hr>';
   s.items.forEach(it=>{
     h+='<div class="it"><div class="nm">'+esc(it.name)+'</div>'+
@@ -2598,7 +3056,8 @@ function buildReceipt(s){
   if(settings.footer) h+='<div class="c">'+esc(settings.footer)+'</div>';
   h+='<div class="c" style="font-size:11px">'+dt+'</div>';
   $('receipt').innerHTML=h;
-  applyPageSize();
+  applyPageSize();               // one page = one copy, measured before the second is added
+  if(copies===2) $('receipt').innerHTML=h+'<div class="copybrk"></div>'+h;   // customer copy + store copy, a page each
 }
 
 /* ---------------- pick-up barcode ----------------
@@ -2652,6 +3111,23 @@ function localPickups(storeId){
   return load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && !s.synced && !s.pickedUp &&
     (!storeId || String(s.store||'')===storeId));
 }
+// The site's collected list, copied onto this device's own copies of those sales. An open
+// pick-up is never pruned from the local log, so without this one collected on another
+// till would stay here for good. `notedDone` skips the ones already copied, so the log is
+// only read when something new has been collected.
+const notedDone = new Set();
+function notePickedUp(done){
+  const fresh = done.filter(x=>x && x.pickupCode && !notedDone.has(x.pickupCode+'|'+(x.pickedUpAt||x.pickedUpDay||'')));
+  if(!fresh.length) return;
+  const byCode = new Map(fresh.map(x=>[String(x.store||'')+'|'+x.pickupCode, x]));
+  const sales=load(LS.sales,[]); let n=0;
+  for(const s of sales){
+    const x = s && s.pickupCode && !s.pickedUp && byCode.get(String(s.store||'')+'|'+s.pickupCode);
+    if(x){ s.pickedUp=true; s.pickedUpDay=x.pickedUpDay||''; s.pickedUpAt=x.pickedUpAt||''; n++; }
+  }
+  if(n) save(LS.sales, sales);
+  fresh.forEach(x=>notedDone.add(x.pickupCode+'|'+(x.pickedUpAt||x.pickedUpDay||'')));
+}
 async function fetchPickups(storeId){
   if(storeId===TRAINING.id){
     const all=load(LS.sales,[]).filter(s=>s.order==='pickup' && s.pickupCode && !s.voided && isTrainingSale(s));
@@ -2660,6 +3136,7 @@ async function fetchPickups(storeId){
   const d = await fetchServerSales(salesPickupParams(storeId));
   const local = localPickups(storeId);
   if(d && Array.isArray(d.open)){
+    notePickedUp(d.done||[]);
     const have = new Set([...d.open, ...(d.done||[])].map(s=>s.pickupCode));
     return { open: d.open.concat(local.filter(s=>!have.has(s.pickupCode))), done: d.done||[], online:true };
   }
@@ -2692,7 +3169,7 @@ async function loadPickups(){
 }
 function puMatches(s, q){
   if(!q) return true;
-  const hay=(s.no+' '+(s.customer||'')+' '+(s.contact||'')+' '+(s.contact||'').replace(/\s+/g,'')+' '+(s.pickupCode||'')+' '+
+  const hay=(s.no+' '+(s.orderNo||'')+' '+(s.customer||'')+' '+(s.contact||'')+' '+(s.contact||'').replace(/\s+/g,'')+' '+(s.pickupCode||'')+' '+
     (s.items||[]).map(i=>i.name).join(' ')).toLowerCase();
   return hay.includes(q);
 }
@@ -2702,8 +3179,9 @@ function puRow(s, done){
   const when=d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
   const got = done && s.pickedUpAt ? ' · picked up '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(s.pickedUpBy?' by '+esc(s.pickedUpBy):'') : '';
   return '<div class="pr'+(done?' done':'')+(puHighlight && s.pickupCode===puHighlight?' hl':'')+'" data-code="'+esc(s.pickupCode)+'">'+
-    '<div><div class="who">'+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
-      '<div class="meta">'+esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
+    '<div><div class="who">'+(s.orderNo?'<span class="ono">'+esc(s.orderNo)+'</span> ':'')+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
+      '<div class="meta">'+(done?'':(pickupTooEarly(s)?'<span class="later">Pick up from '+esc(niceDay(pickupOnOf(s)))+'</span> · ':'Ready · '))+
+        esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
     '<div class="amt"><b>'+money(s.total)+'</b><span>'+items+' item'+(items===1?'':'s')+' · '+esc(s.method||'')+'</span></div>'+
     '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up. Tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
   '</div>';
@@ -2727,7 +3205,8 @@ async function findScannedPickup(code){
   if(s){
     renderPickups();
     if(s.pickedUp) toast('Already picked up'+(s.pickedUpAt?' · '+new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''));
-    else toast((s.customer||s.no)+' · '+money(s.total));
+    else if(pickupTooEarly(s)){ beep(false); alert(tooEarlyMsg(s)); }
+    else toast((s.orderNo?s.orderNo+' · ':'')+(s.customer||s.no)+' · '+money(s.total));
     return;
   }
   const all = await fetchPickups('');
@@ -2737,9 +3216,14 @@ async function findScannedPickup(code){
     (other.pickedUp?' and has already been picked up.':', not '+currentStore.name+'.'));
   else { toast('No pick-up found for '+code); beep(false); }
 }
+function tooEarlyMsg(s){
+  return 'Not ready yet. Pick-up for this order is on '+niceDay(pickupOnOf(s))+'.\n\n'+
+    (s.orderNo?s.orderNo+' · ':'')+s.no+(s.customer?' · '+s.customer:'')+' · '+money(s.total);
+}
 async function tickPickup(code, btn){
   const s=puFind(code); if(!s) return;
   const undo=!!s.pickedUp;
+  if(!undo && pickupTooEarly(s) && !confirm(tooEarlyMsg(s)+'\n\nHand it over early anyway?')) return;
   if(undo && !confirm('Mark '+s.no+(s.customer?' ('+s.customer+')':'')+' as NOT picked up?')) return;
   if(isTrainingSale(s)){                               // practice pick-up - tick it on this device only
     const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);
@@ -2758,6 +3242,8 @@ async function tickPickup(code, btn){
       body:JSON.stringify({store:s.store||currentStore.id, code, done:!undo, day: undo ? s.pickedUpDay : todayKey(), by:$('servedBy').value||''})});
     const d=await res.json().catch(()=>({}));
     if(!res.ok){ alert(d.error || ('Couldn\'t update (HTTP '+res.status+')')); btn.disabled=false; return; }
+    const sales=load(LS.sales,[]); const x=sales.find(y=>y.pickupCode===code);   // so the local copy can be pruned in time
+    if(x && !!x.pickedUp===undo){ x.pickedUp=!undo; x.pickedUpDay=undo ? '' : todayKey(); x.pickedUpAt=undo ? '' : new Date().toISOString(); save(LS.sales, sales); }
     savedPill(undo ? s.no+' back on the waiting list' : s.no+' picked up');
   }catch(e){ alert('Can\'t reach the site. Try again when back online.'); btn.disabled=false; return; }
   puHighlight='';
@@ -2859,7 +3345,7 @@ function showInvoiceDetail(ref){
   if(s.method==='split') h+='<div class="row"><span class="lbl">Card '+money(s.cardPaid)+' · Cash '+money(s.cashPaid)+'</span></div>';
   if(s.kind==='refund') h+='<div class="warn" style="margin-top:10px">↩ Refund of '+esc(s.refundOf)+', paid back by '+esc(s.method)+'.</div>';
   const refNos=(s.refunds||[]); if(refNos.length) h+='<div class="muted" style="margin-top:8px">Refunds: '+refNos.map(esc).join(', ')+'</div>';
-  if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up'+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
+  if(s.order==='pickup' && !s.voided) h+='<div class="row" style="margin-top:8px"><span class="lbl">Pick-up '+(s.orderNo?'<b>'+esc(s.orderNo)+'</b> · ':'')+esc(niceDay(pickupOnOf(s)))+(s.pickupCode?' · '+esc(s.pickupCode):'')+'</span><span>'+
     (s.pickedUp ? '<b style="color:var(--ok)">✓ Picked up</b>'+(s.pickedUpAt?' '+esc(new Date(s.pickedUpAt).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):'') : '<b style="color:#b26a00">Waiting</b>')+'</span></div>';
   if(s.voided) h+='<div class="warn" style="margin-top:10px">⛔ Voided'+(s.voidedAt?(' · '+new Date(s.voidedAt).toLocaleString('en-AU')):'')+'. Removed from takings, stock returned to Squarespace.</div>';
   h+='<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">';
@@ -2936,7 +3422,7 @@ async function refundSale(ref, picks, method, by){
   const sales=load(LS.sales,[]);
   let orig=sales.find(x=>sameSale(x,ref));
   if(!orig){
-    if(!isAdmin()){ alert('This invoice was rung up on another till. Log in as admin to refund it from here.'); return null; }
+    if(!isAdmin()){ alert('This invoice isn\'t on this device (it was rung up on another till, or more than '+LOCAL_KEEP_DAYS+' days ago). Log in as admin to refund it from here.'); return null; }
     // Adopt the site's copy so the refund can be noted on it. Its stock was already handled where it was sold.
     orig=JSON.parse(JSON.stringify(ref)); orig.stockItems=[]; orig.stockAdjusted=true; orig.restocked=true; orig.synced=true;
     sales.push(orig);
@@ -3065,13 +3551,34 @@ async function saveBoxes(list){
   if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
   boxes=d.boxes||list; $('bxStatus').textContent='Saved.'; renderBoxes();
 }
+function boxMatch(q, sku){
+  if(!q) return true;
+  const p=catItem(sku);
+  return normSku(sku).includes(normSku(q)) || (p && String(p.name||'').toLowerCase().includes(q.toLowerCase()));
+}
+// Search box: filters the list, and offers catalog products to fill the add-a-box fields.
+function renderBoxFind(){
+  const q=$('bxFind').value.trim();
+  renderBoxes();
+  if(!q){ $('bxFindRes').innerHTML=''; return; }
+  const words=q.toLowerCase().split(/\s+/), nq=normSku(q);
+  const hits=catalog.filter(p=>{ const n=String(p.name||'').toLowerCase();
+    return words.every(w=>n.includes(w)) || normSku(p.sku).includes(nq); }).slice(0,8);
+  $('bxFindRes').innerHTML=hits.length?'<table class="dtable">'+hits.map(p=>{
+      const i=boxes.findIndex(b=>normSku(b.box)===normSku(p.sku)), s=stockOf(p.sku);
+      return '<tr><td>'+esc(p.name)+'<div class="muted">'+esc(p.sku)+'</div></td><td class="num">'+(s===null?'-':s)+'</td>'+
+        '<td style="white-space:nowrap">'+(i>=0?'<button class="primary" data-open="'+i+'">Open 1</button> ':'')+
+        '<button class="ghost" data-asbox="'+esc(p.sku)+'">Box</button> <button class="ghost" data-aspack="'+esc(p.sku)+'">Pack</button></td></tr>';
+    }).join('')+'</table>':'<div class="muted">No products match.</div>';
+}
 function renderBoxes(){
+  const q=$('bxFind')?$('bxFind').value.trim():'';
   const nm=sku=>{ const p=catItem(sku); return p?esc(p.name):'<span class="warn">not in catalog</span>'; };
   const st=sku=>{ const s=stockOf(sku); return s===null?'-':s; };
   $('bxTable').innerHTML='<tr><th>Box</th><th class="num">Box stock</th><th>Single pack</th><th class="num">Pack stock</th><th class="num">Packs</th><th></th></tr>'+
-    (boxes.length?boxes.map((b,i)=>'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
+    (boxes.length?boxes.map((b,i)=>(!q||boxMatch(q,b.box)||boxMatch(q,b.pack))&&'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
       '<td>'+nm(b.pack)+'<div class="muted">'+esc(b.pack)+'</div></td><td class="num">'+st(b.pack)+'</td><td class="num">'+b.packs+'</td>'+
-      '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').join('')
+      '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').filter(Boolean).join('')
       :'<tr><td colspan="6" class="muted">No boxes yet. Add one below.</td></tr>');
 }
 async function addBox(){
@@ -3304,7 +3811,7 @@ async function deleteMoneyAdded(id){
 
 function openBoxes(){
   $('boxModal').classList.add('show');
-  $('bxScan').value=''; $('bxStatus').textContent='';
+  $('bxScan').value=''; $('bxFind').value=''; $('bxFindRes').innerHTML=''; $('bxStatus').textContent='';
   renderBoxes(); loadBoxes();
   setTimeout(()=>$('bxScan').focus(), 50);
 }
@@ -3568,6 +4075,250 @@ function printLabels(x, copies){
   setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ alert('Could not open printing: '+e.message); } setTimeout(()=>f.remove(), 120000); }, 300);
 }
 
+/* ---------------- admin: 🏷️ Barcodes → 📷 Scan into Squarespace ----------------
+   A product added in Squarespace has a made-up SKU (SQ…) until someone types its
+   barcode in. Here the phone's camera reads the barcode off the box and
+   /api/sq-barcodes writes it to the variant's SKU, and to its GTIN when it's a
+   real shop barcode. The SQ ones are nearly always the ones to do, so they're
+   listed first, newest first. The camera uses the browser's own barcode reader
+   (Chrome on Android) or, where there isn't one (iPhone), a ZXing reader loaded
+   the first time it's needed. */
+const SB_LIB = 'https://cdn.jsdelivr.net/npm/barcode-detector@3.0.8/dist/es/ponyfill.js/+esm';
+const SB_FORMATS = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','itf','codabar'];
+const SB_SHOW = 200;      // rows drawn at once; search narrows it down
+let lbMode = 'sq';
+let sb = { items:null, loading:null, q:'', all:false, done:'' };
+let cam = { stream:null, det:null, timer:0, last:'', hits:0, item:null, format:'', torch:false, gen:0, sell:false };
+const isSq = sku => /^SQ/i.test(String(sku||''));
+
+function setLabelMode(mode){
+  lbMode=mode;
+  $('lbModes').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.mode===mode));
+  $('sbPane').style.display = mode==='sq' ? 'flex' : 'none';
+  $('lbOwn').style.display = mode==='own' ? 'flex' : 'none';
+  if(mode==='sq'){ if(!sb.items) loadSqBarcodes(); }
+  else if(!lb.items) loadLabels();
+}
+async function loadSqBarcodes(){
+  if(sb.loading) return sb.loading;
+  $('sbStatus').textContent='Reading the products from Squarespace…';
+  sb.loading=(async()=>{
+    try{
+      const res=await fetch(apiUrl('/api/sq-barcodes'), {headers:lbHeaders(false)});
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+      sb.items=sortSqItems(d.items || []);
+      const n=sb.items.filter(x=>isSq(x.sku)).length;
+      $('sbStatus').textContent = n ? n+' still on an SQ code.' : 'Every product has its barcode. 🎉';
+    }catch(e){ $('sbStatus').textContent='Could not read Squarespace: '+e.message; }
+    renderSqBarcodes();
+  })().finally(()=>{ sb.loading=null; });
+  return sb.loading;
+}
+// SQ codes first, then the rest; newest first within each.
+function sortSqItems(items){
+  return items.slice().sort((a,b)=> (isSq(b.sku)-isSq(a.sku)) || String(b.createdOn).localeCompare(String(a.createdOn)) || String(a.name).localeCompare(String(b.name)));
+}
+function renderSqBarcodes(){
+  const el=$('sbList');
+  if(!sb.items){ el.innerHTML=''; return; }
+  const q=sb.q.trim().toLowerCase(), qs=normSku(q);
+  const hit=sb.items.filter(x=>!q || String(x.name).toLowerCase().includes(q) || normSku(x.sku).includes(qs) || String(x.gtin).includes(qs));
+  if(!hit.length){ el.innerHTML='<div class="sbmore muted">'+(q ? 'Nothing matches “'+esc(sb.q)+'”.' : 'No products in Squarespace.')+'</div>'; return; }
+  const shown=sb.all || q ? hit : hit.slice(0, SB_SHOW);
+  el.innerHTML=shown.map(x=>{
+    const th=x.image ? ' style="background-image:url(&quot;'+esc(x.image+(x.image.indexOf('?')<0?'?format=100w':''))+'&quot;)"' : '';
+    const code=isSq(x.sku) ? '<b>'+esc(x.sku||'no SKU')+'</b>' : esc(x.sku||'no SKU');
+    return '<button class="sbrow'+(String(x.variantId)===sb.done ? ' done' : '')+'" data-vid="'+esc(x.variantId)+'"><span class="th"'+th+'></span>'+
+      '<span><div class="nm">'+esc(x.name)+'</div><div class="cd">'+code+(x.gtin && x.gtin!==x.sku ? ' · GTIN '+esc(x.gtin) : '')+'</div></span>'+
+      '<span class="go" aria-hidden="true">📷</span></button>';
+  }).join('')+(shown.length<hit.length ? '<div class="sbmore"><button class="ghost" id="sbAll">Show all '+hit.length+'</button></div>' : '');
+}
+
+// The GTIN a scanned code stands for, or '' if it isn't a shop barcode (Code 128 text etc).
+// UPC-E is printed squashed to 8 digits; Squarespace wants it as the full 12-digit UPC-A.
+function upcE2A(c){
+  if(!/^[01]\d{7}$/.test(c)) return '';
+  const d=c.slice(1,7), l=d[5];
+  const m = l<='2' ? d[0]+d[1]+l+'0000'+d[2]+d[3]+d[4]
+          : l==='3' ? d[0]+d[1]+d[2]+'00000'+d[3]+d[4]
+          : l==='4' ? d[0]+d[1]+d[2]+d[3]+'00000'+d[4]
+          : d.slice(0,5)+'0000'+l;
+  return c[0]+m+c[7];
+}
+function gtinFor(code, format){
+  if(!/^\d+$/.test(code)) return '';
+  if(code.length===8 && (format==='upc_e' || !gtinKey(code))){ const a=upcE2A(code); if(a && gtinKey(a)) return a; }
+  if(!gtinKey(code)) return '';
+  return code.length===11 ? '0'+code : code;      // a UPC-A that lost its leading 0
+}
+
+async function openCam(item){
+  if($('camModal').classList.contains('show')) return;    // a second tap while it opens
+  camSellMode(false);
+  cam.item=item; cam.format=''; cam.last=''; cam.hits=0;
+  $('camTitle').textContent=isSq(item.sku) ? 'Scan its barcode' : 'Change its barcode';
+  $('camProd').innerHTML=esc(item.name)+'<div class="cd">Now: '+esc(item.sku||'no SKU')+(item.gtin ? ' · GTIN '+esc(item.gtin) : '')+'</div>';
+  $('camCode').value=''; $('camSave').disabled=true; $('camStatus').textContent='';
+  $('camModal').classList.add('show');
+  startCam();
+}
+async function startCam(){
+  stopCam();
+  const gen=++cam.gen;
+  $('camView').classList.remove('hit');
+  $('camMsg').textContent='Starting the camera…';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $('camMsg').textContent='This browser can’t use the camera here. Type the barcode below.';
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}});
+    if(gen!==cam.gen || !$('camModal').classList.contains('show')){ stream.getTracks().forEach(t=>t.stop()); return; }
+    cam.stream=stream;
+    const v=$('camVideo'); v.srcObject=stream; await v.play().catch(()=>{});
+    const track=stream.getVideoTracks()[0], caps=track && track.getCapabilities ? track.getCapabilities() : {};
+    if(caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});
+    cam.torch=false; $('camTorch').classList.remove('on');
+    $('camTorch').style.display = caps.torch ? '' : 'none';
+    $('camMsg').textContent='Loading the barcode reader…';
+    if(!cam.det) cam.det=await makeDetector();
+    if(gen!==cam.gen) return;
+    $('camMsg').textContent='Line the barcode up inside the box';
+    camLoop(gen);
+  }catch(e){
+    const why = e && e.name==='NotAllowedError' ? 'Camera blocked. Allow it for this site in the browser settings, or type the barcode below.'
+      : e && e.name==='NotFoundError' ? 'No camera found. Type the barcode below, or use the scanner.'
+      : 'Camera didn’t start ('+(e && e.message || e)+'). Type the barcode below.';
+    if(gen===cam.gen) $('camMsg').textContent=why;
+  }
+}
+async function makeDetector(){
+  if('BarcodeDetector' in window){
+    try{
+      const ok=await window.BarcodeDetector.getSupportedFormats();
+      const f=SB_FORMATS.filter(x=>ok.includes(x));
+      if(f.includes('ean_13')) return new window.BarcodeDetector({formats:f});
+    }catch(e){}
+  }
+  const m=await import(SB_LIB);
+  return new m.BarcodeDetector({formats:SB_FORMATS});
+}
+// Read a frame every ~120 ms; the same code twice in a row counts, so a half-seen
+// barcode can't slip through.
+function camLoop(gen){
+  const v=$('camVideo');
+  const tick=async()=>{
+    if(gen!==cam.gen) return;
+    if(v.readyState>=2){
+      try{
+        const found=await cam.det.detect(v);
+        if(gen!==cam.gen) return;
+        const b=found && found.find(x=>x.rawValue);
+        if(b){
+          const code=String(b.rawValue).trim();
+          cam.hits = code===cam.last ? cam.hits+1 : 1; cam.last=code;
+          if(cam.hits>=2){ camGot(code, b.format); return; }
+        }
+      }catch(e){}
+    }
+    cam.timer=setTimeout(tick, 120);
+  };
+  tick();
+}
+function camGot(code, format){
+  stopCam();
+  if(cam.sell){ closeCam(); addByBarcode(code); return; }
+  cam.format=format||'';
+  $('camView').classList.add('hit');
+  $('camMsg').textContent='Got it ✓';
+  try{ navigator.vibrate && navigator.vibrate(60); }catch(e){}
+  $('camCode').value=code;
+  camCheck();
+}
+function stopCam(){
+  cam.gen++;
+  clearTimeout(cam.timer);
+  if(cam.stream){ cam.stream.getTracks().forEach(t=>t.stop()); cam.stream=null; }
+  const v=$('camVideo'); if(v) v.srcObject=null;
+}
+function closeCam(){ stopCam(); $('camModal').classList.remove('show'); if(cam.sell) focusScan(); }
+
+/* ---------------- till: Search on a phone opens the camera ----------------
+   On a phone or tablet the till's Search button reads the product's barcode with
+   the camera and adds it to the sale, the same as the scanner would. A computer
+   (PC or Mac) never does: Search there is the typed search as before. Mobile
+   means a touch screen with no mouse AND a phone/tablet browser, so a touch-screen
+   laptop doesn't count. iPads say "Macintosh" but have touch points; Macs don't. */
+function isMobileDevice(){
+  const ua=navigator.userAgent || '';
+  const touchOnly=!!(window.matchMedia && matchMedia('(pointer: coarse) and (hover: none)').matches);
+  const mobileUa=(navigator.userAgentData && navigator.userAgentData.mobile) ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints>1);
+  return touchOnly && !!mobileUa;
+}
+function camSellMode(on){
+  cam.sell=on;
+  $('camProd').style.display=$('camStatus').style.display=$('camSave').style.display=$('camRescan').style.display = on ? 'none' : '';
+  $('camFind').style.display = on ? '' : 'none';
+}
+function openSellCam(){
+  if($('camModal').classList.contains('show')) return;
+  camSellMode(true);
+  cam.item=null; cam.format=''; cam.last=''; cam.hits=0;
+  $('camTitle').textContent='Scan to sell';
+  $('camCode').value='';
+  $('camModal').classList.add('show');
+  startCam();
+}
+async function toggleTorch(){
+  const t=cam.stream && cam.stream.getVideoTracks()[0]; if(!t) return;
+  cam.torch=!cam.torch;
+  try{ await t.applyConstraints({advanced:[{torch:cam.torch}]}); }catch(e){ cam.torch=false; }
+  $('camTorch').classList.toggle('on', cam.torch);
+}
+// What Save will do, and whether another product already has this code.
+function camCheck(){
+  const code=$('camCode').value.trim(), it=cam.item;
+  $('camSave').disabled=!code;
+  if(!code){ $('camStatus').textContent=''; return; }
+  const g=it.physical ? gtinFor(code, cam.format) : '';
+  const other=(sb.items||[]).find(x=>x.variantId!==it.variantId && (normSku(x.sku)===normSku(code) || (g && x.gtin===g)));
+  $('camStatus').innerHTML='SKU → <b>'+esc(code)+'</b>'+(g ? ' · GTIN → <b>'+esc(g)+'</b>' : it.physical ? ' · not a shop barcode, so the GTIN stays as it is' : '')+
+    (other ? '<div style="color:var(--danger);margin-top:4px">⚠ '+esc(other.name)+' already has this barcode.</div>' : '');
+}
+async function camSave(){
+  const it=cam.item, code=$('camCode').value.trim();
+  if(!it || !code) return;
+  if(code.length>60){ $('camStatus').textContent='That’s too long for a SKU (60 at most).'; return; }
+  const g=it.physical ? gtinFor(code, cam.format) : '';
+  const other=(sb.items||[]).find(x=>x.variantId!==it.variantId && normSku(x.sku)===normSku(code));
+  if(other && !confirm(other.name+' already has '+code+'.\nSquarespace may refuse it. Try anyway?')) return;
+  const btn=$('camSave'); btn.disabled=true;
+  $('camStatus').textContent='Saving to Squarespace…';
+  try{
+    const body={productId:it.productId, variantId:it.variantId, sku:code, oldSku:it.sku};
+    if(g) body.gtin=g;
+    const res=await fetch(apiUrl('/api/sq-barcodes'), {method:'POST', headers:lbHeaders(true), body:JSON.stringify(body)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('HTTP '+res.status));
+    it.sku=(d.item && d.item.sku) || code;
+    if(d.item && d.item.gtin) it.gtin=d.item.gtin;
+    // This till scans it straight away; the others pick it up on their next sync.
+    const p=variantMap.get(String(it.variantId));
+    if(p){ p.sku=it.sku; rebuildSkuMap(); save(LS.catalog, catalog); }
+    if(settings.catUrl) syncCatalog(true);
+    // Left where it is (not re-sorted), so the list stays on the same page; ⟳ sorts it again.
+    sb.done=String(it.variantId); renderSqBarcodes();
+    const left=sb.items.filter(x=>isSq(x.sku)).length;
+    $('sbStatus').textContent=left ? left+' still on an SQ code.' : 'Every product has its barcode. 🎉';
+    toast('Saved '+it.sku+' to '+it.name);
+    // Back to the list where it was: the next product is always picked by hand, so a barcode can't land on the wrong one.
+    closeCam();
+  }catch(e){ $('camStatus').textContent='Could not save: '+e.message; btn.disabled=false; }
+}
+
 /* ---------------- admin tabs: Takings | Insights | Barcodes ---------------- */
 let adTab = 'takings';
 function adKey(){ return (adState.store||'')+'|'+adState.from+'|'+adState.to; }
@@ -3585,7 +4336,8 @@ function reloadAdmin(lazy){
   if(adTab==='devices'){ if(!lazy || !dvList.length) loadDevices(); return; }
   readAdminRange();
   if(adTab==='labels'){
-    if(!lazy || !lb.items) loadLabels();
+    if(lbMode==='sq'){ if(!lazy || !sb.items) loadSqBarcodes(); }
+    else if(!lazy || !lb.items) loadLabels();
   }else if(adTab==='insights'){
     if(lazy && gx.key===adKey() && gx.sales) renderGx(false); else loadInsights();
   }else if(!lazy || adState.key!==adKey()) loadAdmin();
@@ -3756,6 +4508,12 @@ const BRAND_RULES = [
   ['Wrestling & UFC',    /\bwwe\b|\baew\b|wrestl|\bufc\b/i],
   ['Harry Potter',       /harry\s*potter/i],
 ];
+// The category tag on a basket line: the brand the sheet gave the product, else a guess from its name.
+function basketBrand(b){
+  const p=catItem(b.sku);
+  const brand=(p && p.brand && !OTHERISH.has(p.brand)) ? p.brand : guessBrand(b.name);
+  return OTHERISH.has(brand) ? '' : brand;
+}
 function guessBrand(name){
   const n=String(name||'');
   for(const r of BRAND_RULES){ if(r.slice(1).every(re=>re.test(n))) return r[0]; }
@@ -3903,9 +4661,9 @@ function computeInsights(){
     r.products.set('hist:games', p);
   });
   if(mode==='hour'){
-    // Trading hours that had sales, padded out to at least 9am–5pm.
+    // Trading hours that had sales, padded out to at least 9am–7pm (last bar is 6–7pm).
     const hs=[...r.buckets.keys()];
-    const lo=Math.min(9, ...hs), hi=Math.max(17, ...hs);
+    const lo=Math.min(9, ...hs), hi=Math.max(18, ...hs);
     const m=new Map(); for(let h=lo; h<=hi; h++) m.set(h, r.buckets.get(h) || {rev:0, profit:0});
     r.buckets=m;
   }
@@ -4147,6 +4905,12 @@ function agoText(iso){
   if(m<60*24) return Math.round(m/60)+' h ago';
   return new Date(iso).toLocaleDateString('en-AU', {day:'numeric', month:'short'});
 }
+// Pointer position inside a chart host, in the host's own (unscaled) pixels -
+// the card around it grows a little on hover, which the screen rect includes.
+function hostXY(host, e){
+  const b=host.getBoundingClientRect(), k=b.width ? host.offsetWidth/b.width : 1;
+  return {x:(e.clientX-b.left)*k, y:(e.clientY-b.top)*k};
+}
 // One shared tooltip per chart host.
 function tipFor(host){
   let t=host.querySelector(':scope > .gtip');
@@ -4203,7 +4967,7 @@ function lineChart(host, labels, longLabels, series, anim){
   const tip=tipFor(host), xh=svg.querySelector('.xh'), dots=[...svg.querySelectorAll('.xd')];
   const hit=svg.querySelector('.hit');
   const move=e=>{
-    const bx=svg.getBoundingClientRect(), px=e.clientX-bx.left;
+    const px=hostXY(host, e).x;
     const k=n===1 ? 0 : Math.max(0, Math.min(n-1, Math.round((px-P.l)/iw*(n-1))));
     xh.setAttribute('x1', x(k)); xh.setAttribute('x2', x(k)); xh.style.display='';
     dots.forEach((dt, si)=>{ dt.setAttribute('cx', x(k)); dt.setAttribute('cy', y(series[si].values[k])); dt.style.display=''; });
@@ -4247,8 +5011,7 @@ function columnChart(host, labels, longLabels, series, anim){
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.colbar').forEach(b=>{ b.style.transform=''; })));
   const tip=tipFor(host), svg=host.querySelector('svg'), bands=[...svg.querySelectorAll('.band')];
   const move=e=>{
-    const bx=svg.getBoundingClientRect();
-    const k=Math.max(0, Math.min(n-1, Math.floor((e.clientX-bx.left-P.l)/band)));
+    const k=Math.max(0, Math.min(n-1, Math.floor((hostXY(host, e).x-P.l)/band)));
     bands.forEach((b,j)=>b.classList.toggle('on', j===k));
     tip.innerHTML=tipRows(longLabels[k], series.map(ser=>({name:ser.name, color:ser.color, value:moneySigned(ser.values[k])})));
     tip.classList.add('on');
@@ -4294,32 +5057,50 @@ function donutChart(host, r, anim){
     const g=segs[k];
     tip.innerHTML=tipRows(g.name, [{name:'Revenue', color:brandColor(g.name), value:moneySigned(g.v)}, {name:'Share', value:pct(g.v/tot)}]);
     tip.classList.add('on');
-    const hb=host.getBoundingClientRect(); placeTip(host, tip, e.clientX-hb.left, e.clientY-hb.top);
+    const p=hostXY(host, e); placeTip(host, tip, p.x, p.y);
   };
   circles.forEach(c=>{ c.addEventListener('pointermove', e=>hl(c.dataset.k, e)); c.addEventListener('pointerleave', ()=>hl(null)); });
   rows.forEach(rw=>{ rw.addEventListener('pointerenter', ()=>hl(rw.dataset.k)); rw.addEventListener('pointerleave', ()=>hl(null)); });
 }
 
 // Horizontal bars; the bar grows in, the value and margin sit at the end.
+// Hovering a row lights it up and shows its figures, like the brand donut.
 function hbars(host, rows, anim){
   const max=Math.max(...rows.map(r=>Math.abs(r.v)), 0.01);
-  host.innerHTML='<div class="hbars">'+rows.map(r=>'<div class="hb" title="'+esc(r.name)+'"><span class="nm">'+esc(r.name)+'</span>'+
+  host.innerHTML='<div class="hbars">'+rows.map((r,k)=>'<div class="hb" data-k="'+k+'"><span class="nm">'+esc(r.name)+'</span>'+
     '<div class="track"><div class="bar'+(r.v<0?' neg':'')+'" data-w="'+(Math.abs(r.v)/max*100).toFixed(2)+'" style="background:'+r.color+
     (anim?'':';width:'+(Math.abs(r.v)/max*100).toFixed(2)+'%')+'"></div></div>'+
     '<span class="val">'+esc(r.label)+(r.sub?'<small>'+esc(r.sub)+'</small>':'')+'</span></div>').join('')+'</div>';
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.bar').forEach((b,k)=>{
     b.style.transitionDelay=(k*50)+'ms'; b.style.width=b.dataset.w+'%'; })));
+  const tip=tipFor(host);
+  host.querySelectorAll('.hb').forEach(el=>{
+    const r=rows[el.dataset.k];
+    const show=e=>{
+      tip.innerHTML=tipRows(r.name, r.tip || [{name:'Value', color:r.color, value:r.label}]);
+      tip.classList.add('on');
+      const p=hostXY(host, e); placeTip(host, tip, p.x, p.y);
+    };
+    el.addEventListener('pointermove', show);
+    el.addEventListener('pointerdown', show);
+    el.addEventListener('pointerleave', ()=>tip.classList.remove('on'));
+  });
 }
 function brandBars(host, r, hasCost, anim){
   if(!hasCost){ host.innerHTML='<div class="gempty">Profit needs the cost prices from the Google Sheet.</div>'; return; }
   const list=[...r.brands.values()].filter(b=>b.revKnown>0).sort((a,b)=>b.profit-a.profit).slice(0,10);
   if(!list.length){ host.innerHTML='<div class="gempty">None of the items sold have a cost yet.</div>'; return; }
-  hbars(host, list.map(b=>({name:b.name, v:b.profit, color:brandColor(b.name), label:moneySigned(b.profit), sub:pct(b.profit/b.revKnown)})), anim);
+  hbars(host, list.map(b=>({name:b.name, v:b.profit, color:brandColor(b.name), label:moneySigned(b.profit), sub:pct(b.profit/b.revKnown),
+    tip:[{name:'Gross profit', color:brandColor(b.name), value:moneySigned(b.profit)}, {name:'Margin', value:pct(b.profit/b.revKnown)},
+      {name:'Revenue', value:moneySigned(b.rev)}].concat(b.revKnown<b.rev-0.005 ? [{name:'With a cost', value:moneySigned(b.revKnown)}] : [])
+      .concat(b.qty ? [{name:'Items sold', value:String(b.qty)}] : [])})), anim);
 }
 function storeBars(host, r, hasCost, anim){
   const list=[...r.stores.entries()].sort((a,b)=>b[1].rev-a[1].rev);
   hbars(host, list.map(([id, s])=>({name:storeLabel(id), v:s.rev, color:'var(--s1)', label:moneySigned(s.rev),
-    sub:(hasCost?moneySigned(s.profit)+' profit · ':'')+s.count+' sale'+(s.count===1?'':'s')})), anim);
+    sub:(hasCost?moneySigned(s.profit)+' profit · ':'')+s.count+' sale'+(s.count===1?'':'s'),
+    tip:[{name:'Revenue', color:'var(--s1)', value:moneySigned(s.rev)}].concat(hasCost ? [{name:'Gross profit', value:moneySigned(s.profit)}] : [])
+      .concat([{name:'Sales', value:String(s.count)}])})), anim);
 }
 function topProducts(host, r, hasCost, anim){
   const key={profit:p=>p.noCost&&!p.revKnown?-Infinity:p.profit, revenue:p=>p.rev, qty:p=>p.qty}[gx.sort] || (p=>p.profit);
@@ -4415,7 +5196,8 @@ function openSettings(tokenFix){
   const pending=sales.filter(s=>!s.synced).length;
   $('logInfo').textContent = sales.length
     ? (sales.length+' sales held locally. Oldest '+new Date(sales[0].ts).toLocaleDateString('en-AU')+'.'+
-       (pending? ' '+pending+' still waiting to reach the site.' : ' All sent to the site.'))
+       (pending? ' '+pending+' still waiting to reach the site.' : ' All sent to the site.')+
+       (isTraining() ? '' : ' Sales already on the site are cleared from here after '+LOCAL_KEEP_DAYS+' days.'))
     : 'No sales on this device yet.';
   $('settingsModal').classList.add('show');
 }
@@ -4445,7 +5227,7 @@ async function loadSiteCounter(){
     // Only if the field hasn't been touched since Settings opened.
     if(n>0 && $('sCounter').value===$('sCounter').dataset.was){
       $('sCounter').value=String(n); $('sCounter').dataset.was=String(n);
-      localStorage.setItem(counterKey(), String(n));
+      storeItem(counterKey(), String(n));
     }
   }catch(e){}
 }
@@ -4476,7 +5258,7 @@ function saveSettingsUI(){
   settings.stores=stores;
   const c=parseInt($('sCounter').value,10);
   if(!isNaN(c) && c>0){
-    localStorage.setItem(counterKey(),String(c));
+    storeItem(counterKey(), String(c));
     if(String(c)!==$('sCounter').dataset.was){                     // changed by hand → every device follows
       try{ localStorage.removeItem(reservedKey()); }catch(e){}      // a number held from the old sequence is stale
       setSiteCounter(c).then(reserveNumber);
@@ -4517,11 +5299,50 @@ function focusScan(){
 }
 function anyModalOpen(){ return document.querySelector('.modal.show'); }
 
+/* ---------------- scanner capture ----------------
+   A scanner is a keyboard: it types the code and presses Enter into whatever has
+   focus. After a tap on Card, a discount button or the customer box that isn't
+   the scan box, so the scan went nowhere (or Enter pressed the button again)
+   until someone tapped the screen. On the till screen this catches it:
+   - focus on a button, a drop-down or nothing: the keys go to the scan box;
+   - focus in a typing box: a scanner-speed run of keys ending in Enter is taken
+     back out of that box and scanned. Nobody types 4+ keys under 50ms apart. */
+const SCAN_GAP_MS = 50, SCAN_MIN_LEN = 4;
+let scanRun = null;          // {el, before, code, last} - keys landing in a typing box
+function isTypingBox(el){
+  return !!el && (el.tagName==='TEXTAREA' ||
+    (el.tagName==='INPUT' && !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/i.test(el.type)));
+}
+function catchScanner(e){
+  const el=document.activeElement, scan=$('scan');
+  if(e.key==='Shift' || e.key==='CapsLock') return;          // scanners hold Shift for capital letters
+  if(el===scan || !currentStore || anyModalOpen() || e.ctrlKey || e.metaKey || e.altKey){ scanRun=null; return; }
+  const key = e.key && e.key.length===1 && e.key!==' ';
+  if(!isTypingBox(el)){
+    if(key){ e.preventDefault(); scan.focus(); scan.value+=e.key; }
+    return;
+  }
+  const now=performance.now();
+  if(key && !e.repeat){
+    if(!scanRun || scanRun.el!==el || now-scanRun.last>SCAN_GAP_MS) scanRun={el, before:el.value, code:'', last:now};
+    scanRun.code+=e.key; scanRun.last=now;
+    return;
+  }
+  const run=scanRun; scanRun=null;
+  if(e.key!=='Enter' || !run || run.el!==el || now-run.last>SCAN_GAP_MS || run.code.length<SCAN_MIN_LEN) return;
+  e.preventDefault(); e.stopPropagation();
+  el.value=run.before; el.dispatchEvent(new Event('input', {bubbles:true}));
+  addByBarcode(run.code);
+  focusScan();
+}
+
 /* ---------------- wire up ---------------- */
 function bind(){
+  pruneDaily();                  // let go of synced sales older than LOCAL_KEEP_DAYS (they stay on the site)
   adoptStorelessSales();
   rebuildSkuMap(); applySettings(); renderCatalogStatus(true); render();
 
+  document.addEventListener('keydown', catchScanner, true);   // a scan with the focus somewhere else
   // scan input - a barcode scanner "types" the code then sends Enter, so this
   // auto-adds the item and keeps the cursor here, ready for the next scan. No button needed.
   $('scan').addEventListener('keydown', e=>{
@@ -4557,7 +5378,9 @@ function bind(){
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
   $('btnFinalizeNoPrint').onclick=()=>finalizeSale(false);
-  $('orderType').addEventListener('change', ()=>updateFinalizeState());
+  $('orderSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ $('orderType').value=b.dataset.order; updateFinalizeState(); });
+  $('pickupOn').addEventListener('change', ()=>showPickupOn(true));
+  $('pickupOnToday').onclick=()=>{ $('pickupOn').value=todayKey(); showPickupOn(true); };
   $('btnClear').onclick=()=>{ if(basket.length && !confirm('Clear this sale?'))return; clearSale(); focusScan(); };
   window.addEventListener('afterprint', afterPrint);
 
@@ -4575,6 +5398,18 @@ function bind(){
   document.querySelectorAll('.ddmenu').forEach(m=>m.addEventListener('click', e=>{ if(e.target.closest('button')) closeMenus(); }));
   document.addEventListener('click', e=>{ if(!e.target.closest('.dd')) closeMenus(); });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.querySelector('.dd.open')){ closeMenus(); focusScan(); } });
+  // Tapping the frosted backdrop around a pop-up works like its Close button (so the camera
+  // stops, Pick ups refreshes, etc.). Both press and release must land on the backdrop, so
+  // dragging a text selection out of the sheet doesn't close it. The store gate has no close.
+  let downOnBackdrop=null;
+  document.addEventListener('pointerdown', e=>{ downOnBackdrop = e.target.matches('.modal.show:not(.gate)') ? e.target : null; });
+  document.addEventListener('click', e=>{
+    const m=e.target;
+    if(m!==downOnBackdrop || !m.matches('.modal.show:not(.gate)')) return;
+    downOnBackdrop=null;
+    const c=m.querySelector('[id^="close"],#camClose,#lgCancel,#prCancel');
+    if(c) c.click();
+  });
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{
@@ -4583,7 +5418,8 @@ function bind(){
   };
   $('gatePair').onclick=()=>openPair(false);
   $('prGo').onclick=submitPair;
-  $('prCancel').onclick=()=>{ closePair(); focusScan(); };
+  // Hidden while pairing is forced; the backdrop tap (below) clicks it anyway, so check.
+  $('prCancel').onclick=()=>{ if($('pairModal').dataset.forced) return; closePair(); focusScan(); };
   $('prCode').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPair(); } });
   $('prPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPair(); } });
   $('dvInvite').onclick=dvInvite;
@@ -4610,8 +5446,16 @@ function bind(){
   });
   $('lgGo').onclick=submitLogin;
   $('lgCancel').onclick=cancelLogin;
+  $('lgPin').addEventListener('animationend', e=>e.target.classList.remove('shake'));
+  $('lgPin').addEventListener('input', e=>e.target.classList.remove('bad'));
   $('lgPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitLogin(); } else if(e.key==='Escape') cancelLogin(); });
   $('bxAdd').onclick=addBox;
+  $('bxFind').addEventListener('input', renderBoxFind);
+  $('bxFindRes').addEventListener('click', e=>{
+    const o=e.target.closest('[data-open]'); if(o) return openBox(Number(o.dataset.open));
+    const b=e.target.closest('[data-asbox]'); if(b){ $('bxBox').value=b.dataset.asbox; toast('Box set'); return; }
+    const k=e.target.closest('[data-aspack]'); if(k){ $('bxPack').value=k.dataset.aspack; $('bxQty').focus(); toast('Pack set'); }
+  });
   $('bxScan').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); scanBox(); } });
   $('bxBox').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxPack').focus(); } });
   $('bxPack').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxQty').focus(); } });
@@ -4718,7 +5562,36 @@ function bind(){
   $('lbStock').addEventListener('input', ()=>{ if(!lb.editing && !$('lbCopies').dataset.touched) $('lbCopies').value=$('lbStock').value; });
   $('lbCopies').addEventListener('input', ()=>{ $('lbCopies').dataset.touched='1'; });
   $('adLabels').addEventListener('keydown', e=>{
-    if(e.key==='Enter' && e.target.matches('#adLabels input')){ e.preventDefault(); makeLabel(); }
+    if(e.key==='Enter' && e.target.matches('#lbOwn input')){ e.preventDefault(); makeLabel(); }
+  });
+  // 📷 Scan into Squarespace
+  $('lbModes').addEventListener('click', e=>{ const b=e.target.closest('[data-mode]'); if(b && b.dataset.mode!==lbMode) setLabelMode(b.dataset.mode); });
+  $('sbSearch').addEventListener('input', ()=>{ sb.q=$('sbSearch').value; renderSqBarcodes(); });
+  $('sbReload').onclick=()=>{ sb.items=null; loadSqBarcodes(); };
+  $('sbList').addEventListener('click', e=>{
+    if(e.target.closest('#sbAll')){ sb.all=true; renderSqBarcodes(); return; }
+    const r=e.target.closest('[data-vid]'); if(!r) return;
+    const it=(sb.items||[]).find(x=>String(x.variantId)===r.dataset.vid); if(it) openCam(it);
+  });
+  $('camClose').onclick=closeCam;
+  $('camRescan').onclick=()=>{ $('camCode').value=''; camCheck(); startCam(); };
+  $('camTorch').onclick=toggleTorch;
+  $('camSave').onclick=camSave;
+  // Typing (or a Bluetooth/USB scanner) works too: it stops the camera and Enter saves.
+  $('camCode').addEventListener('input', ()=>{
+    if(cam.stream){ stopCam(); $('camMsg').textContent='Typed in'; }
+    cam.format=''; if(!cam.sell) camCheck();
+  });
+  $('camCode').addEventListener('keydown', e=>{
+    if(e.key!=='Enter') return;
+    e.preventDefault();
+    if(cam.sell){ const v=$('camCode').value.trim(); if(v){ closeCam(); addByBarcode(v); } }
+    else if(!$('camSave').disabled) camSave();
+  });
+  // A phone locked or switched away mid-scan: let the camera go, start it again on return.
+  document.addEventListener('visibilitychange', ()=>{
+    if(!$('camModal').classList.contains('show')) return;
+    if(document.hidden) stopCam(); else if(!$('camCode').value.trim()) startCam();
   });
   $('adInsights').addEventListener('click', e=>{
     const b=e.target.closest('#gxSort [data-sort]'); if(!b) return;
@@ -4727,6 +5600,18 @@ function bind(){
     const r=computeInsights();
     topProducts($('gxTop'), r, !!gx.costs, true);
   });
+  // The pinned totals sit just under the header when the header sticks too (one-column tablets).
+  const setHdrH=()=>{
+    const h=document.querySelector('.app > header');
+    document.documentElement.style.setProperty('--hdrH', h && getComputedStyle(h).position==='sticky' ? h.offsetHeight+'px' : '0px');
+  };
+  setHdrH(); window.addEventListener('resize', setHdrH);
+  // Pop-up frost: pause the blur behind a pop-up while it scrolls (see .modal.moving in the CSS).
+  document.addEventListener('scroll', e=>{
+    const m=e.target.closest && e.target.closest('.modal'); if(!m || m.classList.contains('gate')) return;
+    m.classList.add('moving'); clearTimeout(m._still);
+    m._still=setTimeout(()=>m.classList.remove('moving'), 200);
+  }, true);
   // Charts are drawn to the width they have; redraw (without the intro) on resize.
   let gxResize=0;
   window.addEventListener('resize', ()=>{
@@ -4746,7 +5631,8 @@ function bind(){
   });
 
   // search / misc
-  $('btnFind').onclick=openSearch;
+  $('btnFind').onclick=()=>{ if(isMobileDevice()) openSellCam(); else openSearch(); };
+  $('camFind').onclick=()=>{ closeCam(); openSearch(); };
   $('btnMisc').onclick=addMisc;
   $('closeSearch').onclick=()=>{ $('searchModal').classList.remove('show'); focusScan(); };
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
@@ -4814,10 +5700,13 @@ function bind(){
   flushRestocks();               // put stock back for any voided sales that couldn't reach it yet
   // Auto-refresh the product list on open, so it's always current with Squarespace.
   if(settings.catUrl && navigator.onLine !== false){ syncCatalog(true); }
+  // …and again every 10 minutes while the till is idle, so a product added or
+  // re-priced in Squarespace is already on the device when it's first scanned.
+  setInterval(()=>{ if(settings.catUrl && navigator.onLine!==false && !basket.length && !anyModalOpen()) syncCatalog(true); }, 600000);
 
   // Another device at the same store may be selling, so re-read the day's tally
   // from the site now and then rather than trusting what this browser has seen.
-  setInterval(()=>{ reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
+  setInterval(()=>{ pruneDaily(); reserveNumber(); flushUnsynced(); if(!anyModalOpen()){ refreshToday(); refreshPickupCount(); } }, 60000);
   renderUnsent();
   recheckAdmin();
   // Per-device keys: pick up the site's switch, and a pairing link (…#pair=CODE) opened on this device.

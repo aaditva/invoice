@@ -20,6 +20,9 @@
  *      store can never print the same number. `min` (the device's own
  *      counter) only ever pushes the sequence up, never back.
  *
+ *      body.kind = 'pickup' draws from the store's separate pick-up order
+ *      sequence instead (SMP0001, RXP0001… - the till adds the letters).
+ *
  *    POST /api/sales?counter=set         body = { store, next }
  *      → { ok, store, next }   Settings → Next invoice #.
  *
@@ -66,6 +69,8 @@
  *    counter/<store>                  { next } — the store's shared invoice
  *                                     counter. Bumped with a compare-and-swap,
  *                                     so two tills asking at once get two numbers.
+ *    pickupno/<store>                 { next } — the pick-up order number
+ *                                     sequence, bumped the same way.
  *    pickup/<store>/open/<code>       { code, no, day, store, ts } — a pick-up
  *                                     still waiting. Points at the sale blob.
  *    pickup/<store>/done/<day>/<code> the same pointer once collected, filed
@@ -172,6 +177,7 @@ async function handlePost(req, headers, who) {
   if (prev) {
     for (const k of PICKUP_STATE) if (prev[k] !== undefined) clean[k] = prev[k];
     if (!clean.pickupCode && prev.pickupCode) clean.pickupCode = prev.pickupCode;
+    if (!clean.orderNo && prev.orderNo) clean.orderNo = prev.orderNo;
     // A void or refund keeps the device that rang the sale up.
     if (prev.devId) { clean.devId = prev.devId; clean.devName = prev.devName; }
   }
@@ -331,7 +337,7 @@ async function handleCounter(req, headers, mode) {
   try { body = await req.json(); } catch (e) { /* empty body is fine */ }
   const store = slugStore(body && body.store);
   const st = blobs();
-  const key = counterKey(store);
+  const key = body && body.kind === 'pickup' ? 'pickupno/' + store : counterKey(store);
 
   if (mode === 'set') {
     const next = Math.floor(Number(body && body.next));

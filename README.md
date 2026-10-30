@@ -68,6 +68,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 1. Squarespace → **Settings → Developer API Keys** (or *Advanced → Developer API Keys*).
 2. **Generate Key** → give it a name → permission **Products: Read Only**.
    - To also use **live stock sync** ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)), give the *same* key **Inventory: Read/Write** as well.
+   - To scan barcodes into Squarespace from Admin → 🏷️ Barcodes, make it **Products: Read/Write** instead.
 3. Copy the key (you only see it once). Keep it secret — it is *not* pasted into the app.
 
 ---
@@ -134,14 +135,26 @@ Requires a **Business** or **Commerce** Squarespace plan.
   basket belongs to one store).
 - **Scan** — the barcode box is always focused; a keyboard-wedge scanner types the code
   and hits Enter automatically. Scan again to add another; quantities merge.
+  The whole product list is kept on the device, so a scan never waits on the internet.
+  A barcode matches however the scanner sends it: with or without the leading 0 that some
+  scanners add or drop (EAN-13 vs UPC-A), the same way big-store tills match on the 14-digit GTIN.
+  A scan still lands in the basket after tapping a button (Card, a discount…) or while the
+  cursor is in a box like the customer's name: the till recognises the scanner's speed and
+  takes the code out of that box. A barcode the device doesn't know yet (just added in
+  Squarespace, or labelled on another till) is looked up once (**Looking up…**) and added if
+  it's there. The list also refreshes itself every 10 minutes while the till is idle.
+- **Search on a phone or tablet opens the camera.** Point it at the product's barcode and the
+  item goes straight into the sale, as if it had been scanned. **🔍 Search by name** in the camera
+  screen opens the usual typed search. On a computer (PC or Mac) Search is always the typed search
+  and the camera never opens.
 - Adjust **quantity** with − / +, or type it. **✕** removes a line.
 - Pick **Cash** or **Card**. Cash shows the **5¢-rounded** total, quick-tender buttons,
   and **change**. Card is charged exact. **Split** takes part by card and the rest in cash:
   type the card amount and the cash part (5¢-rounded) shows with its change. Takings count each
   part under Cash and Card.
 - Choose **Served by**. For sales **$1,000+** the app requires a customer name/ABN (ATO rule).
-- **Finalise & Print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
-  **Finalise, no print** to record the sale without printing (still numbered & logged).
+- **Charge $… & print** → the 80 mm **TAX INVOICE** prints and a new sale starts. Or
+  **Charge $…, no print** to record the sale without printing (still numbered & logged).
   A **Pick up later** order always prints — the button is hidden, since the customer needs the
   receipt's pick-up barcode to collect it.
 - **Invoices ▾ → Previous invoices** (header) → search and view any past sale **for this store**, on any date;
@@ -155,14 +168,15 @@ Requires a **Business** or **Commerce** Squarespace plan.
 - **Admin ▾ → Takings** (header, or click the Today tally) → this store's **total earnings** with a
   cash/card/GST breakdown and a date picker; **Print takings summary** for an end-of-day docket.
 - **Admin ▾ → Admin dashboard** (header) → **both stores, any date range** — see [section 6](#6-two-stores-one-record).
-- **Pick up later** — set **Order → Pick up later** before finalising. The receipt then prints a
+- **Pick up later** — tap **Order → Pick up later / Pre order** (the switch beside *Take now*) before finalising. The receipt then prints a
   **pick-up barcode** (Code 128) with its own unique code, e.g. `PUMGB4K2X17Q`. See
   [Pick up later](#pick-up-later) below.
 - **⟲ Reprint** opens today's invoices at this store — from every device, newest first — and each
   row has its own **⟲ Reprint** button. Tap the one you want and it prints exactly as it was saved:
   same invoice number, time and lines. It never reprints "whatever came last".
 - Admin → **Export range CSV** gives your accountant a file covering both stores; Settings →
-  **Export this device's CSV** dumps just the local copy.
+  **Export this device's CSV** dumps just the local copy (the last 14 days rung up here, plus
+  anything not on the site yet).
 
 Everything above reads the sales record **kept on the site**, not the browser — so the Today
 tally, Invoices and Takings all include sales rung up on the *other* device at the same store,
@@ -249,6 +263,19 @@ characters. It's printed under the totals as a **Code 128 barcode** (with the co
 underneath), and stays with the sale forever. It's separate from the invoice number on purpose:
 a number can still change after printing (a clash is renamed `…-2`), the code never does.
 
+- **Order number on top.** Every pick-up also gets an **order number**, printed as the docket's
+  first line in big type: `SMP0001`, `SMP0002`… at South Melbourne, `RXP0001`… at Roxy. Write it
+  on the bag so the items are easy to find. Each store has its own sequence on the site, shared by
+  every till. One rung up offline carries the device id (`SMP0012-K7Q`), like an offline invoice number.
+- **Two receipts.** A new pick-up prints **twice**, one for the customer and one to keep with the
+  items, each **cut on its own**. With the receipt bridge they go as two print jobs. With the print
+  dialog each copy is its own page, so set the printer driver to cut after every page. A reprint
+  is one copy.
+- **Pick-up date.** Choosing *Pick up later* shows a **Pick-up date**, set to **today**. Move it
+  to a later day for a **pre-order**. The receipt prints *Pick up from <date>*, and the Pick ups
+  list shows it in orange until the day comes (*Ready* after that).
+- **Scanned too early?** If the barcode is scanned before the pick-up date, a message says
+  *Not ready yet. Pick-up for this order is on <date>.* Ticking ✓ early asks before handing it over.
 - **🛍 Pick ups** (header) lists this store's orders **waiting to be picked up** — from any day —
   with the customer's name and phone, invoice number, number of items and price. The red badge
   is how many are waiting. Search by name, phone, invoice # or item.
@@ -323,7 +350,16 @@ it can't clash with a number another till gets.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant.
 
-**🏷️ Barcodes** — for one-off things with no barcode (a single card, a second-hand item).
+**🏷️ Barcodes → 📷 Scan into Squarespace** — a product added in Squarespace gets a made-up SKU
+starting with **SQ** until its barcode goes in. This lists every Squarespace product with the SQ
+ones on top (newest first). Tap one on a phone, point the camera at the box's barcode, and **Save**:
+the barcode becomes the variant's **SKU** and, for a real shop barcode (EAN/UPC with a valid check
+digit), its **GTIN** too, and you're back at the list to pick the next one. The till you used scans
+it at once; the others after their next ⟳ Sync. You can also type the code or use a Bluetooth/USB
+scanner in the box. Needs the Squarespace key to have **Products: Read/Write** (section 2) and the
+site on https (Netlify is). On an iPhone the barcode reader loads from jsDelivr the first time.
+
+**🏷️ Barcodes → Make our own barcode** — for one-off things with no barcode (a single card, a second-hand item).
 Type the name, sell price, cost price and stock, pick a label size (50 × 25, 62 × 29 or 40 × 30 mm
 rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. For a
 single card in a toploader use **50 × 25 mm** on the **back** of the toploader — it fits inside the
@@ -523,6 +559,14 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
   picked and an offline fallback invoice counter stay per-device (localStorage), as does a copy of
   the sales this device rang up — that copy is what it falls back on when the site is
   unreachable, and the queue it re-sends from.
+- **The local copy is kept small.** Once a sale is on the site, its local copy is dropped after
+  **14 days** (`LOCAL_KEEP_DAYS` in `index.html`); it stays on the site. A sale is never dropped
+  while it still needs this device: not sent yet, its Squarespace stock not adjusted (or, for a
+  void/refund, not put back) yet, a pick-up not collected yet, or a 🎓 Training sale. If the
+  browser's storage ever fills up, the till prunes harder (a week, then everything already on
+  the site) and tries again, so finishing a sale is never blocked. Once a sale has gone from here,
+  voiding or refunding it from this device needs the **Admin** login (the same as a sale rung up on
+  another till), and offline the Invoices list only shows what's still held here.
 - The till needs the internet for **live** totals. Offline it still scans, prints and numbers
   sales, shows *"this device only"* on the tally, and sends everything up on reconnect.
 
@@ -534,6 +578,7 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/sales.mjs` | The sales record both stores read and write (`/api/sales`, Netlify Blobs), plus the Pick up later list. |
 | `netlify/functions/inventory.mjs` | Netlify stock write-back (decrements Squarespace on each sale). |
 | `netlify/functions/labels.mjs` | One-off products given a barcode in Admin → 🏷️ Barcodes (`/api/labels`). |
+| `netlify/functions/sq-barcodes.mjs` | Lists Squarespace products and writes a scanned barcode to a variant's SKU and GTIN (`/api/sq-barcodes`). |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify/functions/devices.mjs` + `netlify/lib/devices.mjs` | Per-device keys: pairing, Admin → Devices, and the key check every function uses (`DEVICE_KEYS`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |

@@ -38,6 +38,7 @@ const CMD = {
   boldOff:    [ESC, 0x45, 0],
   bigOn:      [GS, 0x21, 0x11],       // double width + height
   bigOff:     [GS, 0x21, 0x00],
+  hugeOn:     [GS, 0x21, 0x22],       // triple width + height (the pick-up order number)
   // Partial cut, feeding 3 lines first so the text clears the blade.
   cut:        [GS, 0x56, 0x42, 0x03],
   // Kick drawer pin 2: ESC p 0 <on=25ms> <off=250ms>
@@ -148,6 +149,9 @@ function footer(d, store, opts, cashSale){
 
 function buildReceipt({ store = {}, sale = {}, options = {} }){
   const d = new Doc().raw(CMD.init);
+  // Pick-up order number first, as big as it goes, so the bagged items are easy to find.
+  if (sale.order === 'pickup' && sale.orderNo)
+    d.raw(CMD.alignCentre).raw(CMD.hugeOn).raw(CMD.boldOn).ln(ascii(sale.orderNo)).raw(CMD.boldOff).raw(CMD.bigOff).raw(CMD.alignLeft).ln();
   header(d, store);
 
   d.ln(rule());
@@ -161,7 +165,11 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   if (sale.servedBy) for (const l of wrap('Served by: ' + ascii(sale.servedBy))) d.ln(l);
   if (sale.customer) for (const l of wrap('Customer: '  + ascii(sale.customer))) d.ln(l);
   if (sale.contact)  for (const l of wrap((/@/.test(sale.contact) ? 'Email: ' : 'Phone: ') + ascii(sale.contact))) d.ln(l);
-  if (sale.order === 'pickup') d.raw(CMD.boldOn).ln('Order: PICK UP LATER').raw(CMD.boldOff);
+  if (sale.order === 'pickup'){
+    d.raw(CMD.boldOn).ln('Order: PICK UP LATER');
+    if (sale.pickupWhen) for (const l of wrap('Pick up ' + ascii(sale.pickupWhen))) d.ln(l);
+    d.raw(CMD.boldOff);
+  }
   else d.ln('Order: Served on the spot');
   d.ln(rule());
 
@@ -261,7 +269,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'split', 'refund'] }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');

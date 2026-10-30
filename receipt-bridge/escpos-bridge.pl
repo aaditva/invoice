@@ -47,6 +47,7 @@ my %CMD = (
     bold_off    => $ESC . 'E' . chr(0),
     big_on      => $GS  . '!' . chr(0x11),   # double width + height
     big_off     => $GS  . '!' . chr(0),
+    huge_on     => $GS  . '!' . chr(0x22),   # triple width + height (the pick-up order number)
     cut         => $GS  . 'V' . chr(66) . chr(3),        # partial cut, feed 3
     drawer      => $ESC . 'p' . chr(0) . chr(25) . chr(250),
 );
@@ -180,6 +181,10 @@ sub build_receipt {
     my $opts  = $p->{options} || {};
 
     my $out = $CMD{init};
+    # Pick-up order number first, as big as it goes, so the bagged items are easy to find.
+    if (($sale->{order} // '') eq 'pickup' && (my $ono = ascii($sale->{orderNo}))) {
+        $out .= $CMD{align_mid} . $CMD{huge_on} . $CMD{bold_on} . $ono . "\n" . $CMD{bold_off} . $CMD{big_off} . $CMD{align_left} . "\n";
+    }
     doc_header(\$out, $store);
 
     $out .= rule() . "\n";
@@ -197,6 +202,9 @@ sub build_receipt {
     }
     if (($sale->{order} // '') eq 'pickup') {
         $out .= $CMD{bold_on} . "Order: PICK UP LATER\n" . $CMD{bold_off};
+        if ($sale->{pickupWhen}) {
+            $out .= $CMD{bold_on} . "$_\n" . $CMD{bold_off} for wrap_text('Pick up ' . ascii($sale->{pickupWhen}));
+        }
     } else {
         $out .= "Order: Served on the spot\n";
     }
@@ -333,7 +341,7 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact', 'pickupCode', 'split', 'refund'] }));
+                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';
