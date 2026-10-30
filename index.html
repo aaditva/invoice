@@ -4219,9 +4219,9 @@ function computeInsights(){
     r.products.set('hist:games', p);
   });
   if(mode==='hour'){
-    // Trading hours that had sales, padded out to at least 9am–5pm.
+    // Trading hours that had sales, padded out to at least 9am–7pm (last bar is 6–7pm).
     const hs=[...r.buckets.keys()];
-    const lo=Math.min(9, ...hs), hi=Math.max(17, ...hs);
+    const lo=Math.min(9, ...hs), hi=Math.max(18, ...hs);
     const m=new Map(); for(let h=lo; h<=hi; h++) m.set(h, r.buckets.get(h) || {rev:0, profit:0});
     r.buckets=m;
   }
