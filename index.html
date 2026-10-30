@@ -662,9 +662,9 @@
      swapped for a flat wash in its own average colour (back to 60fps), and it returns ~0.2s after
      scrolling stops. Only the backdrop fades in on open: fading the modal itself would hide the
      blur until the fade ends. */
-  .modal:not(.gate){background:transparent;isolation:isolate;--frost:rgba(28,28,32,.26);--wash:rgba(190,190,194,.97)}
+  .modal:not(.gate){background:transparent;isolation:isolate;--frost:rgba(28,28,32,.12);--wash:rgba(208,208,212,.97)}
   .modal:not(.gate)::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--frost);
-    -webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5)}
+    -webkit-backdrop-filter:blur(7px) saturate(1.8);backdrop-filter:blur(7px) saturate(1.8)}
   .modal.moving:not(.gate)::before{background:var(--wash);-webkit-backdrop-filter:none;backdrop-filter:none}
   .modal.show .sheet{animation:glassin .45s cubic-bezier(.34,1.4,.64,1)}
   .modal.show:not(.gate)::before{animation:glassfade .25s ease-out}
@@ -672,7 +672,7 @@
   @keyframes glassfade{from{opacity:0}}
   .sheet{position:relative;isolation:isolate;background:transparent;border:0;
     box-shadow:var(--rim),0 2px 8px rgba(0,0,0,.08),0 28px 70px rgba(0,0,0,.2)}
-  .sheet{--glass:rgba(255,255,255,.8)}
+  .sheet{--glass:rgba(255,255,255,.68)}
   .sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:var(--glass)}
   .sheet > header{background:transparent;border-bottom-color:rgba(0,0,0,.06)}
   .sheet .foot{background:transparent;border-top-color:rgba(0,0,0,.06)}
@@ -702,9 +702,9 @@
   [data-theme="dark"] .tick:not(.on){background-color:var(--fill)}
   [data-theme="dark"] .ordseg{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
   [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.115);box-shadow:var(--rim),var(--lift)}
-  [data-theme="dark"] .modal:not(.gate){--frost:rgba(0,0,0,.42);--wash:rgba(26,26,25,.97)}
+  [data-theme="dark"] .modal:not(.gate){--frost:rgba(0,0,0,.26);--wash:rgba(38,38,37,.97)}
   [data-theme="dark"] .sheet{background:transparent;box-shadow:var(--rim),0 28px 70px rgba(0,0,0,.55)}
-  [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.8)}
+  [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.68)}
   [data-theme="dark"] .sheet > header,[data-theme="dark"] .sheet .foot{background:transparent;border-color:rgba(255,255,255,.08)}
   [data-theme="dark"] .ddmenu{background:rgba(44,44,42,.48);box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.45)}
   [data-theme="dark"] .toast{background:rgba(236,235,231,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 28px rgba(0,0,0,.4)}
@@ -714,8 +714,8 @@
      The Admin sheet is see-through, but less than other pop-ups, and the cards are near-solid:
      the till shows in the gaps between cards, never through the figures and charts (that read as
      things overlapping). Big soft shadows on cards this size dropped frames while scrolling. */
-  #adminModal .sheet{--glass:rgba(255,255,255,.86)}
-  [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.88)}
+  #adminModal .sheet{--glass:rgba(255,255,255,.78)}
+  [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.8)}
   .gx .gcard,.gx .kpi{background:rgba(255,255,255,.9);border-color:transparent;box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
   [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:rgba(50,50,48,.85);border-color:transparent;
     box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
@@ -724,10 +724,10 @@
   .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
   /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
   @media (max-width:600px){
-    .sheet{--glass:rgba(255,255,255,.88)}
-    [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.9)}
-    #adminModal .sheet{--glass:rgba(255,255,255,.92)}
-    [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.94)}
+    .sheet{--glass:rgba(255,255,255,.8)}
+    [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.82)}
+    #adminModal .sheet{--glass:rgba(255,255,255,.87)}
+    [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.89)}
   }
   @media (prefers-reduced-motion:reduce){ .modal.show .sheet,.modal.show:not(.gate){animation:none} }
   }
