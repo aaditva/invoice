@@ -531,6 +531,11 @@
   .tick:disabled{opacity:.5;cursor:wait}
   .pulist .pr.hl{background:#fff4d6;box-shadow:inset 4px 0 0 #eda100;animation:puflash 1.1s ease-in-out 3}
   @keyframes puflash{50%{background:#ffe08a}}
+  /* Admin login: a wrong password shakes the field side to side and turns it red until they type again */
+  #lgPin.bad{border-color:var(--danger);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--danger) 25%,transparent)}
+  #lgPin.shake{animation:shake .45s cubic-bezier(.36,.07,.19,.97)}
+  @keyframes shake{15%,85%{transform:translateX(-3px)} 30%,70%{transform:translateX(7px)} 45%,55%{transform:translateX(-9px)} 50%{transform:translateX(9px)}}
+  @media (prefers-reduced-motion:reduce){ #lgPin.shake{animation:none} }
   .pulist .pr .who .ono{font-weight:800;letter-spacing:.02em;margin-right:4px}
   .pulist .pr .meta .later{color:#b26a00;font-weight:650}
   .puhead{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:4px 2px -6px}
@@ -1418,7 +1423,7 @@ let loginThen=null;
 function requireAdmin(then){
   if(isAdmin()) return true;
   loginThen = typeof then==='function' ? then : null;
-  $('lgPin').value=''; $('lgStatus').textContent='';
+  $('lgPin').value=''; $('lgPin').classList.remove('bad','shake'); $('lgStatus').textContent='';
   $('loginModal').classList.add('show');
   setTimeout(()=>$('lgPin').focus(), 30);
   return false;
@@ -1436,6 +1441,13 @@ async function checkAdminPin(pin){
   }
   throw new Error(d.error || ('HTTP '+res.status));
 }
+// Shake the password field, like a wrong password anywhere else.
+function wrongPin(){
+  const el=$('lgPin');
+  el.classList.remove('shake'); void el.offsetWidth;   // restart the shake on a second wrong try
+  el.classList.add('bad','shake'); el.select();
+  if(navigator.vibrate) navigator.vibrate(60);
+}
 async function submitLogin(){
   const pin=$('lgPin').value.trim(), btn=$('lgGo');
   if(!pin){ $('lgPin').focus(); return; }
@@ -1450,7 +1462,7 @@ async function submitLogin(){
       alert('The site rejected this device\'s sales token, so the password can\'t be checked yet.\n\nFix "Sales token" under Sales memory, Save, then log in.');
       return;
     }
-    if(r.bad){ $('lgStatus').textContent=r.bad; $('lgPin').select(); return; }
+    if(r.bad){ $('lgStatus').textContent=r.bad; wrongPin(); return; }
     try{ localStorage.setItem(ADMIN_KEY, pin); }catch(e){}
     $('loginModal').classList.remove('show');
     renderAuth(); toast('Logged in');
@@ -5089,6 +5101,8 @@ function bind(){
   $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else requireAdmin(); };
   $('lgGo').onclick=submitLogin;
   $('lgCancel').onclick=cancelLogin;
+  $('lgPin').addEventListener('animationend', e=>e.target.classList.remove('shake'));
+  $('lgPin').addEventListener('input', e=>e.target.classList.remove('bad'));
   $('lgPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitLogin(); } else if(e.key==='Escape') cancelLogin(); });
   $('bxAdd').onclick=addBox;
   $('bxFind').addEventListener('input', renderBoxFind);
