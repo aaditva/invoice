@@ -429,12 +429,12 @@
   .gx .band.on{fill:#f1f3f4}
   .gx .kpi{background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden;
     opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms);
-    transition:box-shadow .2s}
+    transition:box-shadow .2s,scale .18s cubic-bezier(.2,0,0,1)}
+  /* `scale`, not transform: the fade-in animation holds transform, which would win over a hover transform */
+  .gx .kpi:hover{scale:1.04}
   .gx .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--g-blue))}
   .gx .kpi .kl{font-size:13px;color:var(--g-ink2);font-weight:500}
-  .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums;
-    transform-origin:0 50%;transition:transform .18s cubic-bezier(.2,0,0,1)}
-  .gx .kpi:hover .kv{transform:scale(1.06)}
+  .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums}
   .gx .kpi .ks{font-size:12px;color:var(--g-ink2);margin-top:2px}
   .gx .gempty{padding:40px 10px;text-align:center;color:var(--g-ink2)}
   .gx .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--g-ink2);margin-bottom:6px}
@@ -505,8 +505,8 @@
   .gx .ggrid.still .gcard,.gx .ggrid.still .kpi{animation:none;opacity:1;transform:none}
   @media (prefers-reduced-motion:reduce){
     .gx .gcard,.gx .kpi{animation:none;opacity:1;transform:none}
-    .gx .draw,.gx .hb .bar,.gx .donut circle.seg,.gx table.gt .mini,.gx .kpi .kv{transition:none}
-    .gx .kpi:hover .kv{transform:none}
+    .gx .draw,.gx .hb .bar,.gx .donut circle.seg,.gx table.gt .mini{transition:none}
+    .gx .kpi:hover{scale:none}
   }
 
   /* ---------- Receipt (screen hidden, print only) ---------- */
