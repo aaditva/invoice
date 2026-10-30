@@ -1033,6 +1033,11 @@
           <input id="bxScan" autocomplete="off" placeholder="Scan box barcode…" style="font-size:18px;padding:14px" />
           <div class="hint">Scanning opens it straight away: box stock −1, single packs +N (Squarespace and every till).</div>
         </div>
+        <div class="field"><label for="bxFind">Or search by name / barcode (box or single pack)</label>
+          <input id="bxFind" type="search" autocomplete="off" placeholder="Search boxes and cards…" />
+          <div class="hint">Filters the box list below. Catalog matches can be picked as the box or the pack when adding one.</div>
+          <div id="bxFindRes"></div>
+        </div>
         <div class="muted" id="bxStatus"></div>
         <div class="field"><label>Add a new box: scan the box, then one pack, then type packs per box</label></div>
         <div class="boxadd">
@@ -3107,13 +3112,34 @@ async function saveBoxes(list){
   if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
   boxes=d.boxes||list; $('bxStatus').textContent='Saved.'; renderBoxes();
 }
+function boxMatch(q, sku){
+  if(!q) return true;
+  const p=catItem(sku);
+  return normSku(sku).includes(normSku(q)) || (p && String(p.name||'').toLowerCase().includes(q.toLowerCase()));
+}
+// Search box: filters the list, and offers catalog products to fill the add-a-box fields.
+function renderBoxFind(){
+  const q=$('bxFind').value.trim();
+  renderBoxes();
+  if(!q){ $('bxFindRes').innerHTML=''; return; }
+  const words=q.toLowerCase().split(/\s+/), nq=normSku(q);
+  const hits=catalog.filter(p=>{ const n=String(p.name||'').toLowerCase();
+    return words.every(w=>n.includes(w)) || normSku(p.sku).includes(nq); }).slice(0,8);
+  $('bxFindRes').innerHTML=hits.length?'<table class="dtable">'+hits.map(p=>{
+      const i=boxes.findIndex(b=>normSku(b.box)===normSku(p.sku)), s=stockOf(p.sku);
+      return '<tr><td>'+esc(p.name)+'<div class="muted">'+esc(p.sku)+'</div></td><td class="num">'+(s===null?'-':s)+'</td>'+
+        '<td style="white-space:nowrap">'+(i>=0?'<button class="primary" data-open="'+i+'">Open 1</button> ':'')+
+        '<button class="ghost" data-asbox="'+esc(p.sku)+'">Box</button> <button class="ghost" data-aspack="'+esc(p.sku)+'">Pack</button></td></tr>';
+    }).join('')+'</table>':'<div class="muted">No products match.</div>';
+}
 function renderBoxes(){
+  const q=$('bxFind')?$('bxFind').value.trim():'';
   const nm=sku=>{ const p=catItem(sku); return p?esc(p.name):'<span class="warn">not in catalog</span>'; };
   const st=sku=>{ const s=stockOf(sku); return s===null?'-':s; };
   $('bxTable').innerHTML='<tr><th>Box</th><th class="num">Box stock</th><th>Single pack</th><th class="num">Pack stock</th><th class="num">Packs</th><th></th></tr>'+
-    (boxes.length?boxes.map((b,i)=>'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
+    (boxes.length?boxes.map((b,i)=>(!q||boxMatch(q,b.box)||boxMatch(q,b.pack))&&'<tr><td>'+nm(b.box)+'<div class="muted">'+esc(b.box)+'</div></td><td class="num">'+st(b.box)+'</td>'+
       '<td>'+nm(b.pack)+'<div class="muted">'+esc(b.pack)+'</div></td><td class="num">'+st(b.pack)+'</td><td class="num">'+b.packs+'</td>'+
-      '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').join('')
+      '<td style="white-space:nowrap"><button class="primary" data-open="'+i+'">Open 1</button> <button class="rm" data-del="'+i+'" title="Remove">✕</button></td></tr>').filter(Boolean).join('')
       :'<tr><td colspan="6" class="muted">No boxes yet. Add one below.</td></tr>');
 }
 async function addBox(){
@@ -3346,7 +3372,7 @@ async function deleteMoneyAdded(id){
 
 function openBoxes(){
   $('boxModal').classList.add('show');
-  $('bxScan').value=''; $('bxStatus').textContent='';
+  $('bxScan').value=''; $('bxFind').value=''; $('bxFindRes').innerHTML=''; $('bxStatus').textContent='';
   renderBoxes(); loadBoxes();
   setTimeout(()=>$('bxScan').focus(), 50);
 }
@@ -4914,6 +4940,12 @@ function bind(){
   $('lgCancel').onclick=cancelLogin;
   $('lgPin').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submitLogin(); } else if(e.key==='Escape') cancelLogin(); });
   $('bxAdd').onclick=addBox;
+  $('bxFind').addEventListener('input', renderBoxFind);
+  $('bxFindRes').addEventListener('click', e=>{
+    const o=e.target.closest('[data-open]'); if(o) return openBox(Number(o.dataset.open));
+    const b=e.target.closest('[data-asbox]'); if(b){ $('bxBox').value=b.dataset.asbox; toast('Box set'); return; }
+    const k=e.target.closest('[data-aspack]'); if(k){ $('bxPack').value=k.dataset.aspack; $('bxQty').focus(); toast('Pack set'); }
+  });
   $('bxScan').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); scanBox(); } });
   $('bxBox').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxPack').focus(); } });
   $('bxPack').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('bxQty').focus(); } });
