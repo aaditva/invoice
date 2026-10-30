@@ -631,6 +631,9 @@
   button.primary{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
   #btnFinalizeNoPrint{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(94,92,230,.28)}
   .tile{box-shadow:var(--rim),var(--shadow)}
+  /* Selected payment method: a soft glow in its own colour (green cash, blue card, amber split) */
+  .paybtns button.sel{box-shadow:var(--rim),0 0 0 3px color-mix(in srgb,currentColor 14%,transparent),
+    0 6px 22px color-mix(in srgb,currentColor 32%,transparent)}
   /* Stay flat: they sit inside a glass track/menu, or are plain list rows and links */
   html :is(.ordseg,.gtabs) button,html .ddmenu > button:not(.storechip),html .sblist .sbrow,html button.rm{box-shadow:none}
   html :is(.ordseg,.gtabs) button:active,html .sblist .sbrow:active{transform:none;filter:none}
@@ -672,6 +675,8 @@
     --fill:rgba(255,255,255,.03);
   }
   [data-theme="dark"] button{box-shadow:var(--rim),var(--lift)}
+  [data-theme="dark"] .paybtns button.sel{box-shadow:var(--rim),0 0 0 3px color-mix(in srgb,currentColor 18%,transparent),
+    0 6px 24px color-mix(in srgb,currentColor 38%,transparent)}
   [data-theme="dark"] button{background-color:var(--fill)}
   [data-theme="dark"] button.ghost{background:var(--fill);border-color:transparent}
   [data-theme="dark"] :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),[data-theme="dark"] #adminModal .seg button:not(.sel),
