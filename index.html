@@ -280,23 +280,35 @@
   #btnLogin.in{background:var(--ok);color:#fff}
   .boxadd{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:8px;align-items:end}
   @media (max-width:640px){ .boxadd{grid-template-columns:1fr 1fr} }
-  /* Expenses pad - tap notes and coins, they add up */
-  .cashpad{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
-  .cashpad button{padding:16px 6px;font-size:18px;font-weight:700;position:relative}
-  .cashpad button.note{background:#e6f4ea;color:#0b5d24;border-radius:8px}
-  .cashpad button.coin{background:#fff4d6;color:#7a5200;border-radius:999px;aspect-ratio:1/1;padding:0}
-  .cashpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
-    background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
+  /* Money Added and Expenses pads - glass till keys. A key presses down when tapped, and the
+     little display on top shows how many have been tapped and what they come to (×2 $40) */
+  .cashpad,.addpad{display:grid;gap:14px 10px}
+  .cashpad{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
+  .addpad{grid-template-columns:repeat(5,1fr)}
+  @media (max-width:480px){ .addpad{grid-template-columns:repeat(3,1fr)} }
+  html :is(.cashpad,.addpad) button{--tint:26,158,87;--kink:#0b5d24;--edge:rgba(0,0,0,.10);
+    position:relative;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:7px 7px 11px;border-radius:14px;
+    color:var(--kink);background:linear-gradient(180deg,rgba(var(--tint),.13),rgba(var(--tint),.05)),var(--fill,#fff);
+    box-shadow:var(--rim),0 4px 0 var(--edge),var(--lift);transition:transform .07s,box-shadow .07s}
+  html .cashpad button.coin{--tint:237,161,0;--kink:#7a5200}
+  html :is(.cashpad,.addpad) button.has{box-shadow:var(--rim),0 4px 0 var(--edge),var(--lift),
+    0 0 0 2px rgba(var(--tint),.45),0 6px 22px rgba(var(--tint),.28)}
+  html :is(.cashpad,.addpad) button:active{transform:translateY(3px);filter:none;
+    box-shadow:var(--rim),0 1px 0 var(--edge),0 2px 6px rgba(0,0,0,.08)}
+  :is(.cashpad,.addpad) .kd{font:700 11.5px/1.5 Menlo,Consolas,monospace;text-align:right;white-space:nowrap;overflow:hidden;
+    border-radius:6px;padding:1px 6px;background:rgba(var(--tint),.16);box-shadow:inset 0 1px 2px rgba(0,0,0,.12);
+    font-variant-numeric:tabular-nums;opacity:.4;transition:opacity .2s}
+  :is(.cashpad,.addpad) .has .kd{opacity:1}
+  :is(.cashpad,.addpad) .kl{font:700 20px "SF Pro Rounded",ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    text-align:center;letter-spacing:-.01em}
+  .cashpad .kl{font-size:18px}
+  [data-theme="dark"] :is(.cashpad,.addpad) button{--tint:76,195,138;--kink:#7fd9a9;--edge:rgba(0,0,0,.55)}
+  [data-theme="dark"] .cashpad button.coin{--tint:237,161,0;--kink:#f0c050}
   /* "⚠ 3 unsent" - only shown while sales are waiting to reach the site */
   .unsent{display:none;background:#fff4d6;color:#7a5200;border:1px solid #f0d58a;font-weight:600}
   .unsent.on{display:inline-flex}
   #btnExpenses{display:none}
   #btnExpenses.on{display:inline-flex}
-  .addpad{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-  .addpad button{padding:18px 6px;font-size:20px;font-weight:700;position:relative;background:#e6f4ea;color:#0b5d24;border-radius:8px}
-  .addpad button .n{position:absolute;top:4px;right:6px;font-size:11px;font-weight:700;
-    background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 6px}
-  @media (max-width:480px){ .addpad{grid-template-columns:repeat(3,1fr)} }
 
   /* ---------- Admin tabs + Insights (Google-style dashboard) ---------- */
   :root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s0:#9aa0a6;
@@ -598,9 +610,9 @@
   [data-theme="dark"] .ordseg button{background:none;color:var(--muted)}
   [data-theme="dark"] .ordseg button.sel{color:var(--ink)}
   [data-theme="dark"] .toast{background:#ecebe7;color:#262624}
-  [data-theme="dark"] .saved,[data-theme="dark"] .cashpad button.note,[data-theme="dark"] .addpad button{
+  [data-theme="dark"] .saved{
     background:rgba(76,195,138,.16);color:#7fd9a9;border-color:rgba(76,195,138,.35)}
-  [data-theme="dark"] .cashpad button.coin,[data-theme="dark"] .unsent{background:rgba(237,161,0,.16);color:#f0c050;border-color:rgba(237,161,0,.35)}
+  [data-theme="dark"] .unsent{background:rgba(237,161,0,.16);color:#f0c050;border-color:rgba(237,161,0,.35)}
   [data-theme="dark"] .sblist .sbrow:hover{background:var(--soft)}
   [data-theme="dark"] .sblist .sbrow{background:none}
   [data-theme="dark"] .sbrow .th{background-color:var(--soft)}
@@ -3384,10 +3396,16 @@ function openExpenses(){
   $('expModal').classList.add('show');
   loadExpenses();
 }
+// One till key on the Money Added / Expenses pads: a small display (×2 $40) over the amount
+function padKey(v, n, cls, label){
+  const sub=round2((n||0)*v);
+  const subLbl=sub>=1 ? '$'+(Number.isInteger(sub)?sub:sub.toFixed(2)) : cashLabel(sub);
+  return '<button class="'+cls+(n?' has':'')+'" data-v="'+v+'" aria-label="Add '+label+(n?', '+n+' so far':'')+'">'+
+    '<span class="kd">'+(n?'×'+n+' '+subLbl:'×0')+'</span><span class="kl">'+label+'</span></button>';
+}
 function renderExpPad(){
   const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
-  $('exPad').innerHTML=CASH.map(v=>'<button class="'+(v>=5?'note':'coin')+'" data-v="'+v+'">'+cashLabel(v)+
-    (counts[v]?'<span class="n">×'+counts[v]+'</span>':'')+'</button>').join('');
+  $('exPad').innerHTML=CASH.map(v=>padKey(v, counts[v], (v>=5?'note':'coin'), cashLabel(v))).join('');
   const total=round2(exTaps.reduce((a,v)=>a+v,0));
   $('exTotal').textContent=money(total);
   $('exBreak').textContent=exTaps.length
@@ -3460,8 +3478,7 @@ function openMoneyAdded(){
 }
 function renderAddPad(){
   const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
-  $('maPad').innerHTML=ADD_AMTS.map(v=>'<button data-v="'+v+'">$'+v+
-    (counts[v]?'<span class="n">×'+counts[v]+'</span>':'')+'</button>').join('');
+  $('maPad').innerHTML=ADD_AMTS.map(v=>padKey(v, counts[v], '', '$'+v)).join('');
   $('maTotal').textContent=money(round2(maTaps.reduce((a,v)=>a+v,0)));
   const keys=[...new Set(maTaps)];
   $('maBreak').textContent=maTaps.length
