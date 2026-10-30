@@ -5108,6 +5108,18 @@ function bind(){
   document.querySelectorAll('.ddmenu').forEach(m=>m.addEventListener('click', e=>{ if(e.target.closest('button')) closeMenus(); }));
   document.addEventListener('click', e=>{ if(!e.target.closest('.dd')) closeMenus(); });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.querySelector('.dd.open')){ closeMenus(); focusScan(); } });
+  // Tapping the frosted backdrop around a pop-up works like its Close button (so the camera
+  // stops, Pick ups refreshes, etc.). Both press and release must land on the backdrop, so
+  // dragging a text selection out of the sheet doesn't close it. The store gate has no close.
+  let downOnBackdrop=null;
+  document.addEventListener('pointerdown', e=>{ downOnBackdrop = e.target.matches('.modal.show:not(.gate)') ? e.target : null; });
+  document.addEventListener('click', e=>{
+    const m=e.target;
+    if(m!==downOnBackdrop || !m.matches('.modal.show:not(.gate)')) return;
+    downOnBackdrop=null;
+    const c=m.querySelector('[id^="close"],#camClose,#lgCancel');
+    if(c) c.click();
+  });
   $('btnTakings').onclick=openTakings;
   $('btnAdmin').onclick=openAdmin;
   $('btnLogin').onclick=()=>{ if(isAdmin()) logoutAdmin(); else requireAdmin(); };
