@@ -302,6 +302,7 @@
   :is(.cashpad,.addpad) .kl{font:700 20px "SF Pro Rounded",ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     text-align:center;letter-spacing:-.01em}
   .cashpad .kl{font-size:18px}
+  .addpad .kr{font-size:11.5px;font-weight:600;text-align:center;opacity:.75;margin-top:-4px;white-space:nowrap}
   [data-theme="dark"] :is(.cashpad,.addpad) button{--tint:76,195,138;--kink:#7fd9a9;--edge:rgba(0,0,0,.55)}
   [data-theme="dark"] .cashpad button.coin{--tint:237,161,0;--kink:#f0c050}
   /* "⚠ 3 unsent" - only shown while sales are waiting to reach the site */
@@ -3397,11 +3398,12 @@ function openExpenses(){
   loadExpenses();
 }
 // One till key on the Money Added / Expenses pads: a small display (×2 $40) over the amount
-function padKey(v, n, cls, label){
+function padKey(v, n, cls, label, note){
   const sub=round2((n||0)*v);
   const subLbl=sub>=1 ? '$'+(Number.isInteger(sub)?sub:sub.toFixed(2)) : cashLabel(sub);
   return '<button class="'+cls+(n?' has':'')+'" data-v="'+v+'" aria-label="Add '+label+(n?', '+n+' so far':'')+'">'+
-    '<span class="kd">'+(n?'×'+n+' '+subLbl:'×0')+'</span><span class="kl">'+label+'</span></button>';
+    '<span class="kd">'+(n?'×'+n+' '+subLbl:'×0')+'</span><span class="kl">'+label+'</span>'+
+    (note?'<span class="kr">'+note+'</span>':'')+'</button>';
 }
 function renderExpPad(){
   const counts={}; exTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
@@ -3466,6 +3468,8 @@ async function deleteExpense(id){
    Done (or Enter). Saved under the chosen date and store; the Google Sheet
    script pulls each day's total into the sheet's Money Added column. */
 const ADD_AMTS = [2,4,10,20,50];
+// The coin roll each amount is, shown under it on the key
+const ADD_ROLLS = {2:'5c roll', 4:'10c / 20c roll', 10:'50c roll', 20:'$1 roll', 50:'$2 roll'};
 let maTaps = [];
 function openMoneyAdded(){
   $('maStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
@@ -3478,7 +3482,7 @@ function openMoneyAdded(){
 }
 function renderAddPad(){
   const counts={}; maTaps.forEach(v=>counts[v]=(counts[v]||0)+1);
-  $('maPad').innerHTML=ADD_AMTS.map(v=>padKey(v, counts[v], '', '$'+v)).join('');
+  $('maPad').innerHTML=ADD_AMTS.map(v=>padKey(v, counts[v], '', '$'+v, ADD_ROLLS[v])).join('');
   $('maTotal').textContent=money(round2(maTaps.reduce((a,v)=>a+v,0)));
   const keys=[...new Set(maTaps)];
   $('maBreak').textContent=maTaps.length
