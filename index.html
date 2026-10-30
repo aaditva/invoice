@@ -653,23 +653,27 @@
     transition:transform .45s cubic-bezier(.34,1.45,.64,1),scale .3s cubic-bezier(.34,1.56,.64,1)}
   .ordseg:active::after{scale:1.05 1.1}
 
-  /* Overlays: the page dims and the sheet is blurred glass with lit edges. A live blur under a
-     scrolling sheet is redrawn every frame and halved the frame rate (on the sheet, the modal, a
-     layer behind it or the till itself - all measured), so the blur pauses while the sheet's
-     content scrolls: JS adds .moving, the blur is swapped for a stronger plain tint, and it comes
-     back ~0.2s after scrolling stops. --glass is the blurred tint, --glass-still the stand-in. */
-  .modal:not(.gate){background:rgba(0,0,0,.28)}
+  /* Overlays, like Apple's sheets: the whole page behind a pop-up is frosted (one full-screen
+     blur on .modal::before, behind the sheet) and the sheet is a light tint over that same frost,
+     with lit edges - so the frost looks the same beside the sheet and through it. The sheet has
+     no blur of its own (one blur, not two).
+     A live blur under scrolling content is redrawn every frame (56ms/frame measured; fading it
+     in and out still 34ms), so while a sheet scrolls JS marks the modal .moving and the frost is
+     swapped for a flat wash in its own average colour (back to 60fps), and it returns ~0.2s after
+     scrolling stops. Only the backdrop fades in on open: fading the modal itself would hide the
+     blur until the fade ends. */
+  .modal:not(.gate){background:transparent;isolation:isolate;--frost:rgba(28,28,32,.26);--wash:rgba(190,190,194,.97)}
+  .modal:not(.gate)::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--frost);
+    -webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5)}
+  .modal.moving:not(.gate)::before{background:var(--wash);-webkit-backdrop-filter:none;backdrop-filter:none}
   .modal.show .sheet{animation:glassin .45s cubic-bezier(.34,1.4,.64,1)}
-  .modal.show:not(.gate){animation:glassfade .25s ease-out}
+  .modal.show:not(.gate)::before{animation:glassfade .25s ease-out}
   @keyframes glassin{from{opacity:0;transform:translateY(16px) scale(.96)}}
   @keyframes glassfade{from{opacity:0}}
   .sheet{position:relative;isolation:isolate;background:transparent;border:0;
     box-shadow:var(--rim),0 2px 8px rgba(0,0,0,.08),0 28px 70px rgba(0,0,0,.2)}
-  .sheet{--glass:rgba(255,255,255,.66);--glass-still:rgba(255,255,255,.86)}
-  .sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
-    background:var(--glass);-webkit-backdrop-filter:blur(10px) saturate(1.8);backdrop-filter:blur(10px) saturate(1.8);
-    transition:background-color .3s ease-out}
-  .sheet.moving::before{background:var(--glass-still);-webkit-backdrop-filter:none;backdrop-filter:none;transition:none}
+  .sheet{--glass:rgba(255,255,255,.8)}
+  .sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:var(--glass)}
   .sheet > header{background:transparent;border-bottom-color:rgba(0,0,0,.06)}
   .sheet .foot{background:transparent;border-top-color:rgba(0,0,0,.06)}
   .ddmenu{background:rgba(255,255,255,.45);-webkit-backdrop-filter:blur(3px) saturate(1.8);backdrop-filter:blur(3px) saturate(1.8);
@@ -698,9 +702,9 @@
   [data-theme="dark"] .tick:not(.on){background-color:var(--fill)}
   [data-theme="dark"] .ordseg{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
   [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.115);box-shadow:var(--rim),var(--lift)}
-  [data-theme="dark"] .modal:not(.gate){background:rgba(0,0,0,.4)}
+  [data-theme="dark"] .modal:not(.gate){--frost:rgba(0,0,0,.42);--wash:rgba(26,26,25,.97)}
   [data-theme="dark"] .sheet{background:transparent;box-shadow:var(--rim),0 28px 70px rgba(0,0,0,.55)}
-  [data-theme="dark"] .sheet{--glass:rgba(44,44,42,.72);--glass-still:rgba(44,44,42,.92)}
+  [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.8)}
   [data-theme="dark"] .sheet > header,[data-theme="dark"] .sheet .foot{background:transparent;border-color:rgba(255,255,255,.08)}
   [data-theme="dark"] .ddmenu{background:rgba(44,44,42,.48);box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.45)}
   [data-theme="dark"] .toast{background:rgba(236,235,231,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 28px rgba(0,0,0,.4)}
@@ -710,8 +714,8 @@
      The Admin sheet is see-through, but less than other pop-ups, and the cards are near-solid:
      the till shows in the gaps between cards, never through the figures and charts (that read as
      things overlapping). Big soft shadows on cards this size dropped frames while scrolling. */
-  #adminModal .sheet{--glass:rgba(255,255,255,.78);--glass-still:rgba(255,255,255,.9)}
-  [data-theme="dark"] #adminModal .sheet{--glass:rgba(44,44,42,.82);--glass-still:rgba(44,44,42,.94)}
+  #adminModal .sheet{--glass:rgba(255,255,255,.86)}
+  [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.88)}
   .gx .gcard,.gx .kpi{background:rgba(255,255,255,.9);border-color:transparent;box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
   [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:rgba(50,50,48,.85);border-color:transparent;
     box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
@@ -720,10 +724,10 @@
   .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
   /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
   @media (max-width:600px){
-    .sheet{--glass:rgba(255,255,255,.76);--glass-still:rgba(255,255,255,.88)}
-    [data-theme="dark"] .sheet{--glass:rgba(44,44,42,.8);--glass-still:rgba(44,44,42,.9)}
-    #adminModal .sheet{--glass:rgba(255,255,255,.82);--glass-still:rgba(255,255,255,.92)}
-    [data-theme="dark"] #adminModal .sheet{--glass:rgba(44,44,42,.86);--glass-still:rgba(44,44,42,.95)}
+    .sheet{--glass:rgba(255,255,255,.88)}
+    [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.9)}
+    #adminModal .sheet{--glass:rgba(255,255,255,.92)}
+    [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.94)}
   }
   @media (prefers-reduced-motion:reduce){ .modal.show .sheet,.modal.show:not(.gate){animation:none} }
   }
@@ -5221,11 +5225,11 @@ function bind(){
     document.documentElement.style.setProperty('--hdrH', h && getComputedStyle(h).position==='sticky' ? h.offsetHeight+'px' : '0px');
   };
   setHdrH(); window.addEventListener('resize', setHdrH);
-  // Pop-up glass: pause a sheet's blur while its content scrolls (see .sheet.moving in the CSS).
+  // Pop-up frost: pause the blur behind a pop-up while it scrolls (see .modal.moving in the CSS).
   document.addEventListener('scroll', e=>{
-    const sh=e.target.closest && e.target.closest('.sheet'); if(!sh) return;
-    sh.classList.add('moving'); clearTimeout(sh._still);
-    sh._still=setTimeout(()=>sh.classList.remove('moving'), 200);
+    const m=e.target.closest && e.target.closest('.modal'); if(!m || m.classList.contains('gate')) return;
+    m.classList.add('moving'); clearTimeout(m._still);
+    m._still=setTimeout(()=>m.classList.remove('moving'), 200);
   }, true);
   // Charts are drawn to the width they have; redraw (without the intro) on resize.
   let gxResize=0;
