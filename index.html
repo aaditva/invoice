@@ -89,6 +89,15 @@
 
   /* Totals (right) */
   .totals{padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+  /* Totals stay pinned at the top of the panel while discount, order and payment scroll under them */
+  .totals > .lines{position:sticky;top:-18px;z-index:3;margin:-18px -18px 0;padding:18px 18px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  /* One-column layout: the page scrolls, not the panel, so pin against the screen
+     (under the header where that sticks too - its height is set in --hdrH by JS) */
+  @media (max-width:900px){
+    main > aside.panel,main > aside .totals{overflow:visible}
+    .totals > .lines{top:var(--hdrH,0px);border-radius:var(--radius) var(--radius) 0 0}
+  }
   .lines{display:flex;flex-direction:column;gap:8px}
   .row{display:flex;justify-content:space-between;font-size:14.5px}
   .row .lbl{color:var(--muted)}
@@ -601,6 +610,126 @@
   [data-theme="dark"] .gx .grid.bold line{stroke:#55534f}
   [data-theme="dark"] .gx .grid.bold line.zero{stroke:#8a8883}
   [data-theme="dark"] .gx table.gt td{border-bottom-color:var(--line)}
+  }
+
+  /* ---------- Liquid glass (Apple's "clear" variant): every button and overlay ----------
+     Almost no fill and no blur; the glass is the light on the edges - a bright specular line
+     along the top, a faint bounce along the bottom, a hairline round the rest and a soft lift.
+     Buttons keep their own colours. Screen only - receipts print plain. */
+  @media screen{
+  :root{
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.45),inset 0 0 0 1px rgba(0,0,0,.06);
+    --lift:0 6px 18px rgba(0,0,0,.08);
+    --fill:rgba(255,255,255,.25);
+  }
+  button{box-shadow:var(--rim),var(--lift);
+    transition:box-shadow .2s,transform .3s cubic-bezier(.34,1.56,.64,1),filter .2s}
+  button:active{transform:scale(.97);filter:brightness(1.04)}
+  button{background-color:var(--fill)}
+  button.ghost{background:var(--fill);border-color:transparent}
+  :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),#adminModal .seg button:not(.sel),.tick:not(.on){background-color:var(--fill)}
+  button.primary{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
+  #btnFinalizeNoPrint{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(94,92,230,.28)}
+  .tile{box-shadow:var(--rim),var(--shadow)}
+  /* Selected payment method: a soft glow in its own colour (green cash, blue card, amber split).
+     Same shadow layers selected or not (just transparent), so the glow fades rather than pops:
+     it comes in quickly and lets go slowly when another method is picked. */
+  .paybtns .cash{--glow:#1a9e57} .paybtns .card{--glow:#0071e3} .paybtns .split{--glow:#c48a00}
+  html .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent);
+    transition:box-shadow .9s ease-out,border-color .7s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
+  html .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 14%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 32%,transparent);
+    transition:box-shadow .3s ease-out,border-color .2s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
+  /* Stay flat: they sit inside a glass track/menu, or are plain list rows and links */
+  html :is(.ordseg,.gtabs) button,html .ddmenu > button:not(.storechip),html .sblist .sbrow,html button.rm{box-shadow:none}
+  html :is(.ordseg,.gtabs) button:active,html .sblist .sbrow:active{transform:none;filter:none}
+
+  /* The Order switch itself: a clear thumb that swells a little while pressed */
+  .ordseg{background:rgba(120,120,128,.12);box-shadow:inset 0 1px 2px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.04)}
+  .ordseg::after{background:rgba(255,255,255,.14);border:0;
+    -webkit-backdrop-filter:saturate(1.8) brightness(1.12);backdrop-filter:saturate(1.8) brightness(1.12);
+    box-shadow:var(--rim),0 2px 6px rgba(0,0,0,.08),0 8px 20px rgba(0,0,0,.08);
+    transition:transform .45s cubic-bezier(.34,1.45,.64,1),scale .3s cubic-bezier(.34,1.56,.64,1)}
+  .ordseg:active::after{scale:1.05 1.1}
+
+  /* Overlays, like Apple's sheets: the whole page behind a pop-up is frosted (one full-screen
+     blur on .modal::before, behind the sheet) and the sheet is a light tint over that same frost,
+     with lit edges - so the frost looks the same beside the sheet and through it. The sheet has
+     no blur of its own (one blur, not two).
+     A live blur under scrolling content is redrawn every frame (56ms/frame measured; fading it
+     in and out still 34ms), so while a sheet scrolls JS marks the modal .moving and the frost is
+     swapped for a flat wash in its own average colour (back to 60fps), and it returns ~0.2s after
+     scrolling stops. Only the backdrop fades in on open: fading the modal itself would hide the
+     blur until the fade ends. */
+  .modal:not(.gate){background:transparent;isolation:isolate;--frost:rgba(28,28,32,.26);--wash:rgba(190,190,194,.97)}
+  .modal:not(.gate)::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--frost);
+    -webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5)}
+  .modal.moving:not(.gate)::before{background:var(--wash);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .modal.show .sheet{animation:glassin .45s cubic-bezier(.34,1.4,.64,1)}
+  .modal.show:not(.gate)::before{animation:glassfade .25s ease-out}
+  @keyframes glassin{from{opacity:0;transform:translateY(16px) scale(.96)}}
+  @keyframes glassfade{from{opacity:0}}
+  .sheet{position:relative;isolation:isolate;background:transparent;border:0;
+    box-shadow:var(--rim),0 2px 8px rgba(0,0,0,.08),0 28px 70px rgba(0,0,0,.2)}
+  .sheet{--glass:rgba(255,255,255,.8)}
+  .sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:var(--glass)}
+  .sheet > header{background:transparent;border-bottom-color:rgba(0,0,0,.06)}
+  .sheet .foot{background:transparent;border-top-color:rgba(0,0,0,.06)}
+  .ddmenu{background:rgba(255,255,255,.45);-webkit-backdrop-filter:blur(3px) saturate(1.8);backdrop-filter:blur(3px) saturate(1.8);
+    border:0;box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.16)}
+  .toast{background:rgba(30,30,32,.7);-webkit-backdrop-filter:blur(10px) saturate(1.6);backdrop-filter:blur(10px) saturate(1.6);
+    border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(255,255,255,.1),0 8px 28px rgba(0,0,0,.22)}
+  .saved{background:rgba(230,244,234,.75);-webkit-backdrop-filter:blur(10px) saturate(1.8);backdrop-filter:blur(10px) saturate(1.8);
+    border:0;box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.08)}
+  .gx .gtip{background:rgba(255,255,255,.9);box-shadow:var(--rim),0 4px 16px rgba(60,64,67,.18)}
+
+  /* Dark: the same clear glass, with the specular line dimmed so it doesn't read as frost */
+  [data-theme="dark"]{
+    --rim:inset 0 1.5px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(255,255,255,.07);
+    --lift:0 6px 18px rgba(0,0,0,.35);
+    --fill:rgba(255,255,255,.03);
+  }
+  [data-theme="dark"] button{box-shadow:var(--rim),var(--lift)}
+  [data-theme="dark"] .paybtns .cash{--glow:#4cc38a} [data-theme="dark"] .paybtns .card{--glow:#6aaeff} [data-theme="dark"] .paybtns .split{--glow:#f0c050}
+  [data-theme="dark"] .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent)}
+  [data-theme="dark"] .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 18%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 38%,transparent)}
+  [data-theme="dark"] button{background-color:var(--fill)}
+  [data-theme="dark"] button.ghost{background:var(--fill);border-color:transparent}
+  [data-theme="dark"] :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),[data-theme="dark"] #adminModal .seg button:not(.sel),
+  [data-theme="dark"] .tick:not(.on){background-color:var(--fill)}
+  [data-theme="dark"] .ordseg{background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+  [data-theme="dark"] .ordseg::after{background:rgba(255,255,255,.115);box-shadow:var(--rim),var(--lift)}
+  [data-theme="dark"] .modal:not(.gate){--frost:rgba(0,0,0,.42);--wash:rgba(26,26,25,.97)}
+  [data-theme="dark"] .sheet{background:transparent;box-shadow:var(--rim),0 28px 70px rgba(0,0,0,.55)}
+  [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.8)}
+  [data-theme="dark"] .sheet > header,[data-theme="dark"] .sheet .foot{background:transparent;border-color:rgba(255,255,255,.08)}
+  [data-theme="dark"] .ddmenu{background:rgba(44,44,42,.48);box-shadow:var(--rim),0 12px 36px rgba(0,0,0,.45)}
+  [data-theme="dark"] .toast{background:rgba(236,235,231,.88);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 28px rgba(0,0,0,.4)}
+  [data-theme="dark"] .saved{box-shadow:var(--rim),0 4px 14px rgba(0,0,0,.3)}
+  [data-theme="dark"] .gx .gtip{background:rgba(48,48,46,.92);box-shadow:var(--rim),0 4px 16px rgba(0,0,0,.4)}
+  /* Insights: the KPI and chart cards are glass too (fill, lit rim, small lift - no blur, they scroll).
+     The Admin sheet is see-through, but less than other pop-ups, and the cards are near-solid:
+     the till shows in the gaps between cards, never through the figures and charts (that read as
+     things overlapping). Big soft shadows on cards this size dropped frames while scrolling. */
+  #adminModal .sheet{--glass:rgba(255,255,255,.86)}
+  [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.88)}
+  .gx .gcard,.gx .kpi{background:rgba(255,255,255,.9);border-color:transparent;box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
+  [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:rgba(50,50,48,.85);border-color:transparent;
+    box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
+  .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.12)}
+  [data-theme="dark"] .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.45)}
+  .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
+  /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
+  @media (max-width:600px){
+    .sheet{--glass:rgba(255,255,255,.88)}
+    [data-theme="dark"] .sheet{--glass:rgba(48,48,46,.9)}
+    #adminModal .sheet{--glass:rgba(255,255,255,.92)}
+    [data-theme="dark"] #adminModal .sheet{--glass:rgba(48,48,46,.94)}
+  }
+  @media (prefers-reduced-motion:reduce){ .modal.show .sheet,.modal.show:not(.gate){animation:none} }
   }
 
   .receipt{display:none}
@@ -5090,6 +5219,18 @@ function bind(){
     const r=computeInsights();
     topProducts($('gxTop'), r, !!gx.costs, true);
   });
+  // The pinned totals sit just under the header when the header sticks too (one-column tablets).
+  const setHdrH=()=>{
+    const h=document.querySelector('.app > header');
+    document.documentElement.style.setProperty('--hdrH', h && getComputedStyle(h).position==='sticky' ? h.offsetHeight+'px' : '0px');
+  };
+  setHdrH(); window.addEventListener('resize', setHdrH);
+  // Pop-up frost: pause the blur behind a pop-up while it scrolls (see .modal.moving in the CSS).
+  document.addEventListener('scroll', e=>{
+    const m=e.target.closest && e.target.closest('.modal'); if(!m || m.classList.contains('gate')) return;
+    m.classList.add('moving'); clearTimeout(m._still);
+    m._still=setTimeout(()=>m.classList.remove('moving'), 200);
+  }, true);
   // Charts are drawn to the width they have; redraw (without the intro) on resize.
   let gxResize=0;
   window.addEventListener('resize', ()=>{
