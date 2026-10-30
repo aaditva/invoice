@@ -428,7 +428,8 @@
   .gx .band{fill:transparent}
   .gx .band.on{fill:#f1f3f4}
   .gx .kpi{background:#fff;border:1px solid var(--g-line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden;
-    opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms)}
+    opacity:0;transform:translateY(14px);animation:gin .5s cubic-bezier(.2,0,0,1) forwards;animation-delay:calc(var(--i,0) * 60ms);
+    transition:box-shadow .2s}
   .gx .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--g-blue))}
   .gx .kpi .kl{font-size:13px;color:var(--g-ink2);font-weight:500}
   .gx .kpi .kv{font-size:30px;font-weight:600;letter-spacing:-.01em;margin-top:4px;font-variant-numeric:tabular-nums}
@@ -467,12 +468,15 @@
   .gx .dlist .sw{width:12px;height:12px;border-radius:3px}
   .gx .dlist .dr > span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gx .dlist .pc{color:var(--g-ink2);text-align:right;font-size:12.5px}
-  .gx .hbars{display:flex;flex-direction:column;gap:10px}
-  .gx .hb{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:12px;align-items:center;font-size:13.5px}
+  .gx .hbars{display:flex;flex-direction:column;gap:2px}
+  .gx .hb{display:grid;grid-template-columns:minmax(90px,150px) 1fr auto;gap:12px;align-items:center;font-size:13.5px;
+    padding:5px 8px;margin:0 -8px;border-radius:8px;cursor:default;transition:background .15s}
+  .gx .hb:hover{background:#f1f3f4}
   .gx .hb .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gx .hb .track{height:14px;position:relative}
   .gx .hb .bar{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:0 4px 4px 0;
-    transition:width .9s cubic-bezier(.2,0,0,1)}
+    transition:width .9s cubic-bezier(.2,0,0,1),top .15s,bottom .15s}
+  .gx .hb:hover .bar{top:-3px;bottom:-3px}
   .gx .hb .bar.neg{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.55) 0 3px,transparent 3px 7px)}
   .gx .hb .val{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .gx .hb .val small{color:var(--g-ink2);margin-left:6px}
@@ -596,7 +600,7 @@
   [data-theme="dark"] #adminModal{--g-blue:#6aaeff;--g-ink:var(--ink);--g-ink2:var(--muted);--g-line:var(--line);--g-soft:var(--soft2)}
   [data-theme="dark"] .gtabs button{background:none}
   [data-theme="dark"] .gtabs button:hover,[data-theme="dark"] #adminModal .seg button:hover,
-  [data-theme="dark"] .gx .dlist .dr:hover,[data-theme="dark"] .gx .dlist .dr.hl,[data-theme="dark"] .gx table.gt tbody tr:hover{background:var(--soft)}
+  [data-theme="dark"] .gx .dlist .dr:hover,[data-theme="dark"] .gx .dlist .dr.hl,[data-theme="dark"] .gx .hb:hover,[data-theme="dark"] .gx table.gt tbody tr:hover{background:var(--soft)}
   [data-theme="dark"] .gbar.on{background:rgba(75,156,255,.25)}
   [data-theme="dark"] #adminModal .seg button,[data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi,
   [data-theme="dark"] .gx .gtip,[data-theme="dark"] .gx table.gt th,[data-theme="dark"] .gx .gseg button{background:var(--panel);color:var(--ink)}
@@ -719,8 +723,8 @@
   .gx .gcard,.gx .kpi{background:rgba(255,255,255,.9);border-color:transparent;box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.07)}
   [data-theme="dark"] .gx .gcard,[data-theme="dark"] .gx .kpi{background:rgba(50,50,48,.85);border-color:transparent;
     box-shadow:var(--rim),0 1px 3px rgba(0,0,0,.3)}
-  .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.12)}
-  [data-theme="dark"] .gx .gcard:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.45)}
+  .gx .gcard:hover,.gx .kpi:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.12)}
+  [data-theme="dark"] .gx .gcard:hover,[data-theme="dark"] .gx .kpi:hover{box-shadow:var(--rim),0 10px 28px rgba(0,0,0,.45)}
   .gx table.gt th,[data-theme="dark"] .gx table.gt th{background:transparent}
   /* Phones: sheets are full-screen, so a bit more tint to keep forms easy to read */
   @media (max-width:600px){
@@ -4746,25 +4750,43 @@ function donutChart(host, r, anim){
 }
 
 // Horizontal bars; the bar grows in, the value and margin sit at the end.
+// Hovering a row lights it up and shows its figures, like the brand donut.
 function hbars(host, rows, anim){
   const max=Math.max(...rows.map(r=>Math.abs(r.v)), 0.01);
-  host.innerHTML='<div class="hbars">'+rows.map(r=>'<div class="hb" title="'+esc(r.name)+'"><span class="nm">'+esc(r.name)+'</span>'+
+  host.innerHTML='<div class="hbars">'+rows.map((r,k)=>'<div class="hb" data-k="'+k+'"><span class="nm">'+esc(r.name)+'</span>'+
     '<div class="track"><div class="bar'+(r.v<0?' neg':'')+'" data-w="'+(Math.abs(r.v)/max*100).toFixed(2)+'" style="background:'+r.color+
     (anim?'':';width:'+(Math.abs(r.v)/max*100).toFixed(2)+'%')+'"></div></div>'+
     '<span class="val">'+esc(r.label)+(r.sub?'<small>'+esc(r.sub)+'</small>':'')+'</span></div>').join('')+'</div>';
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.bar').forEach((b,k)=>{
     b.style.transitionDelay=(k*50)+'ms'; b.style.width=b.dataset.w+'%'; })));
+  const tip=tipFor(host);
+  host.querySelectorAll('.hb').forEach(el=>{
+    const r=rows[el.dataset.k];
+    const show=e=>{
+      tip.innerHTML=tipRows(r.name, r.tip || [{name:'Value', color:r.color, value:r.label}]);
+      tip.classList.add('on');
+      const hb=host.getBoundingClientRect(); placeTip(host, tip, e.clientX-hb.left, e.clientY-hb.top);
+    };
+    el.addEventListener('pointermove', show);
+    el.addEventListener('pointerdown', show);
+    el.addEventListener('pointerleave', ()=>tip.classList.remove('on'));
+  });
 }
 function brandBars(host, r, hasCost, anim){
   if(!hasCost){ host.innerHTML='<div class="gempty">Profit needs the cost prices from the Google Sheet.</div>'; return; }
   const list=[...r.brands.values()].filter(b=>b.revKnown>0).sort((a,b)=>b.profit-a.profit).slice(0,10);
   if(!list.length){ host.innerHTML='<div class="gempty">None of the items sold have a cost yet.</div>'; return; }
-  hbars(host, list.map(b=>({name:b.name, v:b.profit, color:brandColor(b.name), label:moneySigned(b.profit), sub:pct(b.profit/b.revKnown)})), anim);
+  hbars(host, list.map(b=>({name:b.name, v:b.profit, color:brandColor(b.name), label:moneySigned(b.profit), sub:pct(b.profit/b.revKnown),
+    tip:[{name:'Gross profit', color:brandColor(b.name), value:moneySigned(b.profit)}, {name:'Margin', value:pct(b.profit/b.revKnown)},
+      {name:'Revenue', value:moneySigned(b.rev)}].concat(b.revKnown<b.rev-0.005 ? [{name:'With a cost', value:moneySigned(b.revKnown)}] : [])
+      .concat(b.qty ? [{name:'Items sold', value:String(b.qty)}] : [])})), anim);
 }
 function storeBars(host, r, hasCost, anim){
   const list=[...r.stores.entries()].sort((a,b)=>b[1].rev-a[1].rev);
   hbars(host, list.map(([id, s])=>({name:storeLabel(id), v:s.rev, color:'var(--s1)', label:moneySigned(s.rev),
-    sub:(hasCost?moneySigned(s.profit)+' profit · ':'')+s.count+' sale'+(s.count===1?'':'s')})), anim);
+    sub:(hasCost?moneySigned(s.profit)+' profit · ':'')+s.count+' sale'+(s.count===1?'':'s'),
+    tip:[{name:'Revenue', color:'var(--s1)', value:moneySigned(s.rev)}].concat(hasCost ? [{name:'Gross profit', value:moneySigned(s.profit)}] : [])
+      .concat([{name:'Sales', value:String(s.count)}])})), anim);
 }
 function topProducts(host, r, hasCost, anim){
   const key={profit:p=>p.noCost&&!p.revKnown?-Infinity:p.profit, revenue:p=>p.rev, qty:p=>p.qty}[gx.sort] || (p=>p.profit);
