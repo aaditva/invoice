@@ -631,9 +631,16 @@
   button.primary{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
   #btnFinalizeNoPrint{box-shadow:var(--rim),0 1px 2px rgba(0,0,0,.08),0 6px 18px rgba(94,92,230,.28)}
   .tile{box-shadow:var(--rim),var(--shadow)}
-  /* Selected payment method: a soft glow in its own colour (green cash, blue card, amber split) */
-  .paybtns button.sel{box-shadow:var(--rim),0 0 0 3px color-mix(in srgb,currentColor 14%,transparent),
-    0 6px 22px color-mix(in srgb,currentColor 32%,transparent)}
+  /* Selected payment method: a soft glow in its own colour (green cash, blue card, amber split).
+     Same shadow layers selected or not (just transparent), so the glow fades rather than pops:
+     it comes in quickly and lets go slowly when another method is picked. */
+  .paybtns .cash{--glow:#1a9e57} .paybtns .card{--glow:#0071e3} .paybtns .split{--glow:#c48a00}
+  html .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent);
+    transition:box-shadow .9s ease-out,border-color .7s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
+  html .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 14%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 32%,transparent);
+    transition:box-shadow .3s ease-out,border-color .2s ease-out,transform .3s cubic-bezier(.34,1.56,.64,1)}
   /* Stay flat: they sit inside a glass track/menu, or are plain list rows and links */
   html :is(.ordseg,.gtabs) button,html .ddmenu > button:not(.storechip),html .sblist .sbrow,html button.rm{box-shadow:none}
   html :is(.ordseg,.gtabs) button:active,html .sblist .sbrow:active{transform:none;filter:none}
@@ -675,8 +682,11 @@
     --fill:rgba(255,255,255,.03);
   }
   [data-theme="dark"] button{box-shadow:var(--rim),var(--lift)}
-  [data-theme="dark"] .paybtns button.sel{box-shadow:var(--rim),0 0 0 3px color-mix(in srgb,currentColor 18%,transparent),
-    0 6px 24px color-mix(in srgb,currentColor 38%,transparent)}
+  [data-theme="dark"] .paybtns .cash{--glow:#4cc38a} [data-theme="dark"] .paybtns .card{--glow:#6aaeff} [data-theme="dark"] .paybtns .split{--glow:#f0c050}
+  [data-theme="dark"] .paybtns button{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 0%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 0%,transparent)}
+  [data-theme="dark"] .paybtns button.sel{box-shadow:var(--rim),var(--lift),0 0 0 3px color-mix(in srgb,var(--glow) 18%,transparent),
+    0 6px 22px color-mix(in srgb,var(--glow) 38%,transparent)}
   [data-theme="dark"] button{background-color:var(--fill)}
   [data-theme="dark"] button.ghost{background:var(--fill);border-color:transparent}
   [data-theme="dark"] :is(.qty,.seg,.quicktender,.gseg) button:not(.sel),[data-theme="dark"] #adminModal .seg button:not(.sel),
