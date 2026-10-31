@@ -119,6 +119,9 @@ function updateDailyTotal() {
     writeTotal(new Date(now.getTime() - 3600 * 1000));
   }
   writeTotal(now);
+  // Also re-check the last EXPENSE_LOOKBACK days (like expenses below), so a day
+  // the script missed — e.g. while the tab was renamed — is put right, not left short.
+  try { writeByDay('sales', TOTAL_HEADER, now); } catch (e) { console.log('Sales catch-up skipped: ' + e.message); }
   // Expenses are extra: if that part fails (e.g. the site hasn't got
   // /api/expenses yet) log it and carry on, rather than failing the run.
   if (EXPENSES_HEADER) {
