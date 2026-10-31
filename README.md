@@ -364,15 +364,17 @@ with the same `SQUARESPACE_API_KEY` (it needs **Orders: Read**, section 2):
   the per-store and day-by-day tables. **All stores** includes online; picking one store doesn't.
 - **Insights** counts each order's products in revenue, profit, brands, top products and the by-store
   chart (as **Online**), costed from the same cost prices as the tills. Shipping isn't product
-  revenue, so it's left out there (the green chip says how much).
+  revenue, so it's left out there. An **Online products** card lists every product found in the
+  website orders for the period (qty, orders, revenue, last sold), and a grey chip says how many
+  orders were left out and why (cancelled, test, in-store, nothing paid).
 
 What counts: paid web orders, less anything refunded. Test orders, cancelled orders and unpaid ones
 are left out, as are Squarespace POS sales, which are in-store. A refund or cancellation made in
 Squarespace later shows up within a minute. Orders are filed under the Melbourne day they were placed.
 
 The site keeps a copy of the orders (Netlify Blobs) and asks Squarespace for changes at most once a
-minute. The very first time, it reads back to **1 Oct 2025** (`ONLINE_SINCE` env var to change), which
-can take a few goes; Takings/Admin say *Still reading older online orders* until it's done. If the
+minute. The very first time, it lists every order Squarespace has (paid and pending alike; `ONLINE_SINCE` env var
+sets the earliest day kept), which can take a few goes; Takings/Admin say *Still reading older online orders* until it's done. If the
 key lacks Orders permission, they say so and show the tills' figures alone.
 
 **🏷️ Barcodes → 📷 Scan into Squarespace** — a product added in Squarespace gets a made-up SKU
