@@ -39,6 +39,10 @@
  *  Profit tab — one row per trading day (newest first): takings, cost of
  *  goods sold, gross profit, margin and how many items sold had no cost yet,
  *  with a summary box for today / this week / this month / last 30 days.
+ *  Website (Squarespace) orders are counted here too (INCLUDE_ONLINE), with
+ *  shipping left out of takings, the same as Admin → Insights. They are read
+ *  with ADMIN_PIN, so it must be filled in. The daily Games column stays
+ *  store-only.
  *
  *  Charts live on the website now (Admin → 📊 Insights): the sheet sends the
  *  cost prices and brands to the site each refresh, and straight away when
@@ -63,6 +67,7 @@ const MONEY_ADDED_HEADER = 'Money Added'; // row-1 heading of the money-added co
 const TIME_ZONE    = 'Australia/Melbourne';
 const PRODUCTS_TAB = 'Products';  // tab listing products, stock and YOUR cost price; '' to turn off
 const PROFIT_TAB   = 'Profit';    // tab with daily takings / cost / profit; '' to turn off
+const INCLUDE_ONLINE = true;      // Profit tab also counts website (Squarespace) orders, like Admin → Insights does
 const PRODUCTS_EVERY_MINUTES = 5; // how often new products are pulled in: 1, 5, 10, 15 or 30
 
 function setup() {
@@ -781,6 +786,10 @@ function updateProfit(now) {
   };
   const isMisc = it => !String(it.sku || '').trim() || /^MISC-/i.test(String(it.sku));
 
+  // Website orders for the whole window, by day. If they can't be read, the
+  // Profit tab is left as it is (a run without them would understate the days).
+  const online = INCLUDE_ONLINE ? fetchOnlineByDay(now) : {};
+
   removeOldCharts();
   const sheet = tabNamed(PROFIT_TAB);
   const heads = ['Date', 'Takings', 'Cost of goods', 'Gross profit', 'Margin %', 'Items without cost'];
@@ -799,11 +808,12 @@ function updateProfit(now) {
       (STORE && STORE !== 'all' ? '&store=' + encodeURIComponent(STORE) : '');
     const res = UrlFetchApp.fetch(url, { headers: SALES_TOKEN ? { 'x-sales-token': SALES_TOKEN } : {}, muteHttpExceptions: true });
     if (res.getResponseCode() !== 200) throw new Error('sales fetch failed (' + res.getResponseCode() + ')');
-    const sales = (JSON.parse(res.getContentText()).sales || []).filter(s => s && !s.voided);
+    const sales = (JSON.parse(res.getContentText()).sales || []).filter(s => s && !s.voided)
+      .concat(online[day] || []);
     if (!sales.length) continue;
     let takings = 0, cogs = 0, missing = 0;
     sales.forEach(s => {
-      takings += Number(s.total) || 0;
+      takings += (Number(s.total) || 0) - (Number(s.shipping) || 0); // shipping isn't product revenue
       (s.items || []).forEach((it, i) => {
         const q = Number(it.qty) || 0;
         const m = isMisc(it) ? miscCosts[s.no + '#' + i] : null;
@@ -825,6 +835,31 @@ function updateProfit(now) {
     sheet.getRange(2, 1, n, heads.length).sort({ column: 1, ascending: false });
   }
   styleProfit(sheet);
+}
+
+// Website (Squarespace) orders for the look-back window, grouped by day, each
+// shaped like a till sale. Throws if the site can't give them (e.g. ADMIN_PIN
+// missing or wrong), so the caller can leave the Profit tab alone.
+function fetchOnlineByDay(now) {
+  const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');
+  const from = Utilities.formatDate(new Date(now.getTime() - EXPENSE_LOOKBACK * 86400000), TIME_ZONE, 'yyyy-MM-dd');
+  const url = SITE_URL.replace(/\/$/, '') + '/api/online?from=' + from + '&to=' + to;
+  let data = null;
+  // The first read of older orders can take a few goes (sync.complete false).
+  for (let tries = 0; tries < 6; tries++) {
+    const res = UrlFetchApp.fetch(url, { headers: authHeaders(), muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) {
+      throw new Error('online orders fetch failed (' + res.getResponseCode() + '): ' + res.getContentText() +
+        (res.getResponseCode() === 401 ? ' — check ADMIN_PIN at the top of the script' : ''));
+    }
+    data = JSON.parse(res.getContentText());
+    if (!data.sync || data.sync.complete || data.sync.error) break;
+    Utilities.sleep(2000);
+  }
+  if (data.sync && !data.sync.complete) throw new Error('online orders still syncing from Squarespace');
+  const byDay = {};
+  (data.sales || []).forEach(s => { if (s && s.day) (byDay[s.day] = byDay[s.day] || []).push(s); });
+  return byDay;
 }
 
 // The graphs and brand/month tables the older script made — gone. The charts
