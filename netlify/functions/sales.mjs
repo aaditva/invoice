@@ -38,7 +38,9 @@
  *      Tick (done:true) or untick (done:false) a pick-up. Writes
  *      pickedUp / pickedUpAt / pickedUpDay / pickedUpBy onto the sale itself,
  *      so every view of that invoice shows it. `day` is the till's local day
- *      it was collected; untick needs the sale's pickedUpDay.
+ *      it was collected; untick needs the sale's pickedUpDay. A website Store
+ *      Pickup (put on the list by /api/web-orders) is also fulfilled in
+ *      Squarespace on its tick; the reply's `squarespace` says how that went.
  *
  *    GET  /api/sales?day=YYYY-MM-DD[&store=ID]
  *      → { day, store, sales:[...] }     one day, one store or all stores
@@ -74,10 +76,14 @@
  *                                     under the day it was collected so the
  *                                     "recently collected" list stays cheap.
  *    pickupscan/<store>               marker: older pick-ups already adopted.
+ *    web/…                            website orders (web-orders.mjs). A website
+ *                                     pick-up's pointer names its blob in `key`.
  * ------------------------------------------------------------------ */
 
-import { getStore } from '@netlify/blobs';
 import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+import { PICKUP_RE, PICKUP_STATE, salesBlobs, saleKey, openKey, doneKey, saleKeyOf, pointerOf, newPickupCode,
+         getJSON, setPickedUp } from '../lib/pickups.mjs';
+import { fulfilOrder } from '../lib/squarespace.mjs';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -87,16 +93,14 @@ const DEFAULT_STORE_NAME = 'South Melbourne';
 const MAX_RANGE_DAYS = 62;             // keeps an Admin range inside the function timeout
 const CONCURRENCY = 10;                // parallel blob reads
 const INDEX_V = 1;
-const PICKUP_RE = /^PU[0-9A-Z]{6,20}$/;  // the code printed as the pick-up barcode
 const BACKFILL_DAYS = 45;              // how far back to adopt pick-ups made before codes existed
 const MAX_DONE_DAYS = 31;
 
 // Local bookkeeping the till uses to track its own offline queue. It means
 // nothing once the sale is on the server, so it doesn't get stored.
 const LOCAL_ONLY = ['synced', 'stockAdjusted', 'restocked', 'stockItems'];
-// Collected-or-not lives on the server and only changes through ?pickup=done.
-// A till re-sending its own copy of a sale (a void) must not undo a tick.
-const PICKUP_STATE = ['pickedUp', 'pickedUpAt', 'pickedUpDay', 'pickedUpBy'];
+// Collected-or-not (PICKUP_STATE) lives on the server and only changes through
+// ?pickup=done. A till re-sending its own copy of a sale (a void) must not undo a tick.
 
 export default async (req) => {
   const headers = corsHeaders('GET, POST');
@@ -133,6 +137,9 @@ async function handlePost(req, headers) {
 
   const day = String(sale.day == null ? '' : sale.day).trim();
   if (!DAY_RE.test(day)) return json({ error: 'Sale needs day = YYYY-MM-DD.' }, 400, headers);
+
+  // Website orders are filed by /api/web-orders, never as a till sale.
+  if (sale.web) return json({ error: 'A website order can\'t be saved as a till sale.' }, 400, headers);
 
   const store = slugStore(sale.store);
   const clean = { ...sale, no, day, store };
@@ -188,10 +195,6 @@ async function syncPickupPointer(st, sale) {
   } catch (e) { /* the sale itself is saved; the next re-POST or scan repairs this */ }
 }
 
-function pointerOf(sale) {
-  return { code: sale.pickupCode, no: sale.no, day: sale.day, store: sale.store, ts: sale.ts };
-}
-
 async function handlePickupDone(req, headers) {
   let body = {};
   try { body = await req.json(); } catch (e) { return json({ error: 'Body must be JSON.' }, 400, headers); }
@@ -219,29 +222,31 @@ async function handlePickupDone(req, headers) {
     if (!ptr) return json({ error: 'That pick-up isn\'t marked collected.' }, 404, headers);
   }
 
-  const sk = saleKey(ptr.day, store, ptr.no);
-  const sale = await getJSON(st, sk);
+  const sale = await getJSON(st, saleKeyOf(ptr, store));
   if (!sale) return json({ error: 'The invoice for that pick-up is missing.' }, 404, headers);
 
-  if (done) {
-    const day = DAY_RE.test(String(body.day || '')) ? String(body.day) : utcToday();
-    sale.pickedUp = true;
-    sale.pickedUpAt = new Date().toISOString();
-    sale.pickedUpDay = day;
-    if (body.by) sale.pickedUpBy = String(body.by).slice(0, 60); else delete sale.pickedUpBy;
-  } else {
-    for (const k of PICKUP_STATE) delete sale[k];
+  const day = done ? (DAY_RE.test(String(body.day || '')) ? String(body.day) : utcToday()) : '';
+  await setPickedUp(st, {
+    store, code, ptr, fromKey, sale, done, day, by: body.by,
+    // Website orders aren't in the day index (they aren't the store's takings).
+    afterSave: ptr.key ? null : (s, etag) => mergeIntoIndex(st, s.day, store, s, etag),
+  });
+
+  // A website order picked up is fulfilled in Squarespace too. Squarespace can't
+  // un-fulfil an order, so unticking only puts it back on this list.
+  let squarespace;
+  if (sale.web && sale.web.orderId) {
+    if (done && !sale.web.fulfilledAt) {
+      squarespace = await fulfilOrder(sale.web.orderId);
+      if (squarespace.ok) {
+        sale.web.fulfilledAt = new Date().toISOString();
+        try { await st.setJSON(saleKeyOf(ptr, store), sale); } catch (e) { /* only the note is lost */ }
+      }
+    } else if (!done) {
+      squarespace = { ok: false, error: 'It stays marked fulfilled in Squarespace: the website can\'t undo that.' };
+    }
   }
-  const res = await st.setJSON(sk, sale);
-  await mergeIntoIndex(st, sale.day, store, sale, (res && res.etag) || null);
-
-  // New pointer first, then drop the old one — never lose it in between.
-  const p = pointerOf(sale);
-  if (done) await st.setJSON(doneKey(store, sale.pickedUpDay, code), p);
-  else await st.setJSON(openKey(store, code), p);
-  try { await st.delete(fromKey); } catch (e) { /* a stray pointer is ignored on read */ }
-
-  return json({ ok: true, sale }, 200, headers);
+  return json({ ok: true, sale, squarespace }, 200, headers);
 }
 
 // The sale a code belongs to, wherever its pointer is (open or done lately).
@@ -254,7 +259,7 @@ async function findPickupSale(st, store, code) {
       if (hit) ptr = await getJSON(st, hit.key);
     } catch (e) { /* not found */ }
   }
-  return ptr ? await getJSON(st, saleKey(ptr.day, store, ptr.no)) : null;
+  return ptr ? await getJSON(st, saleKeyOf(ptr, store)) : null;
 }
 
 async function listPickups(storeFilter, doneDays) {
@@ -272,7 +277,7 @@ async function listPickups(storeFilter, doneDays) {
   const load = async key => {
     const ptr = await getJSON(st, key);
     if (!ptr || !ptr.no || !DAY_RE.test(String(ptr.day))) return null;
-    const sale = await getJSON(st, saleKey(ptr.day, slugStore(ptr.store), ptr.no));
+    const sale = await getJSON(st, saleKeyOf(ptr, slugStore(ptr.store)));
     return sale && !sale.voided && sale.order === 'pickup' ? sale : null;
   };
   const open = (await mapLimit(openKeys, CONCURRENCY, load)).filter(s => s && !s.pickedUp).sort(byTs);
@@ -304,12 +309,6 @@ async function adoptOldPickups(store) {
     }
   }
   await st.setJSON(mark, { at: new Date().toISOString() });
-}
-
-// Same shape as the till's: PU + base-36 time + 2 random characters.
-function newPickupCode(t) {
-  const rnd = Math.floor(Math.random() * 1296).toString(36).padStart(2, '0');
-  return ('PU' + Math.floor(t).toString(36) + rnd).toUpperCase();
 }
 
 /* ---------------- the shared invoice counter ---------------- */
@@ -570,20 +569,10 @@ function addAgg(a, b) {
 
 /* ---------------- plumbing ---------------- */
 
-function blobs() {
-  // Strong consistency: a till must read back the sale it just wrote.
-  return getStore({ name: 'sales', consistency: 'strong' });
-}
+const blobs = salesBlobs;
 
-function saleKey(day, store, no) { return 'sale/' + day + '/' + store + '/' + encodeURIComponent(no); }
 function indexKey(day, store) { return 'index/' + day + '/' + store; }
 function counterKey(store) { return 'counter/' + store; }
-function openKey(store, code) { return 'pickup/' + store + '/open/' + code; }
-function doneKey(store, day, code) { return 'pickup/' + store + '/done/' + day + '/' + code; }
-
-async function getJSON(st, key) {
-  try { return await st.get(key, { type: 'json' }); } catch (e) { return null; }
-}
 
 function slugStore(v) {
   const s = String(v == null ? '' : v).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

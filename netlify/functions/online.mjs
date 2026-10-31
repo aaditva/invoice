@@ -7,7 +7,8 @@
  *
  *  Route:
  *    GET /api/online?from=YYYY-MM-DD&to=YYYY-MM-DD      (day=… works as a one-day range)
- *      → { from, to, days:[{day, store:'online', count, cash, card, online, gst, sub, total, shipping}],
+ *      → { from, to, days:[{day, store:'online', count, cash, card, online, gst, sub, total, shipping,
+ *                           pickup, delivery, unmarked}],
  *          totals:{…same…}, sales:[…], sync:{ complete, syncedTo, error? } }
  *      Each order comes back shaped like a till sale (store 'online',
  *      method 'online', items with sku/name/qty/price), so the till can add it
@@ -22,6 +23,13 @@
  *  not online) are left out. total = what was charged less anything refunded,
  *  shipping included; `shipping` is reported separately so Insights can leave
  *  it out of product revenue.
+ *
+ *  How it reaches the customer (each sale's `delivery`), read straight off the order:
+ *    'pickup'    the shipping option chosen at checkout (shippingLines[0].method) says
+ *                pick up, e.g. "Store Pickup"
+ *    'delivery'  the order has a tracking number (fulfillments[].trackingNumber)
+ *    ''          neither yet (e.g. a delivery not sent yet); `shipMethod` still carries
+ *                the option's name as written, if there is one
  *
  *  Env vars:
  *    SQUARESPACE_API_KEY  the same key as /api/catalog, with **Orders: Read** permission too
@@ -55,10 +63,11 @@ const MIN_GAP_MS = 60 * 1000;            // ask Squarespace at most once a minut
 const BUDGET_MS = 7000;                  // stop syncing in time to answer inside the function timeout
 const OVERLAP_MS = 2 * 60 * 1000;        // re-read a little before syncedTo, in case of clock skew
 const MAX_WINDOW_DAYS = 30;
-const STATE_VERSION = 2;                 // bump to make every order be read again from scratch
+const STATE_VERSION = 3;                 // bump to make every order be read again from scratch (3: pickup/delivery fields)
 const MAX_RANGE_DAYS = 400;
 const GST_RATE = 10;                     // fallback only, when Squarespace reports no tax
 const COUNTED = new Set(['PAID', 'REFUNDED', 'REFUND_PENDING', 'REFUND_FAILED']);   // money was taken
+const PICKUP_RE = /pick\s*-?\s*up/i;
 
 export default async (req) => {
   const headers = corsHeaders('GET');
@@ -239,6 +248,9 @@ function compact(o, day) {
     id: o.id, no: String(o.orderNumber || o.id), ts: o.createdOn, day,
     grand, refunded, shipping: amt(o.shippingTotal), tax: amt(o.taxTotal),
     discount: amt(o.discountTotal), status: o.fulfillmentStatus || '',
+    shipMethod: String((Array.isArray(o.shippingLines) && o.shippingLines[0] && o.shippingLines[0].method) || '').trim(),
+    tracking: (Array.isArray(o.fulfillments) ? o.fulfillments : [])
+      .map(f => String((f && f.trackingNumber) || '').trim()).filter(Boolean),
     items: (Array.isArray(o.lineItems) ? o.lineItems : []).map(li => ({
       sku: String(li.sku || '').trim(),
       name: [li.productName, ...(Array.isArray(li.variantOptions) ? li.variantOptions.map(v => v && v.value).filter(Boolean) : [])]
@@ -277,15 +289,27 @@ function toSale(o) {
     store: 'online', storeName: 'Online', method: 'online', kind: 'online',
     total, gst, sub: r2(total - gst), shipping: r2(o.shipping * keep),
     refunded: o.refunded || 0, discount: o.discount || 0, status: o.status,
+    delivery: deliveryOf(o), shipMethod: o.shipMethod || '', tracking: o.tracking || [],
     servedBy: 'Website', items: o.items,
   };
 }
 
+// Only what the order itself says: the option's name, or a tracking number.
+function deliveryOf(o) {
+  if (PICKUP_RE.test(o.shipMethod || '')) return 'pickup';
+  if (o.tracking && o.tracking.length) return 'delivery';
+  return '';
+}
+
 function aggregate(sales) {
-  let online = 0, gst = 0, sub = 0, shipping = 0;
-  for (const s of sales) { online += s.total; gst += s.gst; sub += s.sub; shipping += s.shipping; }
+  let online = 0, gst = 0, sub = 0, shipping = 0, pickup = 0, delivery = 0, unmarked = 0;
+  for (const s of sales) {
+    online += s.total; gst += s.gst; sub += s.sub; shipping += s.shipping;
+    if (s.delivery === 'pickup') pickup++; else if (s.delivery === 'delivery') delivery++; else unmarked++;
+  }
   online = r2(online);
-  return { count: sales.length, cash: 0, card: 0, online, gst: r2(gst), sub: r2(sub), total: online, shipping: r2(shipping) };
+  return { count: sales.length, cash: 0, card: 0, online, gst: r2(gst), sub: r2(sub), total: online, shipping: r2(shipping),
+           pickup, delivery, unmarked };
 }
 
 /* ---------------- plumbing ---------------- */
