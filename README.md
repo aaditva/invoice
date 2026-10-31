@@ -476,7 +476,7 @@ when it last ran.
 
 ### Daily total into a Google Sheet (hourly)
 `google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
-existing sheet (one tab per year, dates down column A). It runs every hour, so the figure is at most an hour behind.
+existing sheet (one tab per year, named by `SHEET_NAME` — currently `2026 SM` — dates down column A). It runs every hour, so the figure is at most an hour behind.
 
 1. Open the sheet → **Extensions → Apps Script**, replace `Code.gs` with the file's contents.
 2. Fill in the settings at the top: your site URL, `SALES_TOKEN` (if you set one), the store
@@ -516,7 +516,11 @@ they're created and styled for you (blue header, filter buttons, frozen header):
 - **Profit** — one row per trading day, **newest at the top**: takings, cost of goods sold, gross
   profit, margin % and how many items sold had **no cost entered yet** (red when > 0, meaning
   profit reads high). A green **Summary** box on the right shows today, this week, this month,
-  last 30 days, this year and all time.
+  last 30 days, this year and all time. **Website (Squarespace) orders are counted here too**
+  (`INCLUDE_ONLINE`), shipping left out, the same as Admin → Insights. They're read with the
+  Admin password, so `ADMIN_PIN` must be filled in at the top of the script; if the site can't
+  give the online orders, the Profit tab is left as it was (see Apps Script → Executions). The
+  daily **Games** column stays store-only.
 - **Japanese products** get their cost from a different formula (`JAPAN_SETS` in the script; the
   working is in `google-sheet/japanese-costs.xlsx`). One **pack** = box price ÷ packs in the box,
   **+ 5% commission + 1.75% card-processing fee**, then **+ $0.50 delivery**. A whole **box** =
