@@ -18,14 +18,15 @@ export async function sqFetch(path, init = {}) {
 }
 
 // Mark an order fulfilled (Squarespace has no partial fulfilment through the API).
-// No email to the customer unless SQ_PICKUP_NOTIFY=1: they're standing at the counter.
-// 409 = already fulfilled, which is what we wanted anyway.
+// Squarespace emails the customer that it's done, unless SQ_PICKUP_NOTIFY=0.
+// 409 = already fulfilled, which is what we wanted anyway. A pickup has no
+// shipment: an empty list first, and if Squarespace won't take that, none at all.
 export async function fulfilOrder(orderId) {
   try {
-    const r = await sqFetch('/orders/' + encodeURIComponent(orderId) + '/fulfillments', {
-      method: 'POST',
-      body: JSON.stringify({ shouldSendNotification: process.env.SQ_PICKUP_NOTIFY === '1', shipments: [] }),
-    });
+    const notify = process.env.SQ_PICKUP_NOTIFY !== '0';
+    const send = body => sqFetch('/orders/' + encodeURIComponent(orderId) + '/fulfillments', { method: 'POST', body: JSON.stringify(body) });
+    let r = await send({ shouldSendNotification: notify, shipments: [] });
+    if (r.status === 400) r = await send({ shouldSendNotification: notify });
     if (r.ok || r.status === 409) return { ok: true };
     const text = (await r.text()).slice(0, 200);
     if (r.status === 401 || r.status === 403) {

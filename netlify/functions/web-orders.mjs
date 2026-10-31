@@ -34,7 +34,8 @@
  *                         Transactions: Read adds the card type to the printout.
  *    WEB_PRINT_SINCE      optional ISO time to start from. Default: 30 minutes before
  *                         the first time a till asks, so older orders don't all print.
- *    SQ_PICKUP_NOTIFY     '1' = Squarespace emails the customer when a pickup is ticked.
+ *    SQ_PICKUP_NOTIFY     '0' = no Squarespace email to the customer when a pickup is ticked
+ *                         (by default they get Squarespace's "order fulfilled" email).
  *    STORE_TZ             optional, default Australia/Melbourne (the day an order is filed under)
  *    SALES_TOKEN          optional; if set, requests need a matching x-sales-token
  *

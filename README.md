@@ -391,8 +391,8 @@ the receipt printer, within about a minute:
   the bag and one for the customer, with the **Squarespace order number** big on top (e.g. **#1001**)
   and a **pick-up barcode**. It also goes on that store's **🛍 Pick ups** list, the same as a till
   pick-up: scan the barcode (or search the name, phone or #1001), the order comes up, tick ✓, and the
-  order is marked **fulfilled in Squarespace**. No email goes to the customer (they're at the
-  counter); set the Netlify env var `SQ_PICKUP_NOTIFY=1` if you want Squarespace to send one. Unticking
+  order is marked **fulfilled in Squarespace**, and Squarespace emails the customer its usual
+  *order fulfilled* email. Set the Netlify env var `SQ_PICKUP_NOTIFY=0` to stop the email. Unticking
   puts it back on the list, but Squarespace can't un-fulfil an order.
 - **Delivery** (any other shipping option): prints **once**, with the ship-to address. Nothing goes
   on the Pick ups list.
