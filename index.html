@@ -2568,6 +2568,23 @@ function onlineNote(d){
   return '';
 }
 function onlineOk(d){ return !!(d && !d.error); }
+// How a website order reaches the customer, in the order's own words: the checkout
+// option (e.g. "Store Pickup") or the tracking number Squarespace has for it.
+function deliveryLabel(s){
+  const m=s.shipMethod||'', t=(s.tracking||[]).join(', ');
+  if(s.delivery==='pickup') return m||'Pickup';
+  if(s.delivery==='delivery') return 'Delivery · tracking '+t;
+  return m ? m+' · no tracking number yet' : 'No pickup or tracking yet';
+}
+// "3 Store Pickup · 2 Delivery" for a set of /api/online totals.
+function deliverySplit(t){
+  if(!t || t.pickup==null) return '';
+  const bits=[];
+  if(t.pickup) bits.push(t.pickup+' Store Pickup');
+  if(t.delivery) bits.push(t.delivery+' Delivery');
+  if(t.unmarked) bits.push(t.unmarked+' not picked up or sent yet');
+  return bits.join(' · ');
+}
 // What a sale brought in for its products: website orders carry shipping, which isn't product revenue.
 function goodsTotal(s){ return (Number(s.total)||0)-(Number(s.shipping)||0); }
 function aggregate(sales){
@@ -3674,7 +3691,8 @@ function renderAdmin(){
   $('adSummary').innerHTML='<div class="cards" style="margin-bottom:14px">'+
     adCard('Total takings', money(t.total), t.count+' sale'+(t.count===1?'':'s'))+
     (adState.store===ONLINE_ID ? '' : adCard('Cash', money(t.cash), '')+adCard('Card', money(t.card), ''))+
-    (withOnline ? adCard('Online', money(t.online||0), 'Website orders'+(adState.online.totals.shipping ? ', incl. '+money(adState.online.totals.shipping)+' shipping' : '')) : '')+
+    (withOnline ? adCard('Online', money(t.online||0), 'Website orders'+(adState.online.totals.shipping ? ', incl. '+money(adState.online.totals.shipping)+' shipping' : '')+
+      (deliverySplit(adState.online.totals) ? ' · '+deliverySplit(adState.online.totals) : '')) : '')+
     adCard('GST collected', money(t.gst), 'Subtotal ex GST '+money(t.sub))+
     '</div>';
 
@@ -4532,7 +4550,8 @@ function renderInsights(anim){
     if(onlineOk(gx.online)){
       const ship=gx.online.totals.shipping||0;
       chips.push('<span class="gchip ok">Includes '+r.onlineCount+' online order'+(r.onlineCount===1?'':'s')+' · '+esc(moneySigned(r.onlineRev))+
-        (ship ? ' (shipping of '+esc(moneySigned(ship))+' left out)' : '')+'</span>');
+        (ship ? ' (shipping of '+esc(moneySigned(ship))+' left out)' : '')+
+        (deliverySplit(gx.online.totals) ? ' · '+esc(deliverySplit(gx.online.totals)) : '')+'</span>');
     }
   }
   if(r.histDays){
@@ -4992,7 +5011,7 @@ function downloadSalesCsv(sales, filename){
               'Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=live.map(s=>{ const dt=new Date(s.ts);
     return [storeLabel(s.store), s.no, dt.toLocaleDateString('en-AU'), dt.toLocaleTimeString('en-AU'),
-      s.servedBy, s.customer||'', s.contact||'', s.kind==='online' ? 'Website order' : orderLabel(s), s.method, f2(s.discount||0),
+      s.servedBy, s.customer||'', s.contact||'', s.kind==='online' ? 'Website order · '+deliveryLabel(s) : orderLabel(s), s.method, f2(s.discount||0),
       f2(s.sub), f2(s.gst), f2(s.total), f2(s.paid!=null?s.paid:s.total), f2(s.tendered), f2(s.change),
       (s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ')]
       .map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',');

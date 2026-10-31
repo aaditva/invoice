@@ -365,6 +365,11 @@ with the same `SQUARESPACE_API_KEY` (it needs **Orders: Read**, section 2):
 - **Insights** counts each order's products in revenue, profit, brands, top products and the by-store
   chart (as **Online**), costed from the same cost prices as the tills. Shipping isn't product
   revenue, so it's left out there (the green chip says how much).
+- **Pickup or delivery**, taken from what the order itself says, never guessed: an order whose
+  checkout shipping option says *pick up* (e.g. **Store Pickup**) counts as pickup; an order with a
+  **tracking number** counts as delivery; anything else is *not picked up or sent yet*. Admin's
+  Online card and the Insights chip show the split (e.g. *3 Store Pickup · 2 Delivery*), and the
+  sales CSV's Order column gives each web order's option name or tracking number.
 
 What counts: paid web orders, less anything refunded. Test orders, cancelled orders and unpaid ones
 are left out, as are Squarespace POS sales, which are in-store. A refund or cancellation made in
