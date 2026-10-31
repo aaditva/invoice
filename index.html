@@ -2225,8 +2225,9 @@ async function refreshToday(){
     todayTally = aggregate(sales);
     todayTally.local = !combined;          // server unreachable → say so in the header
     if(isAdmin()){
-      const all = await storeDaySales(todayKey(), '');
-      allTally = all.combined ? aggregate(all.sales) : null;
+      // All stores includes today's website orders, as Takings and Admin do.
+      const [all, on] = await Promise.all([storeDaySales(todayKey(), ''), isTraining() ? null : fetchOnline(todayKey(), todayKey())]);
+      allTally = all.combined ? aggregate(all.sales.concat(onlineOk(on) ? on.sales : [])) : null;
     }
   }catch(e){ todayTally = null; }
   finally{ todayBusy = false; }
