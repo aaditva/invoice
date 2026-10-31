@@ -149,28 +149,41 @@ function footer(d, store, opts, cashSale){
 
 function buildReceipt({ store = {}, sale = {}, options = {} }){
   const d = new Doc().raw(CMD.init);
-  // Pick-up order number first, as big as it goes, so the bagged items are easy to find.
-  if (sale.order === 'pickup' && sale.orderNo)
+  // A website order comes with its docket worked out by the till: a title, its
+  // lines ([text, bold]), extra totals, and how it was paid.
+  const dk = sale.docket && typeof sale.docket === 'object' ? sale.docket : null;
+  // Pick-up / website order number first, as big as it goes, so the bagged items are easy to find.
+  if ((sale.order === 'pickup' || dk) && sale.orderNo)
     d.raw(CMD.alignCentre).raw(CMD.hugeOn).raw(CMD.boldOn).ln(ascii(sale.orderNo)).raw(CMD.boldOff).raw(CMD.bigOff).raw(CMD.alignLeft).ln();
   header(d, store);
 
   d.ln(rule());
-  d.raw(CMD.alignCentre).raw(CMD.boldOn).ln(sale.kind === 'refund' ? 'REFUND - ADJUSTMENT NOTE' : 'TAX INVOICE').raw(CMD.boldOff).raw(CMD.alignLeft);
+  d.raw(CMD.alignCentre).raw(CMD.boldOn).ln(dk ? ascii(dk.title || 'WEBSITE ORDER') : sale.kind === 'refund' ? 'REFUND - ADJUSTMENT NOTE' : 'TAX INVOICE').raw(CMD.boldOff).raw(CMD.alignLeft);
   if (sale.kind === 'refund') d.ln('Refund of: ' + ascii(sale.refundOf || ''));
 
   const when = new Date(sale.ts || Date.now());
   d.ln(pair(sale.no || '', when.toLocaleDateString('en-AU') + ' ' +
         when.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })));
-  // Wrap these — a long customer name would otherwise run past the paper edge.
-  if (sale.servedBy) for (const l of wrap('Served by: ' + ascii(sale.servedBy))) d.ln(l);
-  if (sale.customer) for (const l of wrap('Customer: '  + ascii(sale.customer))) d.ln(l);
-  if (sale.contact)  for (const l of wrap((/@/.test(sale.contact) ? 'Email: ' : 'Phone: ') + ascii(sale.contact))) d.ln(l);
-  if (sale.order === 'pickup'){
-    d.raw(CMD.boldOn).ln('Order: PICK UP LATER');
-    if (sale.pickupWhen) for (const l of wrap('Pick up ' + ascii(sale.pickupWhen))) d.ln(l);
-    d.raw(CMD.boldOff);
+  if (dk) {
+    for (const [t, bold] of (Array.isArray(dk.lines) ? dk.lines : [])) {
+      const indent = /^\s+/.test(String(t)) ? '  ' : '';
+      if (bold) d.raw(CMD.boldOn);
+      for (const l of wrap(t, COLS - indent.length)) d.ln(indent + l);
+      if (bold) d.raw(CMD.boldOff);
+    }
   }
-  else d.ln('Order: Served on the spot');
+  else {
+    // Wrap these — a long customer name would otherwise run past the paper edge.
+    if (sale.servedBy) for (const l of wrap('Served by: ' + ascii(sale.servedBy))) d.ln(l);
+    if (sale.customer) for (const l of wrap('Customer: '  + ascii(sale.customer))) d.ln(l);
+    if (sale.contact)  for (const l of wrap((/@/.test(sale.contact) ? 'Email: ' : 'Phone: ') + ascii(sale.contact))) d.ln(l);
+    if (sale.order === 'pickup'){
+      d.raw(CMD.boldOn).ln('Order: PICK UP LATER');
+      if (sale.pickupWhen) for (const l of wrap('Pick up ' + ascii(sale.pickupWhen))) d.ln(l);
+      d.raw(CMD.boldOff);
+    }
+    else d.ln('Order: Served on the spot');
+  }
   d.ln(rule());
 
   for (const it of (sale.items || [])){
@@ -179,14 +192,18 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   }
 
   d.ln(rule());
+  if (dk) for (const [l, v] of (Array.isArray(dk.totals) ? dk.totals : [])) d.ln(pair(l, money(v)));
   d.ln(pair('Subtotal (ex GST)', money(sale.sub)));
   d.ln(pair(`GST (${sale.rate ?? 10}%)`, money(sale.gst)));
   d.raw(CMD.boldOn).ln(pair('TOTAL', money(sale.total))).raw(CMD.boldOff);
   d.ln('Total price includes GST ' + money(sale.gst));
   d.ln();
 
-  const cash = sale.method === 'cash' || sale.method === 'split';
-  if (sale.kind === 'refund'){
+  const cash = !dk && (sale.method === 'cash' || sale.method === 'split');
+  if (dk){
+    const [l, v] = Array.isArray(dk.paid) ? dk.paid : ['PAID ONLINE', sale.total];
+    d.raw(CMD.boldOn).ln(pair(l, money(v))).raw(CMD.boldOff);
+  } else if (sale.kind === 'refund'){
     if (sale.rounding) d.ln(pair('Rounding', (sale.rounding > 0 ? '+' : '') + money(sale.rounding)));
     d.raw(CMD.boldOn).ln(pair('REFUNDED TO ' + (sale.method === 'cash' ? 'CASH' : 'CARD'), money(-sale.paid))).raw(CMD.boldOff);
   } else if (sale.method === 'split'){
@@ -205,7 +222,7 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
 
   if (sale.order === 'pickup' && sale.pickupCode){
     d.ln(rule()).raw(CMD.alignCentre).raw(CMD.boldOn).ln('PICK-UP BARCODE').raw(CMD.boldOff)
-     .ln('Bring this receipt to collect your order').raw(CMD.alignLeft);
+     .ln(ascii((dk && dk.barcodeNote) || 'Bring this receipt to collect your order')).raw(CMD.alignLeft);
     barcode128(d, sale.pickupCode);
   }
 
@@ -269,7 +286,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund'] }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');

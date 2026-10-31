@@ -70,6 +70,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
    - To also use **live stock sync** ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)), give the *same* key **Inventory: Read/Write** as well.
    - To scan barcodes into Squarespace from Admin → 🏷️ Barcodes, make it **Products: Read/Write** instead.
    - To count **website sales** in the header, Admin and Insights ([Online sales](#online-sales-the-website)), give it **Orders: Read** as well.
+   - To **print website orders** and tick off Store Pickups ([Website orders](#website-orders-printing-and-store-pickup)), make it **Orders: Read and Write**, plus **Transactions: Read** for the card type on the printout.
 3. Copy the key (you only see it once). Keep it secret — it is *not* pasted into the app.
 
 ---
@@ -380,6 +381,46 @@ minute. The very first time, it reads back to **1 Oct 2025** (`ONLINE_SINCE` env
 can take a few goes; Takings/Admin say *Still reading older online orders* until it's done. If the
 key lacks Orders permission, they say so and show the tills' figures alone.
 
+### Website orders: printing and Store Pickup
+
+Tick **Settings → Website orders → Print website orders on this till** on **one** till (the one
+whose store holds the pickups). Every new paid Squarespace order then prints there by itself, on
+the receipt printer, within about a minute:
+
+- **Store Pickup** (the order's checkout shipping option says *pick up*): prints **twice**, one for
+  the bag and one for the customer, with the **Squarespace order number** big on top (e.g. **#1001**)
+  and a **pick-up barcode**. It also goes on that store's **🛍 Pick ups** list, the same as a till
+  pick-up: scan the barcode (or search the name, phone or #1001), the order comes up, tick ✓, and the
+  order is marked **fulfilled in Squarespace**. No email goes to the customer (they're at the
+  counter); set the Netlify env var `SQ_PICKUP_NOTIFY=1` if you want Squarespace to send one. Unticking
+  puts it back on the list, but Squarespace can't un-fulfil an order.
+- **Delivery** (any other shipping option): prints **once**, with the ship-to address. Nothing goes
+  on the Pick ups list.
+
+The printout says **WEBSITE ORDER** (Squarespace emails the customer their own invoice) and has
+the customer's name, phone, email and address (the ship-to address for a delivery), the shipping
+option, any promo code, anything typed into the checkout form (e.g. a gift note), the products, the
+shipping, GST, total and how it was paid (e.g. *PAID ONLINE - Visa (Stripe)*; just *PAID ONLINE*
+if the key hasn't got **Transactions: Read**). All of it is copied from the order as Squarespace
+has it.
+
+**Nothing gets lost.** `/api/web-orders` keeps a print queue, and an order only leaves it once a
+till has printed it. With no wifi, the till closed or the receipt printer off, orders wait and print
+as soon as it's all back. While the printer can't be reached the header shows **🖨 N website orders
+to print**; tap it to print them through the print dialog instead. If two tills have the box ticked,
+each order still prints once (the first till to take it prints it, and a pickup goes on *that*
+store's list).
+
+**Kept in step with Squarespace.** An order cancelled or fully refunded in Squarespace leaves the
+queue and the Pick ups list. One marked fulfilled in Squarespace is ticked off the list (*by
+Squarespace*). Website orders are never counted in a store's takings: they're already in **Online**.
+
+Only orders placed after the first time a till asks are printed (30 minutes back), so switching it on
+doesn't print the whole history. `WEB_PRINT_SINCE` (an ISO time) starts it from somewhere else.
+
+The receipt bridge needs **re-installing once** (run *Install Receipt Printer* again) to print the
+full docket. An older bridge still prints the order, with the details squeezed onto the customer line.
+
 **🏷️ Barcodes → 📷 Scan into Squarespace** — a product added in Squarespace gets a made-up SKU
 starting with **SQ** until its barcode goes in. This lists every Squarespace product with the SQ
 ones on top (newest first). Tap one on a phone, point the camera at the box's barcode, and **Save**:
@@ -610,6 +651,9 @@ Sale finalised ─► /api/inventory (holds the key) ─► Squarespace inventor
 | `netlify/functions/labels.mjs` | One-off products given a barcode in Admin → 🏷️ Barcodes (`/api/labels`). |
 | `netlify/functions/sq-barcodes.mjs` | Lists Squarespace products and writes a scanned barcode to a variant's SKU and GTIN (`/api/sq-barcodes`). |
 | `netlify/functions/online.mjs` | Website orders from Squarespace, for Takings and Insights (`/api/online`). |
+| `netlify/functions/web-orders.mjs` | Website orders to print, and Store Pickups onto the Pick ups list (`/api/web-orders`). |
+| `netlify/lib/pickups.mjs` | Where pick-ups are kept and how one is ticked, shared by `sales.mjs` and `web-orders.mjs`. |
+| `netlify/lib/squarespace.mjs` | Fulfilling an order and reading how it was paid, from Squarespace. |
 | `netlify/functions/costs.mjs` | Cost prices & brands sent from the Google Sheet, for Admin → Insights (`/api/costs`). |
 | `netlify.toml` + `package.json` | Netlify routing + the `@netlify/blobs` dependency. |
 | `worker.js` | Cloudflare Worker catalogue proxy (alt to Netlify). |

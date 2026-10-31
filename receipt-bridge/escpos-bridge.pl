@@ -181,32 +181,46 @@ sub build_receipt {
     my $opts  = $p->{options} || {};
 
     my $out = $CMD{init};
-    # Pick-up order number first, as big as it goes, so the bagged items are easy to find.
-    if (($sale->{order} // '') eq 'pickup' && (my $ono = ascii($sale->{orderNo}))) {
+    # A website order comes with its docket worked out by the till: a title, its
+    # lines ([text, bold]), extra totals, and how it was paid.
+    my $dk = ref($sale->{docket}) eq 'HASH' ? $sale->{docket} : undef;
+    # Pick-up / website order number first, as big as it goes, so the bagged items are easy to find.
+    if ((($sale->{order} // '') eq 'pickup' || $dk) && (my $ono = ascii($sale->{orderNo}))) {
         $out .= $CMD{align_mid} . $CMD{huge_on} . $CMD{bold_on} . $ono . "\n" . $CMD{bold_off} . $CMD{big_off} . $CMD{align_left} . "\n";
     }
     doc_header(\$out, $store);
 
     $out .= rule() . "\n";
     my $refund = (($sale->{kind} // '') eq 'refund');
-    $out .= $CMD{align_mid} . $CMD{bold_on} . ($refund ? "REFUND - ADJUSTMENT NOTE\n" : "TAX INVOICE\n") . $CMD{bold_off} . $CMD{align_left};
+    my $title = $dk ? (ascii($dk->{title}) || 'WEBSITE ORDER') : $refund ? 'REFUND - ADJUSTMENT NOTE' : 'TAX INVOICE';
+    $out .= $CMD{align_mid} . $CMD{bold_on} . "$title\n" . $CMD{bold_off} . $CMD{align_left};
     $out .= 'Refund of: ' . ascii($sale->{refundOf} // '') . "\n" if $refund;
 
     my $ts = sale_epoch($sale->{ts});
     $out .= pair($sale->{no} // '', strftime('%d/%m/%Y %I:%M %p', localtime($ts))) . "\n";
-    if ($sale->{servedBy}) { $out .= "$_\n" for wrap_text('Served by: ' . ascii($sale->{servedBy})) }
-    if ($sale->{customer}) { $out .= "$_\n" for wrap_text('Customer: '  . ascii($sale->{customer})) }
-    if ($sale->{contact}) {
-        my $c = $sale->{contact};
-        $out .= "$_\n" for wrap_text(($c =~ /\@/ ? 'Email: ' : 'Phone: ') . ascii($c));
-    }
-    if (($sale->{order} // '') eq 'pickup') {
-        $out .= $CMD{bold_on} . "Order: PICK UP LATER\n" . $CMD{bold_off};
-        if ($sale->{pickupWhen}) {
-            $out .= $CMD{bold_on} . "$_\n" . $CMD{bold_off} for wrap_text('Pick up ' . ascii($sale->{pickupWhen}));
+    if ($dk) {
+        for my $ln (@{ ref($dk->{lines}) eq 'ARRAY' ? $dk->{lines} : [] }) {
+            my ($t, $bold) = ref($ln) eq 'ARRAY' ? @$ln : ($ln, 0);
+            my $indent = (defined $t && $t =~ /^\s+/) ? '  ' : '';
+            $out .= $CMD{bold_on} if $bold;
+            $out .= "$indent$_\n" for wrap_text($t, $COLS - length $indent);
+            $out .= $CMD{bold_off} if $bold;
         }
     } else {
-        $out .= "Order: Served on the spot\n";
+        if ($sale->{servedBy}) { $out .= "$_\n" for wrap_text('Served by: ' . ascii($sale->{servedBy})) }
+        if ($sale->{customer}) { $out .= "$_\n" for wrap_text('Customer: '  . ascii($sale->{customer})) }
+        if ($sale->{contact}) {
+            my $c = $sale->{contact};
+            $out .= "$_\n" for wrap_text(($c =~ /\@/ ? 'Email: ' : 'Phone: ') . ascii($c));
+        }
+        if (($sale->{order} // '') eq 'pickup') {
+            $out .= $CMD{bold_on} . "Order: PICK UP LATER\n" . $CMD{bold_off};
+            if ($sale->{pickupWhen}) {
+                $out .= $CMD{bold_on} . "$_\n" . $CMD{bold_off} for wrap_text('Pick up ' . ascii($sale->{pickupWhen}));
+            }
+        } else {
+            $out .= "Order: Served on the spot\n";
+        }
     }
     $out .= rule() . "\n";
 
@@ -217,14 +231,22 @@ sub build_receipt {
     }
 
     $out .= rule() . "\n";
+    if ($dk) {
+        for my $row (@{ ref($dk->{totals}) eq 'ARRAY' ? $dk->{totals} : [] }) {
+            $out .= pair($row->[0], money($row->[1])) . "\n" if ref($row) eq 'ARRAY';
+        }
+    }
     $out .= pair('Subtotal (ex GST)', money($sale->{sub})) . "\n";
     $out .= pair('GST (' . ($sale->{rate} // 10) . '%)', money($sale->{gst})) . "\n";
     $out .= $CMD{bold_on} . pair('TOTAL', money($sale->{total})) . "\n" . $CMD{bold_off};
     $out .= 'Total price includes GST ' . money($sale->{gst}) . "\n\n";
 
     my $m    = $sale->{method} // '';
-    my $cash = ($m eq 'cash' || $m eq 'split');
-    if ($refund) {
+    my $cash = !$dk && ($m eq 'cash' || $m eq 'split');
+    if ($dk) {
+        my ($l, $v) = ref($dk->{paid}) eq 'ARRAY' ? @{ $dk->{paid} } : ('PAID ONLINE', $sale->{total});
+        $out .= $CMD{bold_on} . pair($l, money($v)) . "\n" . $CMD{bold_off};
+    } elsif ($refund) {
         $out .= pair('Rounding', ($sale->{rounding} > 0 ? '+' : '') . money($sale->{rounding})) . "\n" if $sale->{rounding};
         $out .= $CMD{bold_on} . pair('REFUNDED TO ' . ($m eq 'cash' ? 'CASH' : 'CARD'), money(-($sale->{paid} // 0))) . "\n" . $CMD{bold_off};
     } elsif ($m eq 'split') {
@@ -245,7 +267,7 @@ sub build_receipt {
 
     if (($sale->{order} // '') eq 'pickup' && $sale->{pickupCode}) {
         $out .= rule() . "\n" . $CMD{align_mid} . $CMD{bold_on} . "PICK-UP BARCODE\n" . $CMD{bold_off}
-              . "Bring this receipt to collect your order\n" . $CMD{align_left};
+              . (($dk && ascii($dk->{barcodeNote})) || 'Bring this receipt to collect your order') . "\n" . $CMD{align_left};
         $out .= barcode128($sale->{pickupCode});
     }
 
@@ -341,7 +363,7 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund'] }));
+                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';
