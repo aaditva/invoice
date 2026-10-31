@@ -4529,11 +4529,6 @@ function renderInsights(anim){
   if(gx.online){
     const note=onlineNote(gx.online);
     if(note) chips.push('<span class="gchip bad">'+esc(note)+'</span>');
-    if(onlineOk(gx.online)){
-      const ship=gx.online.totals.shipping||0;
-      chips.push('<span class="gchip ok">Includes '+r.onlineCount+' online order'+(r.onlineCount===1?'':'s')+' · '+esc(moneySigned(r.onlineRev))+
-        (ship ? ' (shipping of '+esc(moneySigned(ship))+' left out)' : '')+'</span>');
-    }
   }
   if(r.histDays){
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(TILL_FROM))+
