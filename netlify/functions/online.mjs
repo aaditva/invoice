@@ -13,6 +13,8 @@
  *      Each order comes back shaped like a till sale (store 'online',
  *      method 'online', items with sku/name/qty/price), so the till can add it
  *      to its totals and charts with the code it already has.
+ *      skipped:{ count, byReason } says how many orders in the range were left out
+ *      (cancelled, test, in-store, nothing paid).
  *      sync.complete is false while the first read of older orders is still
  *      going: ask again and it carries on from where it stopped.
  *
@@ -41,10 +43,13 @@
  *
  *  Storage (Netlify Blobs, store "online"):
  *    month/<YYYY-MM>  { orders:{ <id>: order } } — every counted order created that month
- *    state            { since, syncedTo, windowDays, lockUntil } — how far the copy is
- *                     up to date. Each read first fetches orders modified since
- *                     syncedTo (at most once a minute), so a refund or a
- *                     cancellation made in Squarespace later replaces the old copy.
+ *                     (plus skipped:{ <id>: {day, why} } — orders left out, and why)
+ *    state            { v, since, syncedTo, backfill, windowDays, lockUntil } — how far
+ *                     the copy is up to date. The first read lists every order
+ *                     Squarespace has (backfill, resumable); after that each read
+ *                     fetches orders modified since syncedTo (at most once a
+ *                     minute), so a refund or a cancellation made in Squarespace
+ *                     later replaces the old copy.
  * ------------------------------------------------------------------ */
 
 import { getStore } from '@netlify/blobs';
@@ -58,10 +63,10 @@ const MIN_GAP_MS = 60 * 1000;            // ask Squarespace at most once a minut
 const BUDGET_MS = 7000;                  // stop syncing in time to answer inside the function timeout
 const OVERLAP_MS = 2 * 60 * 1000;        // re-read a little before syncedTo, in case of clock skew
 const MAX_WINDOW_DAYS = 30;
+const STATE_VERSION = 3;                 // bump to make every order be read again from scratch (3: pickup/delivery fields)
 const MAX_RANGE_DAYS = 400;
 const GST_RATE = 10;                     // fallback only, when Squarespace reports no tax
 const COUNTED = new Set(['PAID', 'REFUNDED', 'REFUND_PENDING', 'REFUND_FAILED']);   // money was taken
-const STATE_VERSION = 2;                 // bump to read every order again when compact() keeps more
 const PICKUP_RE = /pick\s*-?\s*up/i;
 
 export default async (req) => {
@@ -85,12 +90,12 @@ export default async (req) => {
   try {
     const st = getStore({ name: 'online', consistency: 'strong' });
     const sync = await syncOrders(st, key, Date.now() + BUDGET_MS);
-    const orders = await readRange(st, a, b);
+    const { orders, skipped } = await readRange(st, a, b);
     const sales = orders.map(toSale).sort((x, y) => String(x.ts).localeCompare(String(y.ts)));
     const byDay = new Map();
     for (const s of sales) { if (!byDay.has(s.day)) byDay.set(s.day, []); byDay.get(s.day).push(s); }
     const days = [...byDay.keys()].sort().map(day => ({ day, store: 'online', ...aggregate(byDay.get(day)) }));
-    return json({ from: a, to: b, days, totals: aggregate(sales), sales, sync }, 200, headers);
+    return json({ from: a, to: b, days, totals: aggregate(sales), sales, skipped, sync }, 200, headers);
   } catch (e) {
     return json({ error: String((e && e.message) || e) }, 500, headers);
   }
@@ -105,43 +110,75 @@ async function syncOrders(st, key, deadline) {
   const now = Date.now();
   const cur = await getWithEtag(st, 'state');
   let state = cur.data || {};
-  // ONLINE_SINCE moved earlier, or orders now keep more fields: read them all again.
-  if (!state.since || since < state.since || state.v !== STATE_VERSION) state = { ...state, since, syncedTo: null, v: STATE_VERSION };
+  // First run, ONLINE_SINCE moved earlier, or an older version of this code
+  // filed the orders: read every order again.
+  if (!state.since || since < state.since || state.v !== STATE_VERSION) state = { v: STATE_VERSION, since, syncedTo: null, backfill: null };
 
-  const startIso = state.syncedTo || new Date(Date.parse(since + 'T00:00:00Z') - 86400000).toISOString();
-  const caughtUp = now - Date.parse(startIso) < MIN_GAP_MS + OVERLAP_MS;
-  if (state.syncedTo && caughtUp) return { complete: true, syncedTo: state.syncedTo };
+  const caughtUp = !!state.syncedTo && now - Date.parse(state.syncedTo) < MIN_GAP_MS + OVERLAP_MS;
+  if (caughtUp) return { complete: true, syncedTo: state.syncedTo };
 
   // One sync at a time: claim the state blob, or answer from the copy as it is.
   if (state.lockUntil && Date.parse(state.lockUntil) > now) {
-    return { complete: !!state.syncedTo && caughtUp, syncedTo: state.syncedTo || null, busy: true };
+    return { complete: false, syncedTo: state.syncedTo || null, busy: true };
   }
   const lockUntil = new Date(now + BUDGET_MS + 5000).toISOString();
   const claim = await st.setJSON('state', { ...state, lockUntil }, cur.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
   if (claim && claim.modified === false) return { complete: false, syncedTo: state.syncedTo || null, busy: true };
 
-  const start = Date.parse(startIso) - (state.syncedTo ? OVERLAP_MS : 0);
-  let from = start;
+  let mark = state.syncedTo || null;       // every change before this has been read
+  let backfill = state.backfill || null;
   let windowDays = Math.min(MAX_WINDOW_DAYS, Math.max(1, Number(state.windowDays) || MAX_WINDOW_DAYS));
   let error = null;
   try {
-    while (from < now && Date.now() < deadline) {
-      const to = Math.min(from + windowDays * 86400000, now);
-      const r = await readWindow(st, key, from, to, deadline);
-      if (r.done) { from = to; windowDays = Math.min(MAX_WINDOW_DAYS, windowDays * 2); }
-      else if (r.progress) { from = r.progress; break; }
-      else { windowDays = Math.max(1, Math.floor(windowDays / 2)); break; }   // too many to finish in time: smaller bites next run
+    // Nothing read yet: list every order Squarespace has, a few pages at a time.
+    if (!mark) {
+      backfill = await backfillOrders(st, key, backfill, deadline);
+      if (backfill.done) { mark = backfill.startedAt; backfill = null; }
+    }
+    // Then pick up whatever changed since (new orders, refunds, cancellations).
+    if (mark) {
+      const start = Date.parse(mark) - OVERLAP_MS;
+      let from = start;
+      while (from < now && Date.now() < deadline) {
+        const to = Math.min(from + windowDays * 86400000, now);
+        const r = await readWindow(st, key, from, to, deadline);
+        if (r.done) { from = to; windowDays = Math.min(MAX_WINDOW_DAYS, windowDays * 2); }
+        else if (r.progress) { from = r.progress; break; }
+        else { windowDays = Math.max(1, Math.floor(windowDays / 2)); break; }   // too many to finish in time: smaller bites next run
+      }
+      // No progress (Squarespace refused, or time ran out at once): keep the old mark.
+      if (from > start) mark = new Date(Math.min(from, now)).toISOString();
     }
   } catch (e) {
     error = friendly(e);
   }
-  // No progress (Squarespace refused, or time ran out at once): keep the old mark.
-  const syncedTo = from > start ? new Date(Math.min(from, now)).toISOString() : (state.syncedTo || null);
-  const next = { v: STATE_VERSION, since: state.since, syncedTo, windowDays, lastRun: new Date().toISOString() };
+  const next = { v: STATE_VERSION, since: state.since, syncedTo: mark, backfill, windowDays, lastRun: new Date().toISOString() };
   try { await st.setJSON('state', next); } catch (e) { /* next read retries */ }
-  const out = { complete: !error && !!syncedTo && now - Date.parse(syncedTo) < MIN_GAP_MS + OVERLAP_MS, syncedTo };
+  const out = { complete: !error && !!mark && now - Date.parse(mark) < MIN_GAP_MS + OVERLAP_MS, syncedTo: mark };
   if (error) out.error = error;
   return out;
+}
+
+// Every order, newest page first as Squarespace lists them, filed as it goes.
+// Time running out just leaves the cursor in the state to carry on from.
+async function backfillOrders(st, key, bf, deadline) {
+  let startedAt = bf && bf.startedAt ? bf.startedAt : new Date().toISOString();
+  let cursor = bf && bf.cursor ? bf.cursor : null;
+  let guard = 0;
+  do {
+    const r = await fetch(cursor ? SQ + '?cursor=' + encodeURIComponent(cursor) : SQ,
+      { headers: { Authorization: 'Bearer ' + key, 'User-Agent': UA, Accept: 'application/json' } });
+    if (!r.ok) {
+      // A cursor Squarespace no longer accepts: start the listing again.
+      if (cursor && r.status === 400) return { startedAt: new Date().toISOString(), cursor: null, done: false };
+      throw new Error('Squarespace ' + r.status + ': ' + (await r.text()).slice(0, 200));
+    }
+    const data = await r.json();
+    await fileOrders(st, Array.isArray(data.result) ? data.result : []);
+    const p = data.pagination;
+    cursor = p && p.hasNextPage && p.nextPageCursor ? p.nextPageCursor : null;
+  } while (cursor && Date.now() < deadline && guard++ < 400);
+  return { startedAt, cursor, done: !cursor };
 }
 
 // Every order modified in (from, to]. Pages come back oldest-modified first, so
@@ -171,11 +208,12 @@ async function readWindow(st, key, from, to, deadline) {
 
 // File (or drop) each order in the month it was created.
 async function fileOrders(st, list) {
+  const since = sinceDay();
   const byMonth = new Map();
   for (const o of list) {
     if (!o || !o.id) continue;
     const day = localDay(o.createdOn);
-    if (!day) continue;
+    if (!day || day < since) continue;                  // before ONLINE_SINCE
     const m = day.slice(0, 7);
     if (!byMonth.has(m)) byMonth.set(m, []);
     byMonth.get(m).push([o, day]);
@@ -184,19 +222,24 @@ async function fileOrders(st, list) {
     const key = 'month/' + m;
     const cur = await getJSON(st, key);
     const orders = (cur && cur.orders && typeof cur.orders === 'object') ? cur.orders : {};
+    const skipped = (cur && cur.skipped && typeof cur.skipped === 'object') ? cur.skipped : {};
     for (const [o, day] of rows) {
-      if (counts(o)) orders[o.id] = compact(o, day); else delete orders[o.id];
+      const why = skipReason(o);
+      if (why) { delete orders[o.id]; skipped[o.id] = { day, why }; }
+      else { orders[o.id] = compact(o, day); delete skipped[o.id]; }
     }
-    await st.setJSON(key, { orders });
+    await st.setJSON(key, { orders, skipped });
   }
 }
 
-function counts(o) {
-  if (o.testmode) return false;
-  if (String(o.channel || '').toLowerCase() === 'pos') return false;      // Squarespace's own in-store POS
-  if (o.fulfillmentStatus === 'CANCELED') return false;
-  if (o.paymentState && !COUNTED.has(o.paymentState)) return false;
-  return amt(o.grandTotal) - amt(o.refundedTotal) > 0.004;
+// '' when the order counts, otherwise why it's left out.
+function skipReason(o) {
+  if (o.testmode) return 'test';
+  if (String(o.channel || '').toLowerCase() === 'pos') return 'in-store';      // Squarespace's own in-store POS
+  if (o.fulfillmentStatus === 'CANCELED') return 'cancelled';
+  if (o.paymentState && !COUNTED.has(o.paymentState)) return 'unpaid';
+  if (amt(o.grandTotal) - amt(o.refundedTotal) <= 0.004) return 'nothing paid';
+  return '';
 }
 
 function compact(o, day) {
@@ -224,11 +267,15 @@ async function readRange(st, from, to) {
   const months = [];
   for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = nextMonth(m)) months.push(m);
   const docs = await Promise.all(months.map(m => getJSON(st, 'month/' + m)));
-  const out = [];
+  const orders = [], skipped = { count: 0, byReason: {} };
   for (const d of docs) {
-    for (const o of Object.values((d && d.orders) || {})) if (o && o.day >= from && o.day <= to) out.push(o);
+    for (const o of Object.values((d && d.orders) || {})) if (o && o.day >= from && o.day <= to) orders.push(o);
+    for (const x of Object.values((d && d.skipped) || {})) {
+      if (!x || x.day < from || x.day > to) continue;
+      skipped.count++; skipped.byReason[x.why] = (skipped.byReason[x.why] || 0) + 1;
+    }
   }
-  return out;
+  return { orders, skipped };
 }
 
 // An order as a till sale: what was kept after refunds, GST from Squarespace

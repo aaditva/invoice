@@ -2546,8 +2546,12 @@ async function fetchOnline(from, to){
   const out=[];
   for(const [a,b] of parts){ const d=await fetchOnlinePart(a, b); if(!d || d.error) return d; out.push(d); }
   if(out.length===1) return out[0];
-  const m={from, to, days:[], sales:[], totals:null, partial:false};
-  out.forEach(d=>{ m.days.push(...d.days); m.sales.push(...d.sales); m.totals=addAgg(m.totals, d.totals); m.partial=m.partial||d.partial; });
+  const m={from, to, days:[], sales:[], totals:null, partial:false, skipped:{count:0, byReason:{}}};
+  out.forEach(d=>{
+    m.days.push(...d.days); m.sales.push(...d.sales); m.totals=addAgg(m.totals, d.totals); m.partial=m.partial||d.partial;
+    m.skipped.count+=d.skipped.count;
+    Object.keys(d.skipped.byReason).forEach(k=>{ m.skipped.byReason[k]=(m.skipped.byReason[k]||0)+d.skipped.byReason[k]; });
+  });
   return m;
 }
 async function fetchOnlinePart(from, to){
@@ -2566,6 +2570,7 @@ async function fetchOnlinePart(from, to){
   }
   if(!d || d.error) return d;
   d.days=d.days||[]; d.sales=d.sales||[]; d.totals=d.totals||aggregate([]);
+  d.skipped=d.skipped||{count:0, byReason:{}};
   d.partial=!!(d.sync && !d.sync.complete);
   if(!d.partial) onlineCache.set(k, {at:Date.now(), d});
   return d;
@@ -2577,6 +2582,12 @@ function onlineNote(d){
   if(d.sync && d.sync.error) return 'Online sales may be out of date: '+d.sync.error;
   if(d.partial) return 'Still reading older online orders from Squarespace. Refresh in a minute for the full figure.';
   return '';
+}
+// "2 online orders left out (1 cancelled, 1 test)" - '' when every order counted.
+function onlineLeftOut(d){
+  if(!onlineOk(d) || !d.skipped || !d.skipped.count) return '';
+  const n=d.skipped.count;
+  return n+' online order'+(n===1?'':'s')+' left out ('+Object.keys(d.skipped.byReason).map(k=>d.skipped.byReason[k]+' '+k).join(', ')+')';
 }
 function onlineOk(d){ return !!(d && !d.error); }
 // How a website order reaches the customer, in the order's own words: the checkout
@@ -4579,7 +4590,7 @@ function computeInsights(){
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
   const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
     histDays:0, histRev:0, onlineCount:0, onlineRev:0,
-    brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
+    brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map(), onlineProducts:new Map() };
   // Time buckets, so quiet days still show as zero.
   if(mode==='day'){ for(let k=from; k<=to; k=shiftDay(k,1)) r.buckets.set(k, {rev:0, profit:0}); }
   if(mode==='month'){
@@ -4616,6 +4627,12 @@ function computeInsights(){
       const brand=!sku ? 'Misc' : ((info && info.brand && info.brand!=='Other') ? info.brand : guessBrand(it.name));
       const profit=cost!=null ? rev-cost*q : null;
       r.items+=q;
+      if(s.kind==='online'){          // every product found in the website orders, for the Online products list
+        const ok=sku || ('name:'+(it.name||''));
+        const op=r.onlineProducts.get(ok) || {name:(info && info.name) || it.name || sku || 'Online item', sku:String(it.sku||'').trim(), qty:0, rev:0, orders:0, last:''};
+        op.qty+=q; op.rev+=rev; op.orders++; if(String(s.day)>op.last) op.last=String(s.day);
+        r.onlineProducts.set(ok, op);
+      }
       if(profit!=null){ r.revKnown+=rev; r.profit+=profit; bk.profit+=profit; st.profit+=profit; }
       else r.missing+=q;
       const br=r.brands.get(brand) || {name:brand, rev:0, revKnown:0, profit:0, qty:0};
@@ -4700,6 +4717,8 @@ function renderInsights(anim){
   if(gx.online){
     const note=onlineNote(gx.online);
     if(note) chips.push('<span class="gchip bad">'+esc(note)+'</span>');
+    const left=onlineLeftOut(gx.online);
+    if(left) chips.push('<span class="gchip">'+esc(left)+'</span>');
   }
   if(r.histDays){
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(TILL_FROM))+
@@ -4738,6 +4757,8 @@ function renderInsights(anim){
   h+=card('', '<div class="ghead"><div><div class="gtitle">Top products</div><div class="gsub">Best 10 in this period</div></div>'+
     '<div class="gseg" id="gxSort">'+['profit','revenue','qty'].map(k=>'<button data-sort="'+k+'"'+(gx.sort===k?' class="sel"':'')+'>'+
       ({profit:'Profit', revenue:'Revenue', qty:'Qty'})[k]+'</button>').join('')+'</div></div><div id="gxTop"></div>');
+  if(r.onlineProducts.size)
+    h+=card('', '<div class="gtitle">Online products</div><div class="gsub">Every product in the '+r.onlineCount+' website order'+(r.onlineCount===1?'':'s')+' counted in this period</div><div id="gxOnlineList"></div>');
   grid.classList.toggle('still', !anim);
   grid.innerHTML=h;
 
@@ -4749,6 +4770,7 @@ function renderInsights(anim){
   brandBars($('gxBrandBars'), r, hasCost, anim);
   if($('gxStores')) storeBars($('gxStores'), r, hasCost, anim);
   topProducts($('gxTop'), r, hasCost, anim);
+  if($('gxOnlineList')) onlineProductList($('gxOnlineList'), r);
   if(anim) countUp(grid); else grid.querySelectorAll('[data-count]').forEach(el=>{ el.textContent=fmtVal(+el.dataset.count, el.dataset.fmt); });
 }
 /* ---------------- No cost - things sold with no cost price ----------------
@@ -5110,6 +5132,14 @@ function topProducts(host, r, hasCost, anim){
     }).join('')+'</tbody></table>';
   if(anim) requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll('.mini').forEach((m,k)=>{
     m.style.transitionDelay=(k*40)+'ms'; m.style.width=m.dataset.w+'%'; })));
+}
+// All the products sold on the website in the period, best sellers first.
+function onlineProductList(host, r){
+  const list=[...r.onlineProducts.values()].sort((a,b)=>b.qty-a.qty || b.rev-a.rev);
+  host.innerHTML='<table class="gt"><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Orders</th><th class="num">Revenue</th><th class="num">Last sold</th></tr></thead><tbody>'+
+    list.map(p=>'<tr><td><div>'+esc(p.name)+'</div>'+(p.sku?'<div class="muted">'+esc(p.sku)+'</div>':'')+'</td>'+
+      '<td class="num">'+p.qty+'</td><td class="num">'+p.orders+'</td><td class="num">'+moneySigned(p.rev)+'</td>'+
+      '<td class="num">'+esc(p.last?niceDay(p.last):'-')+'</td></tr>').join('')+'</tbody></table>';
 }
 
 // Print the period's takings the way Admin shows them: one total across every
