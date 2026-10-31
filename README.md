@@ -476,7 +476,7 @@ when it last ran.
 
 ### Daily total into a Google Sheet (hourly)
 `google-sheet/daily-total.gs` writes each day's total sales into the **Games** column of an
-existing sheet (one tab per year, dates down column A). It runs every hour, so the figure is at most an hour behind.
+existing sheet (one tab per year, named by `SHEET_NAME` — currently `2026 SM` — dates down column A). It runs every hour, so the figure is at most an hour behind.
 
 1. Open the sheet → **Extensions → Apps Script**, replace `Code.gs` with the file's contents.
 2. Fill in the settings at the top: your site URL, `SALES_TOKEN` (if you set one), the store

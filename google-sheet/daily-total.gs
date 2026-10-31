@@ -5,7 +5,7 @@
  *  Fill in the settings below, then run setup() once (Run ▶, allow access).
  *  From then on it runs on its own.
  *
- *  How it writes: it opens the tab named after the year (e.g. "2026"), finds
+ *  How it writes: it opens the tab named after the year (SHEET_NAME, e.g. "2026 SM"), finds
  *  the column headed TOTAL_HEADER ("Games") in row 1, looks down DATE_COLUMN
  *  for today's date and writes the total on that row. If the date isn't in
  *  the sheet (a day you didn't open), it skips it. Nothing else is touched.
@@ -58,7 +58,7 @@ const SITE_URL     = 'https://invoiceremactables.netlify.app'; // the till's sit
 const SALES_TOKEN  = '';          // same as the SALES_TOKEN env var; blank if you didn't set one
 const ADMIN_PIN    = '';          // the till's Admin password — type it here in Apps Script (same as ADMIN_PIN on Netlify); never commit it
 const STORE        = 'south-melbourne'; // 'all', or one store id, e.g. 'south-melbourne' or 'roxy'
-const SHEET_NAME   = '{year}';    // the tab to write into; {year} becomes e.g. 2026
+const SHEET_NAME   = '{year} SM'; // the tab to write into; {year} becomes e.g. 2026, so "2026 SM" (must match the tab name exactly)
 const DATE_COLUMN  = 'A';         // column holding the dates
 const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes into
 const EXPENSES_HEADER  = 'Expenses'; // row-1 heading of the expenses column; '' to turn off
