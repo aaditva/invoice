@@ -69,7 +69,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 2. **Generate Key** → give it a name → permission **Products: Read Only**.
    - To also use **live stock sync** ([section 7](#7-live-stock-sync-decrement-squarespace-on-each-sale)), give the *same* key **Inventory: Read/Write** as well.
    - To scan barcodes into Squarespace from Admin → 🏷️ Barcodes, make it **Products: Read/Write** instead.
-   - To count **website sales** in Takings and Insights ([Online sales](#online-sales-the-website)), give it **Orders: Read** as well.
+   - To count **website sales** in the header, Admin and Insights ([Online sales](#online-sales-the-website)), give it **Orders: Read** as well.
 3. Copy the key (you only see it once). Keep it secret — it is *not* pasted into the app.
 
 ---
@@ -356,10 +356,10 @@ it can't clash with a number another till gets.
 Orders from the Squarespace website are counted next to the tills', read through `/api/online`
 with the same `SQUARESPACE_API_KEY` (it needs **Orders: Read**, section 2):
 
-- **Takings** (the day docket) shows **Cash**, **Card** and **Online (website)**; the big total
-  includes online. Cash and Card stay the store's own, so the cash-up still matches the drawer and
-  the EFTPOS. Online is the website's figure for the **whole business**, so either store shows the
-  same amount: don't add the two stores' dockets together.
+- **Takings** (the day docket) is the store's own sales only (cash and card), so it matches the
+  drawer and the EFTPOS. Website orders aren't in it.
+- The header's **All stores** figure (admin) includes today's website orders; **This store**
+  doesn't.
 - **Admin** has an **Online** store button, an **Online** card and column, and an Online row in
   the per-store and day-by-day tables. **All stores** includes online; picking one store doesn't.
 - **Insights** counts each order's products in revenue, profit, brands, top products and the by-store

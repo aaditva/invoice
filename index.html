@@ -2225,8 +2225,9 @@ async function refreshToday(){
     todayTally = aggregate(sales);
     todayTally.local = !combined;          // server unreachable → say so in the header
     if(isAdmin()){
-      const all = await storeDaySales(todayKey(), '');
-      allTally = all.combined ? aggregate(all.sales) : null;
+      // All stores includes today's website orders, as Takings and Admin do.
+      const [all, on] = await Promise.all([storeDaySales(todayKey(), ''), isTraining() ? null : fetchOnline(todayKey(), todayKey())]);
+      allTally = all.combined ? aggregate(all.sales.concat(onlineOk(on) ? on.sales : [])) : null;
     }
   }catch(e){ todayTally = null; }
   finally{ todayBusy = false; }
@@ -3244,53 +3245,42 @@ async function refundSale(ref, picks, method, by){
 
 /* ---------------- day takings ---------------- */
 function openTakings(){ if(!requireAdmin(openTakings)) return; $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
-// The store's own sales for the day, plus the website's orders for that day
-// (Online - for the whole business, so the same figure shows at either store).
-// Cash and Card stay the store's alone, so the cash-up still matches the drawer.
-async function takingsFor(key){
-  const [{sales,combined}, on]=await Promise.all([storeDaySales(key), isTraining() ? null : fetchOnline(key, key)]);
-  const shop=aggregate(sales);
-  const o=onlineOk(on) ? on.totals : null;
-  return {shop, o, on, combined, t: o ? addAgg(shop, o) : shop};
-}
+// The store's own sales only: website orders aren't this store's, so they stay
+// out of the cash-up (they're in the header's All stores figure and in Admin).
 async function renderTakings(){
   const key=$('takDate').value||todayKey();
   $('takScope').textContent='Loading…';
-  const {shop, o, on, combined, t}=await takingsFor(key);
+  const {sales,combined}=await storeDaySales(key);
   if(($('takDate').value||todayKey())!==key) return;   // the date moved on while this loaded
+  const t=aggregate(sales);
   const d=new Date(key+'T00:00:00');
-  const note=onlineNote(on);
-  $('takScope').innerHTML = esc(combined ? '✓ From the site, every device at this store'
-    : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device'))+
-    (o ? '<br>Online = website orders for the whole business, not just this store' : '')+
-    (note ? '<br>'+esc(note) : '');
+  $('takScope').textContent = combined ? '✓ From the site, every device at this store'
+    : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device');
   $('takSummary').innerHTML=
     '<div style="text-align:center;margin:6px 0 14px">'+
-      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+(o?' + online':'')+', '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
+      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+', '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
       '<div class="bignum">'+money(t.total)+'</div>'+
-      '<div class="muted">'+shop.count+' sale'+(shop.count===1?'':'s')+' in store'+
-        (o ? ' · '+o.count+' online order'+(o.count===1?'':'s') : '')+'</div>'+
+      '<div class="muted">'+t.count+' sale'+(t.count===1?'':'s')+'</div>'+
     '</div>'+
     '<div class="lines">'+
       '<div class="row"><span class="lbl">Cash</span><span class="money">'+money(t.cash)+'</span></div>'+
       '<div class="row"><span class="lbl">Card</span><span class="money">'+money(t.card)+'</span></div>'+
-      (o ? '<div class="row"><span class="lbl">Online (website)</span><span class="money">'+money(o.online)+'</span></div>'+
-           '<div class="row"><span class="lbl muted">In store (cash + card)</span><span class="money muted">'+money(shop.total)+'</span></div>' : '')+
       '<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(t.sub)+'</span></div>'+
       '<div class="row"><span class="lbl">GST collected</span><span class="money">'+money(t.gst)+'</span></div>'+
     '</div>';
 }
 async function printTakings(){
   const key=$('takDate').value||todayKey();
-  const {shop, o, t}=await takingsFor(key);
-  const d=new Date(key+'T00:00:00');
+  const {sales}=await storeDaySales(key);
+  const t=aggregate(sales); const d=new Date(key+'T00:00:00');
   const dayLabel=(currentStore?currentStore.name+' · ':'')+
     d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
-  const rows=[['Sales in store', String(shop.count)], ['Cash', money(t.cash)], ['Card', money(t.card)]];
-  if(o) rows.push(['In store', money(shop.total)], '-', ['Online orders', String(o.count)], ['Online (website)', money(o.online)]);
-  rows.push('-', ['TOTAL', money(t.total), true], '-', ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]);
-  await printReport('DAILY TAKINGS', dayLabel, rows, 'Takings printed');
+  await printReport('DAILY TAKINGS', dayLabel, [
+    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)],
+    '-', ['TOTAL', money(t.total), true], '-',
+    ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]
+  ], 'Takings printed');
 }
 // A short report (takings, sales summary): the ESC/POS bridge when it's there,
 // the print dialog when it isn't. rows: [label, value, bold?] or '-' for a rule.
