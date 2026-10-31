@@ -556,13 +556,14 @@ function aggregate(sales) {
     sub += num(s.sub);
   }
   cash = r2(cash); card = r2(card);
-  return { count: live.filter(s => s.kind !== 'refund').length, cash, card, gst: r2(gst), sub: r2(sub), total: r2(cash + card) };
+  // online is always 0 here: website orders come from /api/online, which the till adds on top.
+  return { count: live.filter(s => s.kind !== 'refund').length, cash, card, online: 0, gst: r2(gst), sub: r2(sub), total: r2(cash + card) };
 }
 
 function addAgg(a, b) {
   if (!a) return { ...b };
   return {
-    count: a.count + b.count, cash: r2(a.cash + b.cash), card: r2(a.card + b.card),
+    count: a.count + b.count, cash: r2(a.cash + b.cash), card: r2(a.card + b.card), online: r2((a.online || 0) + (b.online || 0)),
     gst: r2(a.gst + b.gst), sub: r2(a.sub + b.sub), total: r2(a.total + b.total),
   };
 }

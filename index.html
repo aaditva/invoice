@@ -1657,7 +1657,9 @@ function allStores(){ return STORE_DEFS.map(d=>storeById(d.id)); }
 // Label for any store id, including ones the server knows but we don't define.
 // Sales from before the store selector existed have no store; they're South Melbourne's.
 const DEFAULT_STORE = 'south-melbourne';
+const ONLINE_ID = 'online';   // website orders (/api/online) - not a till, so never in STORE_DEFS
 function storeLabel(id){
+  if(id===ONLINE_ID) return 'Online';
   if(!id || id==='unassigned') id = DEFAULT_STORE;
   const s = storeById(id);
   return s ? s.name : id;
@@ -2519,17 +2521,67 @@ async function rangeSales(from, to, storeId, withSales){
   if(withSales) p.include = 'sales';
   return await fetchServerSales(p);
 }
+/* ---------------- online (website) sales ----------------
+   Squarespace orders, read through /api/online and shaped like till sales
+   (store 'online', method 'online'), so Takings and Insights simply add them
+   in. Website orders belong to no one store: they're counted once, as Online.
+   The first read of older orders can take a few goes; this keeps asking while
+   the site says it isn't finished. */
+const onlineCache=new Map();   // "from|to" -> {at, d}
+async function fetchOnline(from, to){
+  const parts=[];
+  for(let a=from; a<=to; ){ let b=shiftDay(a, 365); if(b>to) b=to; parts.push([a,b]); a=shiftDay(b,1); }
+  const out=[];
+  for(const [a,b] of parts){ const d=await fetchOnlinePart(a, b); if(!d || d.error) return d; out.push(d); }
+  if(out.length===1) return out[0];
+  const m={from, to, days:[], sales:[], totals:null, partial:false};
+  out.forEach(d=>{ m.days.push(...d.days); m.sales.push(...d.sales); m.totals=addAgg(m.totals, d.totals); m.partial=m.partial||d.partial; });
+  return m;
+}
+async function fetchOnlinePart(from, to){
+  const k=from+'|'+to, hit=onlineCache.get(k);
+  if(hit && Date.now()-hit.at<60000) return hit.d;
+  const h=shareHeaders(false); h['x-admin-pin']=adminPin();
+  let d=null;
+  for(let tries=0; tries<8; tries++){
+    try{
+      const res=await fetch(apiUrl('/api/online', {from, to}), {headers:h});
+      d=await res.json().catch(()=>({}));
+      if(!res.ok){ d={error:d.error||('HTTP '+res.status)}; break; }
+    }catch(e){ d={error:'Could not reach the site.'}; break; }
+    if(!d.sync || d.sync.complete || d.sync.error) break;
+    if(d.sync.busy) await new Promise(r=>setTimeout(r, 2000));   // another device is reading Squarespace right now
+  }
+  if(!d || d.error) return d;
+  d.days=d.days||[]; d.sales=d.sales||[]; d.totals=d.totals||aggregate([]);
+  d.partial=!!(d.sync && !d.sync.complete);
+  if(!d.partial) onlineCache.set(k, {at:Date.now(), d});
+  return d;
+}
+// One line saying why online sales are missing or not complete ('' when all's well).
+function onlineNote(d){
+  if(!d) return '';
+  if(d.error) return 'Online sales not included: '+d.error;
+  if(d.sync && d.sync.error) return 'Online sales may be out of date: '+d.sync.error;
+  if(d.partial) return 'Still reading older online orders from Squarespace. Refresh in a minute for the full figure.';
+  return '';
+}
+function onlineOk(d){ return !!(d && !d.error); }
+// What a sale brought in for its products: website orders carry shipping, which isn't product revenue.
+function goodsTotal(s){ return (Number(s.total)||0)-(Number(s.shipping)||0); }
 function aggregate(sales){
   const live=(sales||[]).filter(s=>!s.voided);   // voided sales don't count
-  let cash=0, card=0, gst=0, sub=0;
+  let cash=0, card=0, online=0, gst=0, sub=0;
   // Split sales count their cash and card parts; refunds (kind:'refund') are negative and take away.
+  // Website orders (/api/online) come in as method 'online'.
   live.forEach(s=>{
     if(s.method==='split'){ cash+=Number(s.cashPaid)||0; card+=Number(s.cardPaid)||0; }
-    else if(s.method==='cash') cash+=Number(s.paid!=null?s.paid:s.total)||0; else card+=Number(s.total)||0;
+    else if(s.method==='cash') cash+=Number(s.paid!=null?s.paid:s.total)||0;
+    else if(s.method==='online') online+=Number(s.total)||0; else card+=Number(s.total)||0;
     gst+=Number(s.gst)||0; sub+=Number(s.sub)||0;
   });
-  cash=round2(cash); card=round2(card);
-  return {count:live.filter(s=>s.kind!=='refund').length, cash, card, gst:round2(gst), sub:round2(sub), total:round2(cash+card)};
+  cash=round2(cash); card=round2(card); online=round2(online);
+  return {count:live.filter(s=>s.kind!=='refund').length, cash, card, online, gst:round2(gst), sub:round2(sub), total:round2(cash+card+online)};
 }
 let finalizing=false;   // a number is being fetched - ignore a second tap
 async function finalizeSale(doPrint){
@@ -3192,39 +3244,53 @@ async function refundSale(ref, picks, method, by){
 
 /* ---------------- day takings ---------------- */
 function openTakings(){ if(!requireAdmin(openTakings)) return; $('takingsModal').classList.add('show'); $('takDate').value=todayKey(); renderTakings(); }
+// The store's own sales for the day, plus the website's orders for that day
+// (Online - for the whole business, so the same figure shows at either store).
+// Cash and Card stay the store's alone, so the cash-up still matches the drawer.
+async function takingsFor(key){
+  const [{sales,combined}, on]=await Promise.all([storeDaySales(key), isTraining() ? null : fetchOnline(key, key)]);
+  const shop=aggregate(sales);
+  const o=onlineOk(on) ? on.totals : null;
+  return {shop, o, on, combined, t: o ? addAgg(shop, o) : shop};
+}
 async function renderTakings(){
   const key=$('takDate').value||todayKey();
   $('takScope').textContent='Loading…';
-  const {sales,combined}=await storeDaySales(key);
-  const t=aggregate(sales);
+  const {shop, o, on, combined, t}=await takingsFor(key);
+  if(($('takDate').value||todayKey())!==key) return;   // the date moved on while this loaded
   const d=new Date(key+'T00:00:00');
-  $('takScope').textContent = combined ? '✓ From the site, every device at this store'
-    : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device');
+  const note=onlineNote(on);
+  $('takScope').innerHTML = esc(combined ? '✓ From the site, every device at this store'
+    : (settings.shareUrl ? 'This device only (the site is unreachable)' : 'This device'))+
+    (o ? '<br>Online = website orders for the whole business, not just this store' : '')+
+    (note ? '<br>'+esc(note) : '');
   $('takSummary').innerHTML=
     '<div style="text-align:center;margin:6px 0 14px">'+
-      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+', '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
+      '<div class="muted">'+esc(currentStore?currentStore.name:'All stores')+(o?' + online':'')+', '+d.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})+'</div>'+
       '<div class="bignum">'+money(t.total)+'</div>'+
-      '<div class="muted">'+t.count+' sale'+(t.count===1?'':'s')+'</div>'+
+      '<div class="muted">'+shop.count+' sale'+(shop.count===1?'':'s')+' in store'+
+        (o ? ' · '+o.count+' online order'+(o.count===1?'':'s') : '')+'</div>'+
     '</div>'+
     '<div class="lines">'+
       '<div class="row"><span class="lbl">Cash</span><span class="money">'+money(t.cash)+'</span></div>'+
       '<div class="row"><span class="lbl">Card</span><span class="money">'+money(t.card)+'</span></div>'+
+      (o ? '<div class="row"><span class="lbl">Online (website)</span><span class="money">'+money(o.online)+'</span></div>'+
+           '<div class="row"><span class="lbl muted">In store (cash + card)</span><span class="money muted">'+money(shop.total)+'</span></div>' : '')+
       '<div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money">'+money(t.sub)+'</span></div>'+
       '<div class="row"><span class="lbl">GST collected</span><span class="money">'+money(t.gst)+'</span></div>'+
     '</div>';
 }
 async function printTakings(){
   const key=$('takDate').value||todayKey();
-  const {sales}=await storeDaySales(key);
-  const t=aggregate(sales); const d=new Date(key+'T00:00:00');
+  const {shop, o, t}=await takingsFor(key);
+  const d=new Date(key+'T00:00:00');
   const dayLabel=(currentStore?currentStore.name+' · ':'')+
     d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
-  await printReport('DAILY TAKINGS', dayLabel, [
-    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)],
-    '-', ['TOTAL', money(t.total), true], '-',
-    ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]
-  ], 'Takings printed');
+  const rows=[['Sales in store', String(shop.count)], ['Cash', money(t.cash)], ['Card', money(t.card)]];
+  if(o) rows.push(['In store', money(shop.total)], '-', ['Online orders', String(o.count)], ['Online (website)', money(o.online)]);
+  rows.push('-', ['TOTAL', money(t.total), true], '-', ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]);
+  await printReport('DAILY TAKINGS', dayLabel, rows, 'Takings printed');
 }
 // A short report (takings, sales summary): the ESC/POS bridge when it's there,
 // the print dialog when it isn't. rows: [label, value, bold?] or '-' for a rule.
@@ -3550,7 +3616,7 @@ function openBoxes(){
   setTimeout(()=>$('bxScan').focus(), 50);
 }
 function renderAdminStores(){
-  const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})));
+  const opts=[{id:'',name:'All stores'}].concat(allStores().map(s=>({id:s.id,name:s.name})), [{id:ONLINE_ID,name:'Online'}]);
   $('adStores').innerHTML=opts.map(o=>
     '<button data-store="'+esc(o.id)+'"'+(o.id===adState.store?' class="sel"':'')+'>'+esc(o.name)+'</button>').join('');
 }
@@ -3570,14 +3636,32 @@ function setAdminPreset(kind){
   $('adFrom').value=adState.from; $('adTo').value=adState.to;
   markAdminPreset();
 }
+// All stores and Online include the website's orders; a single store doesn't.
+function adWantsOnline(){ return !adState.store || adState.store===ONLINE_ID; }
+function emptyRange(from, to){ return {from, to, days:[], byStore:{}, totals:aggregate([]), stores:[]}; }
+// The till sales and the website orders read for the same period, side by side.
+async function rangeWithOnline(from, to, store, withSales){
+  const [d, on]=await Promise.all([
+    store===ONLINE_ID ? emptyRange(from, to) : rangeSalesChunked(from, to, store, withSales),
+    (!store || store===ONLINE_ID) ? fetchOnline(from, to) : null
+  ]);
+  if(!d || d.error || !onlineOk(on)) return {d, on};
+  const m=Object.assign({}, d, {byStore:Object.assign({}, d.byStore)});
+  m.days=(d.days||[]).concat(on.days).sort((x,y)=>x.day.localeCompare(y.day) || storeLabel(x.store).localeCompare(storeLabel(y.store)));
+  if(on.totals.count || store===ONLINE_ID) m.byStore[ONLINE_ID]=on.totals;
+  m.totals=addAgg(d.totals, on.totals);
+  m.stores=Object.keys(m.byStore).sort();
+  if(withSales) m.sales=(d.sales||[]).concat(on.sales);
+  return {d:m, on};
+}
 async function loadAdmin(){
   readAdminRange();
   const key=adState.key=adKey();
   $('adStatus').textContent='Reading the sales record…';
   $('adSummary').innerHTML=''; $('adByStore').innerHTML=''; $('adDaysWrap').style.display='none';
   adLoading(true);
-  let d;
-  try{ d=await rangeSalesChunked(adState.from, adState.to, adState.store, false); }
+  let d, on;
+  try{ ({d, on}=await rangeWithOnline(adState.from, adState.to, adState.store, false)); }
   finally{ adLoading(false); }
   if(adState.key!==key) return;                   // the filter moved on while this loaded
   if(!d){
@@ -3586,30 +3670,35 @@ async function loadAdmin(){
     return;
   }
   if(d.error){ adState.data=null; $('adStatus').textContent=d.error; return; }
-  adState.data=d;
+  adState.data=d; adState.online=on;
   renderAdmin();
 }
 function renderAdmin(){
   const d=adState.data; if(!d) return;
   const t=d.totals;
+  const withOnline=adWantsOnline() && onlineOk(adState.online);
+  const note=adWantsOnline() ? onlineNote(adState.online) : '';
   $('adStatus').textContent = (adState.store? storeLabel(adState.store) : 'All stores')+' · '+adPeriod()+
-    ' · '+t.count+' sale'+(t.count===1?'':'s');
+    ' · '+t.count+' sale'+(t.count===1?'':'s')+(note ? ' · '+note : '');
 
   $('adSummary').innerHTML='<div class="cards" style="margin-bottom:14px">'+
     adCard('Total takings', money(t.total), t.count+' sale'+(t.count===1?'':'s'))+
-    adCard('Cash', money(t.cash), '')+
-    adCard('Card', money(t.card), '')+
+    (adState.store===ONLINE_ID ? '' : adCard('Cash', money(t.cash), '')+adCard('Card', money(t.card), ''))+
+    (withOnline ? adCard('Online', money(t.online||0), 'Website orders'+(adState.online.totals.shipping ? ', incl. '+money(adState.online.totals.shipping)+' shipping' : '')) : '')+
     adCard('GST collected', money(t.gst), 'Subtotal ex GST '+money(t.sub))+
     '</div>';
 
   // Split by location - the whole point of the tab when "All stores" is picked.
-  const ids=Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
+  // Online shows as a row of its own, so the stores' cash and card are never mixed with it.
+  const ids=Object.keys(d.byStore||{}).sort((a,b)=>(a===ONLINE_ID)-(b===ONLINE_ID) || storeLabel(a).localeCompare(storeLabel(b)));
+  const onCol=withOnline;
   $('adByStore').innerHTML = ids.length ?
     '<table class="dtable"><thead><tr><th>Store</th><th class="num">Sales</th><th class="num">Cash</th>'+
-    '<th class="num">Card</th><th class="num">GST</th><th class="num">Total</th></tr></thead><tbody>'+
+    '<th class="num">Card</th>'+(onCol?'<th class="num">Online</th>':'')+'<th class="num">GST</th><th class="num">Total</th></tr></thead><tbody>'+
     ids.map(id=>{ const a=d.byStore[id];
       return '<tr><td>'+esc(storeLabel(id))+'</td><td class="num">'+a.count+'</td>'+
         '<td class="num">'+money(a.cash)+'</td><td class="num">'+money(a.card)+'</td>'+
+        (onCol?'<td class="num">'+money(a.online||0)+'</td>':'')+
         '<td class="num">'+money(a.gst)+'</td><td class="num"><b>'+money(a.total)+'</b></td></tr>';
     }).join('')+'</tbody></table>'
     : '<div class="muted">No sales recorded for this period.</div>';
@@ -3617,14 +3706,17 @@ function renderAdmin(){
   const rows=d.days||[];
   if(rows.length){
     $('adDaysWrap').style.display='block';
+    // A store's row opens that day's invoices; online rows have none to open.
     $('adDays').innerHTML='<thead><tr><th>Date</th><th>Store</th><th class="num">Sales</th>'+
-      '<th class="num">Cash</th><th class="num">Card</th><th class="num">Total</th></tr></thead><tbody>'+
-      rows.map(r=>'<tr class="day" data-day="'+esc(r.day)+'" data-store="'+esc(r.store)+'">'+
+      '<th class="num">Cash</th><th class="num">Card</th>'+(onCol?'<th class="num">Online</th>':'')+'<th class="num">Total</th></tr></thead><tbody>'+
+      rows.map(r=>'<tr'+(r.store===ONLINE_ID?'':' class="day"')+' data-day="'+esc(r.day)+'" data-store="'+esc(r.store)+'">'+
         '<td>'+esc(niceDay(r.day))+'</td><td>'+esc(storeLabel(r.store))+'</td>'+
         '<td class="num">'+r.count+'</td><td class="num">'+money(r.cash)+'</td>'+
-        '<td class="num">'+money(r.card)+'</td><td class="num"><b>'+money(r.total)+'</b></td></tr>').join('')+
+        '<td class="num">'+money(r.card)+'</td>'+(onCol?'<td class="num">'+money(r.online||0)+'</td>':'')+
+        '<td class="num"><b>'+money(r.total)+'</b></td></tr>').join('')+
       '</tbody><tfoot><tr><td colspan="2">Total</td><td class="num">'+t.count+'</td>'+
       '<td class="num">'+money(t.cash)+'</td><td class="num">'+money(t.card)+'</td>'+
+      (onCol?'<td class="num">'+money(t.online||0)+'</td>':'')+
       '<td class="num">'+money(t.total)+'</td></tr></tfoot>';
   }
 }
@@ -4134,6 +4226,7 @@ function addAgg(a, b){
   if(!b) return a;
   if(!a) return Object.assign({}, b);
   return {count:a.count+b.count, cash:round2(a.cash+b.cash), card:round2(a.card+b.card),
+    online:round2((a.online||0)+(b.online||0)),
     gst:round2(a.gst+b.gst), sub:round2(a.sub+b.sub), total:round2(a.total+b.total)};
 }
 
@@ -4143,7 +4236,7 @@ function addAgg(a, b){
    from the Google Sheet's Products tab, which the sheet script sends to
    /api/costs. Profit only counts items that have a cost, and says how many
    don't, so a half-filled sheet never passes off as a real margin. */
-let gx = { key:'', sales:null, costs:null, costsErr:'', costsAt:null, misc:{}, sort:'profit' };
+let gx = { key:'', sales:null, online:null, costs:null, costsErr:'', costsAt:null, misc:{}, sort:'profit' };
 // A Miscellaneous line has no barcode, so its cost is kept per line sold: "<invoice no>#<line>".
 function isMiscLine(it){ return !it || !String(it.sku||'').trim() || /^MISC-/i.test(String(it.sku)); }
 function miscKey(s, i){ return String(s.no)+'#'+i; }
@@ -4292,8 +4385,8 @@ async function loadInsights(){
   $('gxStatus').innerHTML='Reading sales and cost prices…';
   adLoading(true);
   try{
-    const [d, c] = await Promise.all([
-      rangeSalesChunked(adState.from, adState.to, adState.store, true),
+    const [{d, on}, c] = await Promise.all([
+      rangeWithOnline(adState.from, adState.to, adState.store, true),
       fetchCosts()
     ]);
     if(gx.key!==key) return;                     // the filter moved on while this loaded
@@ -4304,6 +4397,7 @@ async function loadInsights(){
       return;
     }
     gx.sales=(d.sales||[]).filter(s=>s && !s.voided);
+    gx.online=adWantsOnline() ? on : null;
     gx.costs=null; gx.costsErr=''; gx.costsAt=null; gx.misc={};
     if(c && !c.error){
       gx.costs=new Map();
@@ -4323,7 +4417,7 @@ function computeInsights(){
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/86400000)+1;
   const mode = from===to ? 'hour' : (days<=62 ? 'day' : 'month');
   const r={ mode, revenue:0, revKnown:0, profit:0, items:0, missing:0, count:sales.length,
-    histDays:0, histRev:0,
+    histDays:0, histRev:0, onlineCount:0, onlineRev:0,
     brands:new Map(), products:new Map(), stores:new Map(), buckets:new Map() };
   // Time buckets, so quiet days still show as zero.
   if(mode==='day'){ for(let k=from; k<=to; k=shiftDay(k,1)) r.buckets.set(k, {rev:0, profit:0}); }
@@ -4340,8 +4434,9 @@ function computeInsights(){
     const h=new Date(s.ts).getHours(); return isNaN(h) ? 12 : h;
   };
   sales.forEach(s=>{
-    const total=Number(s.total)||0;
+    const total=goodsTotal(s);                         // website shipping isn't product revenue
     r.revenue+=total;
+    if(s.kind==='online'){ r.onlineCount++; r.onlineRev+=total; }
     const b=bucketOf(s);
     if(!r.buckets.has(b)) r.buckets.set(b, {rev:0, profit:0});
     const bk=r.buckets.get(b);
@@ -4441,6 +4536,15 @@ function renderInsights(anim){
     if(r.missing) chips.push('<button class="gchip" id="gxNoCostBtn" title="Show them and type the costs in">'+r.missing+' item'+(r.missing===1?'':'s')+
       ' sold with no cost yet, left out of profit · '+(ncOpen()?'hide ▲':'show ▼')+'</button>');
   }
+  if(gx.online){
+    const note=onlineNote(gx.online);
+    if(note) chips.push('<span class="gchip bad">'+esc(note)+'</span>');
+    if(onlineOk(gx.online)){
+      const ship=gx.online.totals.shipping||0;
+      chips.push('<span class="gchip ok">Includes '+r.onlineCount+' online order'+(r.onlineCount===1?'':'s')+' · '+esc(moneySigned(r.onlineRev))+
+        (ship ? ' (shipping of '+esc(moneySigned(ship))+' left out)' : '')+'</span>');
+    }
+  }
   if(r.histDays){
     chips.push('<span class="gchip bad">Accurate profit margins were only tracked from '+esc(niceDay(TILL_FROM))+
       '. Before that, it’s the Google Sheet’s Games takings with profit estimated at '+Math.round((1-HIST_COST)*100)+'%</span>');
@@ -4513,7 +4617,7 @@ function noCostRows(){
     if(beforeTill(s)) return;                  // the sheet stands in for these, at 50%
     const items=s.items||[];
     const gross=items.reduce((a,it)=>a+(Number(it.price)||0)*(Number(it.qty)||0), 0);
-    const share=gross ? (Number(s.total)||0)/gross : 1;
+    const share=gross ? goodsTotal(s)/gross : 1;
     items.forEach((it, i)=>{
       const q=Number(it.qty)||0, rev=(Number(it.price)||0)*q*share;
       if(isMiscLine(it)){
@@ -4865,10 +4969,11 @@ async function printAdminSummary(){
   const ids = Object.keys(d.byStore||{}).sort((a,b)=>storeLabel(a).localeCompare(storeLabel(b)));
 
   const rows=[
-    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)],
+    ['Sales', String(t.count)], ['Cash', money(t.cash)], ['Card', money(t.card)]].concat(
+    adWantsOnline() && onlineOk(adState.online) ? [['Online (website)', money(t.online||0)]] : [], [
     '-', ['TOTAL', money(t.total), true], '-',
     ['Subtotal ex GST', money(t.sub)], ['GST collected', money(t.gst)]
-  ];
+  ]);
   if(ids.length>1){
     rows.push('-', ['BY STORE','']);
     ids.forEach(id=>{ const a=d.byStore[id]; rows.push([storeLabel(id)+' ('+a.count+')', money(a.total)]); });
@@ -4880,7 +4985,7 @@ async function printAdminSummary(){
 // accountant, with a Store column so both locations are in the one sheet.
 async function exportAdminCsv(){
   $('adStatus').textContent='Building the CSV…';
-  const d=await rangeSalesChunked(adState.from, adState.to, adState.store, true);
+  const {d}=await rangeWithOnline(adState.from, adState.to, adState.store, true);
   if(!d || d.error || !Array.isArray(d.sales)){
     $('adStatus').textContent=(d && d.error) || 'Could not read the sales record.';
     return;
@@ -4897,7 +5002,7 @@ function downloadSalesCsv(sales, filename){
               'Subtotal ex GST','GST','Total','Paid','Tendered','Change','Items'];
   const rows=live.map(s=>{ const dt=new Date(s.ts);
     return [storeLabel(s.store), s.no, dt.toLocaleDateString('en-AU'), dt.toLocaleTimeString('en-AU'),
-      s.servedBy, s.customer||'', s.contact||'', orderLabel(s), s.method, f2(s.discount||0),
+      s.servedBy, s.customer||'', s.contact||'', s.kind==='online' ? 'Website order' : orderLabel(s), s.method, f2(s.discount||0),
       f2(s.sub), f2(s.gst), f2(s.total), f2(s.paid!=null?s.paid:s.total), f2(s.tendered), f2(s.change),
       (s.items||[]).map(i=>i.qty+'x '+i.name).join(' | ')]
       .map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',');
