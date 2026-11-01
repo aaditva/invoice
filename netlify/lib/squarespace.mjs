@@ -17,6 +17,14 @@ export async function sqFetch(path, init = {}) {
   });
 }
 
+// The shipping option chosen at checkout, as named in Squarespace (e.g. "Store
+// Pickup"). A pickup order has no shipping line — its name is only in
+// shippingOptionName — so read that when shippingLines is empty.
+export function shipMethodOf(o) {
+  const line = Array.isArray(o && o.shippingLines) && o.shippingLines[0];
+  return String((line && line.method) || (o && o.shippingOptionName) || '').trim();
+}
+
 // Mark an order fulfilled (Squarespace has no partial fulfilment through the API).
 // Squarespace emails the customer that it's done, unless SQ_PICKUP_NOTIFY=0.
 // 409 = already fulfilled, which is what we wanted anyway. A pickup has no

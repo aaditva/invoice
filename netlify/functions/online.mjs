@@ -27,7 +27,8 @@
  *  it out of product revenue.
  *
  *  How it reaches the customer (each sale's `delivery`), read straight off the order:
- *    'pickup'    the shipping option chosen at checkout (shippingLines[0].method) says
+ *    'pickup'    the shipping option chosen at checkout (shippingLines[0].method, or
+ *                shippingOptionName, which is where a pickup order has it) says
  *                pick up, e.g. "Store Pickup"
  *    'delivery'  the order has a tracking number (fulfillments[].trackingNumber)
  *    ''          neither yet (e.g. a delivery not sent yet); `shipMethod` still carries
@@ -56,6 +57,7 @@
 
 import { getStore } from '@netlify/blobs';
 import { corsHeaders, preflight, json, tokenOk, pinOk } from '../lib/http.mjs';
+import { shipMethodOf } from '../lib/squarespace.mjs';
 
 const SQ = 'https://api.squarespace.com/1.0/commerce/orders';
 const UA = 'StoreTill/1.0 (+online-sales)';
@@ -65,7 +67,7 @@ const MIN_GAP_MS = 60 * 1000;            // ask Squarespace at most once a minut
 const BUDGET_MS = 7000;                  // stop syncing in time to answer inside the function timeout
 const OVERLAP_MS = 2 * 60 * 1000;        // re-read a little before syncedTo, in case of clock skew
 const MAX_WINDOW_DAYS = 30;
-const STATE_VERSION = 3;                 // bump to make every order be read again from scratch (3: pickup/delivery fields)
+const STATE_VERSION = 4;                 // bump to make every order be read again from scratch (4: pickup name from shippingOptionName)
 const MAX_RANGE_DAYS = 400;
 const GST_RATE = 10;                     // fallback only, when Squarespace reports no tax
 const COUNTED = new Set(['PAID', 'REFUNDED', 'REFUND_PENDING', 'REFUND_FAILED']);   // money was taken
@@ -262,7 +264,7 @@ function compact(o, day) {
     id: o.id, no: String(o.orderNumber || o.id), ts: o.createdOn, day,
     grand, refunded, shipping: amt(o.shippingTotal), tax: amt(o.taxTotal),
     discount: amt(o.discountTotal), status: o.fulfillmentStatus || '',
-    shipMethod: String((Array.isArray(o.shippingLines) && o.shippingLines[0] && o.shippingLines[0].method) || '').trim(),
+    shipMethod: shipMethodOf(o),
     tracking: (Array.isArray(o.fulfillments) ? o.fulfillments : [])
       .map(f => String((f && f.trackingNumber) || '').trim()).filter(Boolean),
     items: (Array.isArray(o.lineItems) ? o.lineItems : []).map(li => ({
