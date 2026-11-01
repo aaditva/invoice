@@ -17,6 +17,8 @@
  *      (cancelled, test, in-store, nothing paid).
  *      sync.complete is false while the first read of older orders is still
  *      going: ask again and it carries on from where it stopped.
+ *    GET /api/online?raw=<orderId>   → { status, order }   one order exactly as
+ *      Squarespace sends it (Admin-only, like the rest), to check its fields.
  *
  *  What counts: paid (or partly refunded) web orders. Test orders, cancelled
  *  orders, unpaid ones, and Squarespace POS sales (channel 'pos' — in-store,
@@ -77,6 +79,18 @@ export default async (req) => {
   if (req.method !== 'GET') return json({ error: 'Method not allowed.' }, 405, headers);
 
   const q = new URL(req.url).searchParams;
+  // ?raw=<orderId>: that one order exactly as Squarespace sends it, to see how
+  // it marks pickup / delivery when the till files an order the wrong way.
+  if (q.get('raw')) {
+    if (!process.env.SQUARESPACE_API_KEY) return json({ error: 'SQUARESPACE_API_KEY is not set.' }, 500, headers);
+    try {
+      const r = await fetch(SQ + '/' + encodeURIComponent(q.get('raw').trim()),
+        { headers: { Authorization: 'Bearer ' + process.env.SQUARESPACE_API_KEY, 'User-Agent': UA, Accept: 'application/json' } });
+      return json({ status: r.status, order: await r.json().catch(() => null) }, 200, headers);
+    } catch (e) {
+      return json({ error: String((e && e.message) || e) }, 500, headers);
+    }
+  }
   const a = (q.get('from') || q.get('day') || '').trim();
   const b = (q.get('to') || q.get('day') || a).trim();
   if (!DAY_RE.test(a) || !DAY_RE.test(b)) return json({ error: 'from/to must be YYYY-MM-DD.' }, 400, headers);
