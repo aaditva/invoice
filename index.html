@@ -538,6 +538,7 @@
   .pulist .pr:hover{background:#f5f5f7}
   .pulist .pr .who{font-weight:650}
   .pulist .pr .meta{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .pulist .pr .pitems{font-size:13.5px;margin-top:5px;line-height:1.35}
   .pulist .pr .amt{text-align:right;font-variant-numeric:tabular-nums}
   .pulist .pr .amt b{display:block;font-size:16px}
   .pulist .pr .amt span{font-size:12.5px;color:var(--muted)}
@@ -3040,7 +3041,8 @@ function puRow(s, done){
   return '<div class="pr'+(done?' done':'')+(puHighlight && s.pickupCode===puHighlight?' hl':'')+'" data-code="'+esc(s.pickupCode)+'">'+
     '<div><div class="who">'+(s.orderNo?'<span class="ono">'+esc(s.orderNo)+'</span> ':'')+(s.customer?esc(s.customer):'<span class="muted">No name</span>')+(s.contact?' · '+esc(s.contact):'')+'</div>'+
       '<div class="meta">'+(done?'':(pickupTooEarly(s)?'<span class="later">Pick up from '+esc(niceDay(pickupOnOf(s)))+'</span> · ':'Ready · '))+
-        esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div></div>'+
+        esc(s.no)+' · '+esc(when)+' · served by '+esc(s.servedBy||'-')+got+(s.synced===false?' · <b>not sent to the site yet</b>':'')+'</div>'+
+      '<div class="pitems">'+((s.items||[]).length ? s.items.map(i=>'<div>'+(Number(i.qty)||0)+' × '+esc(i.name||'Item')+'</div>').join('') : '<div class="muted">No products on this order</div>')+'</div></div>'+
     '<div class="amt"><b>'+money(s.total)+'</b><span>'+items+' item'+(items===1?'':'s')+' · '+esc(s.method||'')+'</span></div>'+
     '<button class="tick'+(done?' on':'')+'" data-tick="'+esc(s.pickupCode)+'" title="'+(done?'Picked up. Tap to undo':'Tap when the customer has picked it up')+'">✓</button>'+
   '</div>';

@@ -8,7 +8,8 @@
  *  lost while the till, the wifi or the printer is off: it prints when it's back.
  *
  *  How an order reaches the customer, from the order itself (never guessed):
- *    pickup    its checkout shipping option (shippingLines[0].method) says pick up,
+ *    pickup    its checkout shipping option (shippingLines[0].method, or for a
+ *              pickup order, which has no shipping line, shippingOptionName) says pick up,
  *              e.g. "Store Pickup". It also goes on that store's Pick ups list with
  *              a pick-up barcode; ticking it there fulfils the order in Squarespace.
  *    delivery  any other shipping option, or a shipping address. Printed only.
@@ -48,7 +49,7 @@
 
 import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
 import { salesBlobs, webKey, openKey, newPickupCode, pointerOf, getJSON, setPickedUp } from '../lib/pickups.mjs';
-import { sqFetch, sqKey, paymentOf } from '../lib/squarespace.mjs';
+import { sqFetch, sqKey, paymentOf, shipMethodOf } from '../lib/squarespace.mjs';
 
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const DEVICE_RE = /^[A-Za-z0-9_-]{1,40}$/;
@@ -261,9 +262,8 @@ function counts(o) {
 
 // The order as a till sale, so the till's receipt and Pick ups code can use it.
 function toWebSale(o) {
-  const lines = Array.isArray(o.shippingLines) ? o.shippingLines : [];
-  const shipMethod = String((lines[0] && lines[0].method) || '').trim();
-  const kind = PICKUP_NAME_RE.test(shipMethod) ? 'pickup' : (lines.length || hasAddress(o.shippingAddress)) ? 'delivery' : 'other';
+  const shipMethod = shipMethodOf(o);
+  const kind = PICKUP_NAME_RE.test(shipMethod) ? 'pickup' : (shipMethod || hasAddress(o.shippingAddress)) ? 'delivery' : 'other';
   const bill = o.billingAddress || {}, ship = o.shippingAddress || {};
   const name = a => [a.firstName, a.lastName].map(x => String(x || '').trim()).filter(Boolean).join(' ');
   const phone = String(bill.phone || ship.phone || '').trim();
