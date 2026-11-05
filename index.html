@@ -1320,6 +1320,15 @@
   </div>
 </div>
 
+<!-- ASSIGN A MISC SALE TO A PRODUCT -->
+<div class="modal" id="assignModal">
+  <div class="sheet">
+    <header><span class="store">Assign to product</span><span class="spacer"></span><button class="ghost" id="assignCancel">Cancel</button></header>
+    <div class="body" id="assignBody"></div>
+    <div class="foot"><button class="primary" id="assignOk">OK</button></div>
+  </div>
+</div>
+
 <!-- PICK UP LATER MODAL -->
 <div class="modal" id="pickupsModal">
   <div class="sheet wide">
@@ -4930,43 +4939,73 @@ async function saveNoCost(input){
    from here on, so Insights, the sheet's Profit tab, voids and refunds all treat
    it like any other sale of that product. */
 function findNcMisc(k){ return noCostRows().misc.find(r=>r.k===k); }
+let assignCtx=null;      // the Misc line + product being assigned while the OK box is open
 async function assignMisc(k){
   const r=findNcMisc(k); if(!r) return;
   if(!isAdmin()){ alert('Log in as admin to assign a sale.'); return; }
   const s=r.s;
   if(s.kind==='online' || s.kind==='refund' || Object.keys(s.refunded||{}).length){ alert(s.no+' has refunds on it, so it can’t be changed here.'); return; }
-  openSearch(async p=>{
-    const q=r.q;
-    const stk=stockOf(p.sku);
-    if(!confirm('Assign “'+(r.it.name||'Miscellaneous')+'” on '+s.no+' ('+moneySigned(r.rev)+') to:\n\n'+p.name+' ('+p.sku+')\n\n'+
-      'It keeps the price charged. '+q+' will come off '+p.name+'’s stock'+(stk!==null?' (now '+stk+')':'')+' and its cost price will be used for profit.\nThis can’t be undone from here.')) return;
-    const st=$('ncStatus'); const was=st.innerHTML; st.innerHTML='<span>Assigning…</span>';
-    try{
-      // 1. Stock first. The key is stable, so retrying after a failed save can't take it twice.
-      let note='';
-      if(isTraining()) note=' (training: stock left alone)';
-      else if(!inventoryUrl()) note=' (stock not changed: no Inventory update URL in Settings)';
-      else{
-        const items=[{variantId:p.variantId||null, sku:p.sku, quantity:q}];
-        const res=await fetch(inventoryUrl(), {method:'POST', headers:shareHeaders(true),
-          body:JSON.stringify({invoiceNo:s.no, idemKey:(s.origNo||s.no)+'|'+(s.ts||'')+'|assign|'+r.i+'|'+normSku(p.sku), items})});
-        const d=await res.json().catch(()=>({}));
-        if(!res.ok) throw new Error(d.error || ('stock update failed, HTTP '+res.status));
-        reconcileStock(d && d.inventory);
-      }
-      // 2. Then the sale record.
-      const copy=JSON.parse(JSON.stringify(s));
-      const it=copy.items[r.i];
-      it.miscName=it.name || 'Miscellaneous'; it.sku=p.sku; it.name=p.name; it.custom=true; it.assignedAt=new Date().toISOString();
-      const res=await fetch(salesUrl(), {method:'POST', headers:shareHeaders(true), body:JSON.stringify(copy)});
+  openSearch(p=>openAssign(r, p));
+}
+// Step 2: nothing is saved yet. The box shows what will happen; only OK commits it.
+function openAssign(r, p){
+  assignCtx={k:r.k, r, p};
+  const stk=stockOf(p.sku);
+  $('assignBody').innerHTML=
+    '<div class="field"><label>Sale</label><div>'+esc(r.it.name||'Miscellaneous')+' on '+esc(r.s.no)+' · '+esc(moneySigned(r.rev))+'</div></div>'+
+    '<div class="field"><label>Product</label><div>'+esc(p.name)+' <span class="muted">'+esc(p.sku)+(stk!==null?' · '+stk+' in stock':'')+'</span></div></div>'+
+    '<div class="field"><label>Units of this product to take off stock</label>'+
+      '<input id="assignUnits" type="number" min="1" step="1" inputmode="numeric" value="'+r.q+'" style="width:100px">'+
+      '<div class="hint" id="assignHint"></div></div>';
+  $('assignModal').classList.add('show');
+  $('assignUnits').oninput=refreshAssign; refreshAssign();
+  setTimeout(()=>{ $('assignUnits').focus(); $('assignUnits').select(); },50);
+}
+function assignUnits(){ const n=Math.floor(Number($('assignUnits').value)); return n>=1 ? n : 0; }
+function refreshAssign(){
+  if(!assignCtx) return;
+  const {r,p}=assignCtx, n=assignUnits(), stk=stockOf(p.sku);
+  $('assignOk').disabled=!n;
+  $('assignHint').textContent = !n ? 'Enter 1 or more.'
+    : n+' off '+p.name+'’s stock'+(stk!==null?' ('+stk+' → '+(stk-n)+')':'')+'. Its cost price is used for each unit, so profit = '+
+      moneySigned(r.rev)+' − '+n+' × cost. Can’t be undone from here.';
+}
+function closeAssign(){ assignCtx=null; $('assignModal').classList.remove('show'); }
+async function commitAssign(){
+  if(!assignCtx) return;
+  const {r,p}=assignCtx, n=assignUnits(); if(!n) return;
+  const s=r.s, ok=$('assignOk');
+  ok.disabled=true; ok.textContent='Saving…';
+  try{
+    // 1. Stock first. The key is stable, so retrying after a failed save can't take it twice.
+    let note='';
+    if(isTraining()) note=' (training: stock left alone)';
+    else if(!inventoryUrl()) note=' (stock not changed: no Inventory update URL in Settings)';
+    else{
+      const res=await fetch(inventoryUrl(), {method:'POST', headers:shareHeaders(true),
+        body:JSON.stringify({invoiceNo:s.no, idemKey:(s.origNo||s.no)+'|'+(s.ts||'')+'|assign|'+r.i+'|'+normSku(p.sku)+'|'+n,
+          items:[{variantId:p.variantId||null, sku:p.sku, quantity:n}]})});
       const d=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(d.error || ('sale not saved, HTTP '+res.status));
-      // 3. Mirror it here: this list, and this device's own copy if it has one.
-      Object.assign(s, copy);
-      mirrorAssignment(copy);
-      renderNoCost(); renderNcStatus(); toast('Assigned to '+p.name+note);
-    }catch(e){ st.innerHTML=was; alert('Not assigned: '+e.message); }
-  });
+      if(!res.ok) throw new Error(d.error || ('stock update failed, HTTP '+res.status));
+      reconcileStock(d && d.inventory);
+    }
+    // 2. Then the sale record. The line becomes n units of the product at the same line total,
+    //    so revenue is unchanged and stock, cost, profit, voids and refunds all follow the units.
+    const copy=JSON.parse(JSON.stringify(s));
+    const it=copy.items[r.i], was={name:it.name || 'Miscellaneous', price:it.price, qty:it.qty};
+    const lineTotal=round2((Number(it.price)||0)*(Number(it.qty)||0));
+    it.miscName=was.name; it.miscPrice=was.price; it.miscQty=was.qty;
+    it.sku=p.sku; it.name=p.name; it.qty=n; it.price=round2(lineTotal/n); it.custom=true; it.assignedAt=new Date().toISOString();
+    const res=await fetch(salesUrl(), {method:'POST', headers:shareHeaders(true), body:JSON.stringify(copy)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error || ('sale not saved, HTTP '+res.status));
+    // 3. Mirror it here: this list, and this device's own copy if it has one.
+    Object.assign(s, copy);
+    mirrorAssignment(copy);
+    closeAssign();
+    renderNoCost(); renderNcStatus(); toast('Assigned to '+p.name+note);
+  }catch(e){ alert('Not assigned: '+e.message); }
+  finally{ ok.textContent='OK'; ok.disabled=!assignCtx || !assignUnits(); }
 }
 // This device's own copy of an invoice learns about the assignment, so a later void or refund
 // from here puts the right stock back and a re-send can't undo it.
@@ -5729,6 +5768,8 @@ function bind(){
   $('btnFind').onclick=()=>{ if(isMobileDevice()) openSellCam(); else openSearch(); };
   $('camFind').onclick=()=>{ closeCam(); openSearch(); };
   $('btnMisc').onclick=addMisc;
+  $('assignCancel').onclick=closeAssign;
+  $('assignOk').onclick=commitAssign;
   $('closeSearch').onclick=()=>{ closeSearch(); focusScan(); };
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
 

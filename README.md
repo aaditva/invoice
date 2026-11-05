@@ -579,8 +579,10 @@ No button means nothing is missing a cost.
   **date and time it was sold** (plus the invoice number and who served). Its cost stays on the site;
   Insights and the sheet's Profit tab both count it.
   If a Misc sale was really one of your products, press **Assign to product** on its row and pick the
-  product. The sale keeps the price that was charged, but is now a sale of that product: its quantity
-  comes off Squarespace stock (once), its cost price is used for profit (Insights and the sheet's Profit
+  product. A box shows the stock before and after and asks **how many units** of the product it was
+  (it can be more than the Misc line's qty, e.g. one $100 Misc line that was 3 boxes); nothing is saved
+  until you press **OK** in that box. The line keeps its total, becomes that many units of the product, and
+  the units come off Squarespace stock (once), its cost price is used for profit (Insights and the sheet's Profit
   tab), and a later void or refund puts the right stock back. Assigning can't be undone from the list.
   At the counter you can do the same before charging: press **link to a product** under a Misc line.
 - Tick **Show ones already costed here** to see (and fix) costs typed in this list.
