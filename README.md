@@ -578,6 +578,11 @@ No button means nothing is missing a cost.
 - **Miscellaneous** (“+ Misc $”) lines have no barcode, so each one sold is listed on its own by the
   **date and time it was sold** (plus the invoice number and who served). Its cost stays on the site;
   Insights and the sheet's Profit tab both count it.
+  If a Misc sale was really one of your products, press **Assign to product** on its row and pick the
+  product. The sale keeps the price that was charged, but is now a sale of that product: its quantity
+  comes off Squarespace stock (once), its cost price is used for profit (Insights and the sheet's Profit
+  tab), and a later void or refund puts the right stock back. Assigning can't be undone from the list.
+  At the counter you can do the same before charging: press **link to a product** under a Misc line.
 - Tick **Show ones already costed here** to see (and fix) costs typed in this list.
 
 > Cost prices are now on the site, readable with the Admin password. Set **`ADMIN_PIN`** on

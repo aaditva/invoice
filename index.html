@@ -1312,7 +1312,7 @@
 <!-- SEARCH MODAL -->
 <div class="modal" id="searchModal">
   <div class="sheet">
-    <header><span class="store">Find product</span><span class="spacer"></span><button class="ghost" id="closeSearch">Close</button></header>
+    <header><span class="store" id="searchTitle">Find product</span><span class="spacer"></span><button class="ghost" id="closeSearch">Close</button></header>
     <div class="body">
       <input id="searchInput" placeholder="Type a product name or SKU…" autocomplete="off" />
       <div class="searchlist" id="searchResults"></div>
@@ -2040,7 +2040,7 @@ async function lookUpMissing(code, key){
 }
 function notFound(code){ flash('Not found: '+code, false); beep(false); }
 function addItem(p){
-  const line = basket.find(b=>normSku(b.sku)===normSku(p.sku));
+  const line = basket.find(b=>!b.misc && normSku(b.sku)===normSku(p.sku));
   if(line){ line.qty++; }
   else { basket.push({sku:p.sku, name:p.name, price:Number(p.price)||0, qty:1}); }
   render();
@@ -2051,6 +2051,21 @@ function addMisc(){
   render();
   // focus the new amount box so they can type the price straight away
   setTimeout(()=>{ const inp=document.querySelector('[data-act="price"][data-i="'+(basket.length-1)+'"]'); if(inp){ inp.focus(); inp.select(); } }, 30);
+}
+/* A Misc line can be linked to a real product: it keeps the price typed in, but is
+   sold as that product, so Squarespace stock drops and the cost price is used for profit. */
+const isRealLine = b => !b.misc || !!b.linked;
+function linkMisc(i, p){
+  const b=basket[i]; if(!b || !b.misc || !p) return;
+  if(!b.miscSku) b.miscSku=b.sku;
+  b.sku=p.sku; b.name=p.name; b.linked=true;
+  if(!(b.price>0)) b.price=Number(p.price)||0;     // nothing typed yet: start from the shelf price
+  render();
+}
+function unlinkMisc(i){
+  const b=basket[i]; if(!b || !b.linked) return;
+  b.sku=b.miscSku||('MISC-'+(miscSeq++)); b.name='Miscellaneous'; b.linked=false; delete b.miscSku;
+  render();
 }
 function setMiscPrice(i, v){ const n=parseFloat(v); basket[i].price = isNaN(n)?0:round2(Math.max(0,n)); render(); }
 function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
@@ -2081,7 +2096,7 @@ function render(){
   basket.forEach((b,i)=>{
     const tr=document.createElement('tr');
     let sub;
-    if(b.misc){ sub='custom item'; }
+    if(b.misc && !b.linked){ sub='custom item'; }
     else {
       const brand=basketBrand(b);
       sub = (brand ? '<span class="ctag" style="--c:'+brandColor(brand)+'">'+esc(brand)+'</span>' : '')+esc(b.sku);
@@ -2092,7 +2107,9 @@ function render(){
           ? ' · <span style="color:var(--danger)">over by '+(-rem)+'</span>'
           : ' · '+rem+' in stock';
       }
+      if(b.linked) sub += ' · <span class="muted">custom price</span>';
     }
+    if(b.misc) sub += ' · <a href="#" data-act="'+(b.linked?'unlink':'link')+'" data-i="'+i+'">'+(b.linked?'unlink':'link to a product')+'</a>';
     const priceCell = b.misc
       ? '<td class="num"><input data-act="price" data-i="'+i+'" value="'+b.price+'" inputmode="decimal" placeholder="0.00" style="width:76px;text-align:right;padding:6px 8px" title="Type the amount"></td>'
       : '<td class="num money">'+money(b.price)+'</td>';
@@ -2189,7 +2206,7 @@ function updateFinalizeState(){
   // Warn-but-allow: flag any line selling more than Squarespace shows in stock, but never block.
   if(ok && !msg){
     const over=[];
-    basket.forEach(b=>{ if(b.misc) return; const s=stockOf(b.sku); if(s!==null && b.qty>s) over.push((catItem(b.sku)&&catItem(b.sku).name)||b.name); });
+    basket.forEach(b=>{ if(!isRealLine(b)) return; const s=stockOf(b.sku); if(s!==null && b.qty>s) over.push((catItem(b.sku)&&catItem(b.sku).name)||b.name); });
     if(over.length) msg='⚠ Selling more than in stock (allowed): '+over.join(', ');
   }
   warn.textContent=msg;
@@ -2281,7 +2298,7 @@ async function commitSale(){
     if(isFinite(tv)){ tendered=round2(tv); change=round2(Math.max(0,tv-ct)); }
   }
   // Real catalog lines whose stock should drop in Squarespace (skip misc/custom lines).
-  const stockItems = basket.filter(b=>!b.misc).map(b=>{
+  const stockItems = basket.filter(isRealLine).map(b=>{
     const p=catItem(b.sku);
     return { variantId:(p&&p.variantId)||null, sku:b.sku, quantity:b.qty };
   }).filter(x=>x.variantId || x.sku);
@@ -2290,7 +2307,7 @@ async function commitSale(){
     no:'', day:todayKey(), ts:new Date().toISOString(),
     store: store.id, storeName: store.name,
     method, servedBy, customer, contact, order, device: settings.device||'',
-    items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty})),
+    items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty, ...(b.linked ? {custom:true} : {})})),
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
     sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
     paid, tendered, change, rounding, synced:false,
@@ -2459,6 +2476,7 @@ function voidSale(no, ref){
     s.stockAdjusted=true;
     sales.push(s);
   }
+  if(ref && takeAssignments(s, ref)) save(LS.sales, sales);   // a Misc line assigned to a product from another till
   if(s.voided) return;
   if(s.kind==='refund'){ alert('A refund can’t be voided.'); return; }
   if(Object.keys(s.refunded||{}).length){ alert(s.no+' already has items refunded. Use “Refund items” for the rest instead of voiding it.'); return; }
@@ -3224,7 +3242,13 @@ function renderWebBadge(){
 }
 
 /* ---------------- search ---------------- */
-function openSearch(){ $('searchModal').classList.add('show'); $('searchInput').value=''; renderSearch(''); setTimeout(()=>$('searchInput').focus(),50); }
+let searchPick=null;     // set while the search is choosing a product for something else (a Misc line) instead of adding to the basket
+function openSearch(pick){
+  searchPick = typeof pick==='function' ? pick : null;
+  $('searchTitle').textContent = searchPick ? 'Pick the product this was' : 'Find product';
+  $('searchModal').classList.add('show'); $('searchInput').value=''; renderSearch(''); setTimeout(()=>$('searchInput').focus(),50);
+}
+function closeSearch(){ searchPick=null; $('searchModal').classList.remove('show'); }
 function renderSearch(q){
   q=q.trim().toLowerCase();
   const list=$('searchResults'); list.innerHTML='';
@@ -3239,7 +3263,7 @@ function renderSearch(q){
     const s=(p.stock===null||p.stock===undefined)?null:Number(p.stock);
     const stk = s===null?'':' · '+s+' in stock';
     r.innerHTML='<span>'+esc(p.name)+' <span class="isku">'+esc(p.sku)+stk+'</span></span><span class="money">'+money(p.price)+'</span>';
-    r.onclick=()=>{ addItem(p); $('searchModal').classList.remove('show'); focusScan(); };
+    r.onclick=()=>{ const pick=searchPick; closeSearch(); if(pick) pick(p); else { addItem(p); focusScan(); } };
     list.appendChild(r);
   });
 }
@@ -3389,6 +3413,7 @@ async function refundSale(ref, picks, method, by){
     orig=JSON.parse(JSON.stringify(ref)); orig.stockItems=[]; orig.stockAdjusted=true; orig.restocked=true; orig.synced=true;
     sales.push(orig);
   }
+  if(takeAssignments(orig, ref)) save(LS.sales, sales);
   const done=orig.refunded||{};
   for(const p of picks){
     const left=(Number(orig.items[p.i].qty)||0)-(Number(done[p.i])||0);
@@ -4802,7 +4827,7 @@ function noCostRows(){
       const q=Number(it.qty)||0, rev=(Number(it.price)||0)*q*share;
       if(isMiscLine(it)){
         const k=miscKey(s, i), m=gx.misc[k];
-        misc.push({k, s, it, q, rev, cost:m && m.cost!=null ? Number(m.cost) : null});
+        misc.push({k, s, it, i, q, rev, cost:m && m.cost!=null ? Number(m.cost) : null});
         return;
       }
       const sku=normSku(it.sku), info=gx.costs.get(sku);
@@ -4848,13 +4873,15 @@ function renderNoCost(){
       '</tbody></table></div>'
       : '<div class="gempty">No products without a cost in this period.</div>'));
   h+=card('<div class="gtitle">Miscellaneous sales</div>'+
-    '<div class="gsub">Custom-priced “+ Misc $” lines have no barcode, so each one is listed by when it was sold. Type what it cost you.</div>'+
+    '<div class="gsub">Custom-priced “+ Misc $” lines have no barcode, so each one is listed by when it was sold. Type what it cost you, '+
+    'or press <b>Assign to product</b> if it was really one of your products: the sale then takes that product off stock and uses its cost price. It can’t be undone from here.</div>'+
     (M.length ? '<div class="ncwrap"><table class="gt"><thead><tr><th>Item</th><th>Sold</th>'+(adState.store?'':'<th>Store</th>')+
-      '<th>Invoice</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Cost each</th></tr></thead><tbody>'+
+      '<th>Invoice</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Cost each</th><th></th></tr></thead><tbody>'+
       M.map(r=>'<tr><td>'+esc(r.it.name || 'Miscellaneous')+'</td><td>'+esc(whenSold(r.s.ts, r.s.day))+(r.s.servedBy?'<div class="muted">'+esc(r.s.servedBy)+'</div>':'')+'</td>'+
         (adState.store?'':'<td>'+esc(storeLabel(r.s.store))+'</td>')+
         '<td>'+esc(r.s.no)+'</td><td class="num">'+r.q+'</td><td class="num">'+moneySigned(r.rev)+'</td>'+
-        '<td class="num" style="white-space:nowrap">'+ncInput('m', r.k, r.cost)+'</td></tr>').join('')+
+        '<td class="num" style="white-space:nowrap">'+ncInput('m', r.k, r.cost)+'</td>'+
+        '<td><button class="ghost" data-assign="'+esc(r.k)+'" title="Sell this as one of your products: takes it off stock and uses its cost price">Assign to product</button></td></tr>').join('')+
       '</tbody></table></div>'
       : '<div class="gempty">No miscellaneous sales without a cost in this period.</div>'));
   grid.innerHTML=h;
@@ -4895,6 +4922,74 @@ async function saveNoCost(input){
     if(cost!==null) input.value=cost.toFixed(2);
     renderNcStatus();            // the counts move with each save; the rows stay put so typing carries on
   }catch(e){ st.className='ncst bad'; st.textContent='Not saved: '+e.message; }
+}
+/* ---------------- Assign a Miscellaneous sale to a product ----------------
+   Turns one Misc line on a past sale into a sale of a real product, keeping the
+   price that was charged. Stock comes off Squarespace now (once - the key is
+   the invoice, line and product), and the line carries the product's barcode
+   from here on, so Insights, the sheet's Profit tab, voids and refunds all treat
+   it like any other sale of that product. */
+function findNcMisc(k){ return noCostRows().misc.find(r=>r.k===k); }
+async function assignMisc(k){
+  const r=findNcMisc(k); if(!r) return;
+  if(!isAdmin()){ alert('Log in as admin to assign a sale.'); return; }
+  const s=r.s;
+  if(s.kind==='online' || s.kind==='refund' || Object.keys(s.refunded||{}).length){ alert(s.no+' has refunds on it, so it can’t be changed here.'); return; }
+  openSearch(async p=>{
+    const q=r.q;
+    const stk=stockOf(p.sku);
+    if(!confirm('Assign “'+(r.it.name||'Miscellaneous')+'” on '+s.no+' ('+moneySigned(r.rev)+') to:\n\n'+p.name+' ('+p.sku+')\n\n'+
+      'It keeps the price charged. '+q+' will come off '+p.name+'’s stock'+(stk!==null?' (now '+stk+')':'')+' and its cost price will be used for profit.\nThis can’t be undone from here.')) return;
+    const st=$('ncStatus'); const was=st.innerHTML; st.innerHTML='<span>Assigning…</span>';
+    try{
+      // 1. Stock first. The key is stable, so retrying after a failed save can't take it twice.
+      let note='';
+      if(isTraining()) note=' (training: stock left alone)';
+      else if(!inventoryUrl()) note=' (stock not changed: no Inventory update URL in Settings)';
+      else{
+        const items=[{variantId:p.variantId||null, sku:p.sku, quantity:q}];
+        const res=await fetch(inventoryUrl(), {method:'POST', headers:shareHeaders(true),
+          body:JSON.stringify({invoiceNo:s.no, idemKey:(s.origNo||s.no)+'|'+(s.ts||'')+'|assign|'+r.i+'|'+normSku(p.sku), items})});
+        const d=await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(d.error || ('stock update failed, HTTP '+res.status));
+        reconcileStock(d && d.inventory);
+      }
+      // 2. Then the sale record.
+      const copy=JSON.parse(JSON.stringify(s));
+      const it=copy.items[r.i];
+      it.miscName=it.name || 'Miscellaneous'; it.sku=p.sku; it.name=p.name; it.custom=true; it.assignedAt=new Date().toISOString();
+      const res=await fetch(salesUrl(), {method:'POST', headers:shareHeaders(true), body:JSON.stringify(copy)});
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(d.error || ('sale not saved, HTTP '+res.status));
+      // 3. Mirror it here: this list, and this device's own copy if it has one.
+      Object.assign(s, copy);
+      mirrorAssignment(copy);
+      renderNoCost(); renderNcStatus(); toast('Assigned to '+p.name+note);
+    }catch(e){ st.innerHTML=was; alert('Not assigned: '+e.message); }
+  });
+}
+// This device's own copy of an invoice learns about the assignment, so a later void or refund
+// from here puts the right stock back and a re-send can't undo it.
+function mirrorAssignment(site){
+  const sales=load(LS.sales,[]);
+  const loc=sales.find(x=>sameSale(x,site));
+  if(loc && takeAssignments(loc, site)) save(LS.sales, sales);
+}
+// Copy any Misc→product assignments the site's copy of an invoice has onto a local copy that
+// doesn't know yet (another till made them). Returns true if it changed anything.
+function takeAssignments(loc, site){
+  let changed=false;
+  (site.items||[]).forEach((a,i)=>{
+    const b=loc.items && loc.items[i];
+    if(!a || !a.assignedAt || !b || b.assignedAt) return;
+    Object.assign(b, a);
+    if(!isTrainingSale(loc)){
+      const pr=catItem(a.sku);
+      loc.stockItems=(loc.stockItems||[]).concat([{variantId:(pr&&pr.variantId)||null, sku:a.sku, quantity:Number(a.qty)||0}]);
+    }
+    changed=true;
+  });
+  return changed;
 }
 function fmtVal(v, fmt){
   if(fmt==='none') return '-';
@@ -5382,6 +5477,8 @@ function bind(){
     if(b.dataset.act==='inc') setQty(i, basket[i].qty+1);
     else if(b.dataset.act==='dec') setQty(i, basket[i].qty-1);
     else if(b.dataset.act==='rm') removeItem(i);
+    else if(b.dataset.act==='link'){ e.preventDefault(); openSearch(p=>linkMisc(i, p)); }
+    else if(b.dataset.act==='unlink'){ e.preventDefault(); unlinkMisc(i); }
   });
   $('basketBody').addEventListener('change', e=>{
     const q=e.target.closest('[data-act="qty"]'); if(q){ const n=parseInt(q.value,10); if(isNaN(n)) render(); else setQty(+q.dataset.i, n); return; }   // junk typed = keep the old qty, not delete the line
@@ -5534,6 +5631,7 @@ function bind(){
   $('ncClose').onclick=()=>setNcOpen(false);
   $('ncShowAll').onchange=()=>renderNoCost();
   // A cost is saved as soon as it's typed (Enter or moving off the box). Blank = remove it.
+  $('ncGrid').addEventListener('click', e=>{ const b=e.target.closest('[data-assign]'); if(b) assignMisc(b.dataset.assign); });
   $('ncGrid').addEventListener('change', e=>{ const i=e.target.closest('input.nc'); if(i) saveNoCost(i); });
   $('ncGrid').addEventListener('keydown', e=>{ if(e.key==='Enter' && e.target.matches('input.nc')){ e.preventDefault(); e.target.blur(); } });
   $('adTabs').addEventListener('click', e=>{
@@ -5631,7 +5729,7 @@ function bind(){
   $('btnFind').onclick=()=>{ if(isMobileDevice()) openSellCam(); else openSearch(); };
   $('camFind').onclick=()=>{ closeCam(); openSearch(); };
   $('btnMisc').onclick=addMisc;
-  $('closeSearch').onclick=()=>{ $('searchModal').classList.remove('show'); focusScan(); };
+  $('closeSearch').onclick=()=>{ closeSearch(); focusScan(); };
   $('searchInput').addEventListener('input', e=>renderSearch(e.target.value));
 
   // previous invoices
