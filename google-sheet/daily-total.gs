@@ -948,19 +948,20 @@ function writeTotal(when) {
   writeCell(day, TOTAL_HEADER, Number((data.totals || {}).total) || 0);
 }
 
-// One request covers the look-back window. Only days with entries recorded on
-// the till are written, so anything typed into the sheet by hand for other
-// days is left alone. (Deleting a day's last till entry therefore leaves the
-// old figure in the sheet — clear that cell by hand.)
+// One request covers the look-back window. Every day in the window (up to today)
+// is written: the till's total for that day, or 0 when nothing was recorded, so
+// a day with no expenses / no money added shows 0 rather than a blank cell.
+// Days with no row in the sheet are skipped by writeCell.
 function writeByDay(what, header, now) {
   const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');
   const from = Utilities.formatDate(new Date(now.getTime() - EXPENSE_LOOKBACK * 86400000), TIME_ZONE, 'yyyy-MM-dd');
   const data = fetchApi(what, from, to);
   const byDay = {};
   (data.days || []).forEach(r => { byDay[r.day] = (byDay[r.day] || 0) + (Number(r.total) || 0); });
-  Object.keys(byDay).sort().forEach(day => {
-    writeCell(day, header, Math.round(byDay[day] * 100) / 100);
-  });
+  for (let i = EXPENSE_LOOKBACK; i >= 0; i--) {
+    const day = Utilities.formatDate(new Date(now.getTime() - i * 86400000), TIME_ZONE, 'yyyy-MM-dd');
+    writeCell(day, header, Math.round((byDay[day] || 0) * 100) / 100);
+  }
 }
 
 function fetchApi(what, from, to) {
