@@ -22,6 +22,7 @@
  * ------------------------------------------------------------------ */
 
 import { corsHeaders, preflight, json, tokenOk } from '../lib/http.mjs';
+import { createHash } from 'node:crypto';
 import { takeLabelLines } from '../lib/labels.mjs';
 
 const SQ = 'https://api.squarespace.com/1.0/commerce';
@@ -79,7 +80,10 @@ export default async (req) => {
     // double-deduct). The till sends idemKey = invoiceNo + '|' + sale timestamp, which is both.
     // Squarespace restricts this header to [a-zA-Z0-9-_], so sanitize (the till's key has ':'/'.' from the timestamp).
     const idem = ('till-' + String((body && body.idemKey) || (body && body.invoiceNo) || [...ops, ...upOps].map(o => o.variantId).join('-')))
-      .replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 240);
+      .replace(/[^a-zA-Z0-9_-]/g, '-');
+    // Squarespace allows 1-64 characters. A longer key (a Misc sale assigned to a product carries
+    // the invoice, line, barcode and units) is replaced by a hash of itself: same key in, same key out.
+    const idemKey = idem.length <= 64 ? idem : 'till-' + createHash('sha256').update(idem).digest('hex').slice(0, 40);
     // mode:'increment' PUTS stock back (a void/refund); default decrements (a sale).
     const opKey = (body && body.mode) === 'increment' ? 'incrementOperations' : 'decrementOperations';
     const payload = {};
@@ -91,7 +95,7 @@ export default async (req) => {
         Authorization: `Bearer ${key}`,
         'User-Agent': UA,
         'Content-Type': 'application/json',
-        'Idempotency-Key': idem,
+        'Idempotency-Key': idemKey,
       },
       body: JSON.stringify(payload),
     });
