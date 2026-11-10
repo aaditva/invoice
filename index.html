@@ -1017,6 +1017,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="ghost" id="adBoxes">📦 Open box…</button>
         <button class="ghost" id="adExpenses">💸 Expenses…</button>
+        <button class="ghost" id="adAddSale">➕ Add a sale…</button>
       </div>
       </div>
       <!-- INSIGHTS - revenue, profit, brands and products for the store/period above -->
@@ -1180,6 +1181,40 @@
         <label id="exListLbl">Expenses that day</label>
         <div class="scroller"><table class="dtable" id="exList"></table></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD A SALE MODAL - back-date a sale to any day, store and product (admin only) -->
+<div class="modal" id="addSaleModal">
+  <div class="sheet wide">
+    <header><span class="store">➕ Add a sale</span><span class="spacer"></span><button class="ghost" id="closeAddSale">Close</button></header>
+    <div class="body">
+      <div class="hint" style="margin:0">For a sale that was missed or rung up late. It's filed under the date and store you pick, gets the store's next invoice number, and shows up in Takings and Insights like any other sale.</div>
+      <div class="grid2">
+        <div class="field"><label for="asDate">Date of the sale</label><input type="date" id="asDate" /></div>
+        <div class="field"><label for="asStore">Store</label><select id="asStore"></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="asMethod">Paid by</label><select id="asMethod"><option value="card">Card</option><option value="cash">Cash</option></select></div>
+        <div class="field"><label for="asBy">Served by</label><select id="asBy"></select></div>
+      </div>
+      <div class="field">
+        <label>Items</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="ghost" id="asFind">🔍 Find product…</button>
+          <button class="ghost" id="asCustom">＋ Custom item</button>
+        </div>
+        <div class="scroller"><table class="dtable" id="asLines"></table></div>
+      </div>
+      <div class="field"><label for="asDisc">Discount ($, optional)</label><input id="asDisc" inputmode="decimal" placeholder="0.00" /></div>
+      <label class="muted" style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="asStock" style="width:auto;margin:0" /> Also take these off stock in Squarespace</label>
+      <div class="card" style="text-align:center"><div class="clbl">Total (GST included)</div><div class="bignum" id="asTotal">$0.00</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <span class="spacer" style="flex:1"></span>
+        <button class="primary" id="asSave">Add sale</button>
+      </div>
+      <div class="muted" id="asStatus"></div>
     </div>
   </div>
 </div>
@@ -1524,6 +1559,7 @@ function logoutAdmin(){
   $('adminModal').classList.remove('show');
   $('takingsModal').classList.remove('show');
   $('expModal').classList.remove('show');
+  $('addSaleModal').classList.remove('show');
   $('settingsModal').classList.remove('show');
   renderAuth(); toast('Logged out');
 }
@@ -3653,6 +3689,90 @@ function openAdmin(){
   requestAnimationFrame(moveAdminInk);
   reloadAdmin(false);
 }
+/* ---------------- add a sale after the day (admin) ----------------
+   Files a sale under any date and store, using that store's next invoice
+   number, so it counts in Takings, Insights and the Google Sheet like a
+   sale rung up on the till. Stock in Squarespace is only touched if ticked. */
+let asLines=[];
+function openAddSale(){
+  if(!requireAdmin(openAddSale)) return;
+  const stores=allStores().filter(x=>x.id!==TRAINING.id);
+  $('asStore').innerHTML=stores.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  const pre=stores.find(x=>x.id===adState.store) || stores.find(x=>currentStore && x.id===currentStore.id) || stores[0];
+  $('asStore').value=pre.id;
+  $('asBy').innerHTML=(settings.staff||[]).map(n=>'<option>'+esc(n)+'</option>').join('');
+  $('asDate').value=shiftDay(todayKey(),-1);
+  $('asMethod').value='card'; $('asDisc').value=''; $('asStock').checked=false; $('asStatus').textContent='';
+  asLines=[]; renderAddSale();
+  $('addSaleModal').classList.add('show');
+}
+function asTotals(){
+  const gross=round2(asLines.reduce((n,l)=>n+(parseFloat(l.price)||0)*(Math.floor(Number(l.qty))||0),0));
+  const disc=round2(Math.min(Math.max(0,parseFloat($('asDisc').value)||0),gross));
+  const total=round2(gross-disc), rate=Number(settings.gst)||0;
+  const gst=round2(total*rate/(100+rate));
+  return {gross,disc,total,gst,sub:round2(total-gst),rate};
+}
+function renderAddSale(){
+  $('asLines').innerHTML = asLines.length
+    ? '<tr><th>Item</th><th class="num">Price</th><th class="num">Qty</th><th></th></tr>'+asLines.map((l,i)=>
+        '<tr><td>'+(l.custom ? '<input data-f="name" data-i="'+i+'" value="'+esc(l.name)+'" placeholder="What was sold" style="width:100%;min-width:140px">' : esc(l.name)+'<div class="muted">'+esc(l.sku)+'</div>')+'</td>'+
+        '<td class="num"><input data-f="price" data-i="'+i+'" value="'+esc(l.price)+'" inputmode="decimal" style="width:76px;text-align:right;padding:6px 8px"></td>'+
+        '<td class="num"><input data-f="qty" data-i="'+i+'" value="'+l.qty+'" inputmode="numeric" style="width:56px;text-align:right;padding:6px 8px"></td>'+
+        '<td class="num"><button class="ghost" data-del="'+i+'">✕</button></td></tr>').join('')
+    : '<tr><td class="muted">No items yet. Find a product or add a custom item.</td></tr>';
+  $('asTotal').textContent=money(asTotals().total);
+}
+function addSaleFind(){
+  openSearch(p=>{
+    const ex=asLines.find(l=>!l.custom && normSku(l.sku)===normSku(p.sku));
+    if(ex) ex.qty=(Number(ex.qty)||0)+1; else asLines.push({sku:p.sku, name:p.name, price:p.price, qty:1});
+    renderAddSale();
+  });
+}
+async function saveAddSale(){
+  const day=$('asDate').value, storeId=$('asStore').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)){ toast('Pick a date'); return; }
+  const lines=asLines.map(l=>({...l, price:round2(parseFloat(l.price)), qty:Math.floor(Number(l.qty))}));
+  if(!lines.length){ toast('Add an item first'); return; }
+  if(lines.some(l=>!(l.price>=0) || !(l.qty>=1) || !String(l.name||'').trim())){ toast('Check each item has a name, price and quantity'); return; }
+  const store=allStores().find(x=>x.id===storeId); if(!store) return;
+  if(!confirm('Add '+money(asTotals().total)+' on '+day+' at '+store.name+'?')) return;
+  const url=salesUrl(); if(!url){ alert('Needs the sales log URL (Settings → Sales memory).'); return; }
+  $('asSave').disabled=true; $('asStatus').textContent='Saving…';
+  try{
+    const nr=await fetch(salesUrl({counter:'next'}), {method:'POST', headers:shareHeaders(true), body:JSON.stringify({store:store.id})});
+    const nd=await nr.json().catch(()=>({}));
+    if(!nr.ok || !(parseInt(nd.n,10)>0)) throw new Error(nd.error||('Could not get an invoice number (HTTP '+nr.status+')'));
+    const t=asTotals();
+    const stockItems=lines.filter(l=>!l.custom).map(l=>{ const p=catItem(l.sku); return {variantId:(p&&p.variantId)||null, sku:l.sku, quantity:l.qty}; });
+    const takeStock=$('asStock').checked && stockItems.length>0;
+    const ts=new Date(day+'T12:00:00').toISOString();
+    const sale={
+      no:settings.prefix+store.tag+'-'+String(parseInt(nd.n,10)).padStart(4,'0'), day, ts,
+      store:store.id, storeName:store.name, method:$('asMethod').value, servedBy:$('asBy').value,
+      customer:'', contact:'', order:'now', device:settings.device||'',
+      items:lines.map(l=>({sku:l.sku, name:String(l.name).trim(), price:l.price, qty:l.qty, ...(l.custom?{custom:true}:{})})),
+      gross:t.gross, discount:t.disc, discountPct:t.gross>0?round2(t.disc/t.gross*100):0,
+      sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
+      paid:t.total, tendered:null, change:null, rounding:0,
+      addedLater:true, stockItems, stockAdjusted:!takeStock
+    };
+    const res=await fetch(url, {method:'POST', headers:shareHeaders(true), body:JSON.stringify(sale)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    if(d.no) sale.no=String(d.no);
+    if(takeStock){
+      const sales=load(LS.sales,[]); sales.push({...sale, synced:true}); save(LS.sales, sales);
+      adjustStock(sale);
+    }
+    savedPill('Sale '+sale.no+' added: '+money(t.total));
+    $('addSaleModal').classList.remove('show');
+    refreshToday(); reloadAdmin(false);
+  }catch(e){ $('asStatus').textContent='Could not save: '+e.message; }
+  finally{ $('asSave').disabled=false; }
+}
+
 /* ---------------- expenses - cash paid out ----------------
    Tap notes and coins; they add up until Done (or Enter). The total is saved
    to the site under the expense's own date, and the Google Sheet script pulls
@@ -5616,6 +5736,17 @@ function bind(){
     else if(e.key==='Backspace' && e.target.tagName!=='INPUT'){ e.preventDefault(); maTaps.pop(); renderAddPad(); }
   });
   $('adExpenses').onclick=openExpenses;
+  $('adAddSale').onclick=openAddSale;
+  $('closeAddSale').onclick=()=>{ $('addSaleModal').classList.remove('show'); focusScan(); };
+  $('asFind').onclick=addSaleFind;
+  $('asCustom').onclick=()=>{ asLines.push({sku:'MISC-'+Date.now(), name:'', price:'', qty:1, custom:true}); renderAddSale(); };
+  $('asDisc').addEventListener('input', ()=>{ $('asTotal').textContent=money(asTotals().total); });
+  $('asLines').addEventListener('input', e=>{
+    const f=e.target.dataset.f, l=asLines[Number(e.target.dataset.i)]; if(!f||!l) return;
+    l[f]=e.target.value; $('asTotal').textContent=money(asTotals().total);
+  });
+  $('asLines').addEventListener('click', e=>{ const d=e.target.closest('[data-del]'); if(d){ asLines.splice(Number(d.dataset.del),1); renderAddSale(); } });
+  $('asSave').onclick=saveAddSale;
   $('closeExp').onclick=()=>{ $('expModal').classList.remove('show'); focusScan(); };
   $('exPad').addEventListener('click', e=>{
     const b=e.target.closest('[data-v]'); if(!b) return;
