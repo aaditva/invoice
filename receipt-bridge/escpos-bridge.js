@@ -188,6 +188,10 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
 
   for (const it of (sale.items || [])){
     for (const l of wrap(it.name)) d.ln(l);
+    if (Number(it.listPrice) > Number(it.price)) {
+      const off = Math.round((it.listPrice - it.price) / it.listPrice * 10000) / 100;
+      d.ln(pair(`Was ${money(it.listPrice)}, ${off}% off`, '-' + money((it.listPrice - it.price) * it.qty)));
+    }
     d.ln(pair(`${it.qty} x ${money(it.price)}`, money(it.price * it.qty)));
   }
 
