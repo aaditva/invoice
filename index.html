@@ -863,6 +863,7 @@
       <div class="totals">
         <div class="lines">
           <div class="row" id="rowItems" style="display:none"><span class="lbl">Items (incl GST)</span><span class="money" id="tItems">$0.00</span></div>
+          <div class="row" id="rowItemDisc" style="display:none"><span class="lbl">Item discounts <span class="muted">(already in items)</span></span><span class="money" id="tItemDisc" style="color:var(--cash)">−$0.00</span></div>
           <div class="row" id="rowDisc" style="display:none"><span class="lbl" id="discLbl">Discount</span><span class="money" id="tDisc" style="color:var(--cash)">−$0.00</span></div>
           <div class="row"><span class="lbl">Subtotal (ex GST)</span><span class="money" id="tSub">$0.00</span></div>
           <div class="row"><span class="lbl">GST (<span id="tRate">10</span>%)</span><span class="money" id="tGst">$0.00</span></div>
@@ -886,6 +887,7 @@
           <div class="quicktender" id="discQuick" style="margin-top:8px">
             <button data-pct="5">5%</button><button data-pct="10">10%</button><button data-pct="15">15%</button><button data-pct="20">20%</button>
           </div>
+          <button class="ghost" id="btnItemDisc" style="margin-top:8px;width:100%">+ Add individual discount</button>
         </div>
 
         <div class="field">
@@ -1352,6 +1354,33 @@
       <input id="searchInput" placeholder="Type a product name or SKU…" autocomplete="off" />
       <div class="searchlist" id="searchResults"></div>
     </div>
+  </div>
+</div>
+
+<!-- DISCOUNT ON ONE ITEM: $ off, % off and selling price, each updates the other two -->
+<div class="modal" id="itemDiscModal">
+  <div class="sheet">
+    <header><span class="store">Individual discount</span><span class="spacer"></span><button class="ghost" id="idCancel">Cancel</button></header>
+    <div class="body">
+      <div class="field"><label for="idItem">Item</label><select id="idItem"></select></div>
+      <div class="muted" id="idShelf"></div>
+      <div class="grid2">
+        <div class="field"><label for="idAmt">Discount ($ off each)</label>
+          <div style="position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)">$</span>
+          <input id="idAmt" inputmode="decimal" placeholder="0.00" autocomplete="off" style="padding-left:22px" /></div></div>
+        <div class="field"><label for="idPct">Discount (%)</label>
+          <div style="position:relative"><input id="idPct" inputmode="decimal" placeholder="0" autocomplete="off" style="padding-right:26px" />
+          <span style="position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--muted)">%</span></div></div>
+      </div>
+      <div class="field"><label for="idPrice">Selling price (each)</label>
+        <div style="position:relative"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)">$</span>
+        <input id="idPrice" inputmode="decimal" placeholder="0.00" autocomplete="off" style="padding-left:22px" /></div></div>
+      <div class="quicktender" id="idQuick">
+        <button data-pct="5">5%</button><button data-pct="10">10%</button><button data-pct="15">15%</button><button data-pct="20">20%</button><button data-pct="25">25%</button><button data-pct="50">50%</button>
+      </div>
+      <div class="muted" id="idSummary"></div>
+    </div>
+    <div class="foot"><button class="ghost" id="idRemove">Remove discount</button><span class="spacer" style="flex:1"></span><button class="primary" id="idApply">Apply</button></div>
   </div>
 </div>
 
@@ -2115,6 +2144,65 @@ function unlinkMisc(i){
 function setMiscPrice(i, v){ const n=parseFloat(v); basket[i].price = isNaN(n)?0:round2(Math.max(0,n)); render(); }
 function setQty(i, q){ q=Math.max(0,Math.floor(q||0)); if(q===0){ basket.splice(i,1); } else { basket[i].qty=q; } render(); }
 function removeItem(i){ basket.splice(i,1); render(); }
+/* ---------------- individual item discount ----------------
+   A discounted line keeps its shelf price in listPrice and sells at price, so
+   totals, receipts, refunds and profit all keep using price unchanged. The
+   discount is per unit, so every unit on that line (and any scanned later) gets it.
+   Custom (Misc) lines are left out: their price is typed in already. */
+const canItemDisc = b => !!b && !b.misc;
+const shelfPrice  = b => b.listPrice!=null ? Number(b.listPrice)||0 : Number(b.price)||0;
+// From whichever box was typed in ('amt' $ off, 'pct' % off, 'price' selling price) work out all three.
+function itemDiscFrom(list, field, v){
+  list=round2(Math.max(0, Number(list)||0));
+  let n=parseFloat(v); if(!isFinite(n) || n<0) n=0;
+  let price = field==='amt' ? list-Math.min(n, list)
+            : field==='pct' ? list*(1-Math.min(n, 100)/100)
+            : Math.min(n, list);                       // never sell above the shelf price here
+  price=round2(price);
+  const amt=round2(list-price);
+  return {list, price, amt, pct: list>0 ? amt/list*100 : 0};
+}
+function setItemDiscount(i, price){
+  const b=basket[i]; if(!canItemDisc(b)) return;
+  const list=shelfPrice(b);
+  price=round2(Math.min(Math.max(0, Number(price)||0), list));
+  if(price>=list){ b.price=list; delete b.listPrice; }
+  else { b.listPrice=list; b.price=price; }
+  render();
+}
+const fmtPct = p => String(Math.round(p*100)/100);
+let idCalc=null;    // what the open panel would apply: {i, list, price, amt, pct}
+function openItemDisc(i){
+  const lines=basket.map((b,k)=>({b,k})).filter(x=>canItemDisc(x.b));
+  if(!lines.length){ flash(basket.length ? 'Custom items already have their own price' : 'Scan an item first', false); return; }
+  if(!lines.some(x=>x.k===i)) i=lines[lines.length-1].k;      // default: the last item scanned
+  $('idItem').innerHTML=lines.map(x=>'<option value="'+x.k+'">'+esc(x.b.name)+(x.b.qty>1?' × '+x.b.qty:'')+
+    ' · '+money(shelfPrice(x.b))+(x.b.listPrice!=null?' (discounted)':'')+'</option>').join('');
+  $('idItem').value=String(i);
+  loadItemDisc(i);
+  $('itemDiscModal').classList.add('show');
+  setTimeout(()=>{ $('idPct').focus(); $('idPct').select(); }, 50);
+}
+function loadItemDisc(i){
+  const b=basket[i]; if(!b) return;
+  idCalc=Object.assign({i}, itemDiscFrom(shelfPrice(b), 'price', b.price));
+  ['idAmt','idPct','idPrice'].forEach(id=>{ $(id).value=''; });
+  paintItemDisc(null);
+}
+// Fill the boxes from idCalc, leaving alone the one being typed in.
+function paintItemDisc(typing){
+  const c=idCalc, b=basket[c.i]; if(!b) return;
+  if(typing!=='idAmt')   $('idAmt').value   = c.amt>0 ? c.amt.toFixed(2) : '';
+  if(typing!=='idPct')   $('idPct').value   = c.amt>0 ? fmtPct(c.pct) : '';
+  if(typing!=='idPrice') $('idPrice').value = c.price.toFixed(2);
+  $('idShelf').textContent='Shelf price '+money(c.list)+' each';
+  $('idSummary').textContent = c.amt>0
+    ? money(c.amt)+' off each ('+fmtPct(c.pct)+'%) · sells at '+money(c.price)+(b.qty>1 ? ' · line '+money(c.price*b.qty)+' instead of '+money(c.list*b.qty) : '')
+    : 'No discount on this item.';
+  $('idRemove').style.display = b.listPrice!=null ? '' : 'none';
+}
+function closeItemDisc(){ $('itemDiscModal').classList.remove('show'); idCalc=null; focusScan(); }
+
 let saleSeq=0;   // bumped each time the basket starts over
 function clearSale(){ saleSeq++; basket=[]; method=null; discountMode='amount'; discountAmt=0; discountPct=0;
   if($('discAmt'))$('discAmt').value=''; if($('discPct'))$('discPct').value='';
@@ -2155,7 +2243,11 @@ function render(){
       if(b.linked) sub += ' · <span class="muted">custom price</span>';
     }
     if(b.misc) sub += ' · <a href="#" data-act="'+(b.linked?'unlink':'link')+'" data-i="'+i+'">'+(b.linked?'unlink':'link to a product')+'</a>';
-    const priceCell = b.misc
+    const disc = b.listPrice!=null && b.listPrice>b.price;
+    if(disc) sub += ' · <a href="#" data-act="disc" data-i="'+i+'" style="color:var(--cash)">'+fmtPct((b.listPrice-b.price)/b.listPrice*100)+'% off (edit)</a>';
+    const priceCell = disc
+      ? '<td class="num money"><s class="muted">'+money(b.listPrice)+'</s><br>'+money(b.price)+'</td>'
+      : b.misc
       ? '<td class="num"><input data-act="price" data-i="'+i+'" value="'+b.price+'" inputmode="decimal" placeholder="0.00" style="width:76px;text-align:right;padding:6px 8px" title="Type the amount"></td>'
       : '<td class="num money">'+money(b.price)+'</td>';
     tr.innerHTML =
@@ -2176,6 +2268,11 @@ function render(){
   $('tRate').textContent=t.rate;
   $('tTotal').textContent=money(t.total);
   $('incGst').textContent='Total includes GST '+money(t.gst);
+
+  // savings from individual item discounts (already taken off the item prices)
+  const itemDisc = round2(basket.reduce((a,b)=>a + (b.listPrice!=null ? (b.listPrice-b.price)*b.qty : 0), 0));
+  $('rowItemDisc').style.display = itemDisc>0 ? 'flex' : 'none';
+  if(itemDisc>0) $('tItemDisc').textContent='−'+money(itemDisc);
 
   // discount rows (only shown once a discount is applied)
   const showDisc = t.disc>0;
@@ -2352,7 +2449,8 @@ async function commitSale(){
     no:'', day:todayKey(), ts:new Date().toISOString(),
     store: store.id, storeName: store.name,
     method, servedBy, customer, contact, order, device: settings.device||'',
-    items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty, ...(b.linked ? {custom:true} : {})})),
+    items: basket.map(b=>({sku:b.sku,name:b.name,price:b.price,qty:b.qty, ...(b.linked ? {custom:true} : {}),
+      ...(b.listPrice!=null && b.listPrice>b.price ? {listPrice:b.listPrice} : {})})),
     gross:t.gross, discount:t.disc, discountPct:round2(t.pct),
     sub:t.sub, gst:t.gst, total:t.total, rate:t.rate,
     paid, tendered, change, rounding, synced:false,
@@ -2940,6 +3038,7 @@ function buildReceipt(s, copies){
   h+='<hr>';
   s.items.forEach(it=>{
     h+='<div class="it"><div class="nm">'+esc(it.name)+'</div>'+
+       (it.listPrice>it.price ? '<div class="ln" style="font-size:11px"><span>Was '+money(it.listPrice)+', '+fmtPct((it.listPrice-it.price)/it.listPrice*100)+'% off</span><span>-'+money((it.listPrice-it.price)*it.qty)+'</span></div>' : '')+
        '<div class="ln"><span>'+it.qty+' × '+money(it.price)+'</span><span>'+money(it.price*it.qty)+'</span></div></div>';
   });
   h+='<hr>';
@@ -3363,7 +3462,7 @@ function showInvoiceDetail(ref){
   let h='<fieldset style="margin-top:12px"><legend>'+esc(s.no)+'</legend>';
   h+='<div class="muted">'+esc(storeLabel(s.store))+' · '+d.toLocaleString('en-AU')+' · Served by '+esc(s.servedBy)+(s.customer?(' · '+esc(s.customer)):'')+(s.contact?(' · '+esc(s.contact)):'')+' · Order: '+esc(orderLabel(s))+'</div>';
   h+='<div style="margin:10px 0">';
-  s.items.forEach(i=>{ h+='<div class="row"><span>'+i.qty+' × '+esc(i.name)+'</span><span class="money">'+money(i.price*i.qty)+'</span></div>'; });
+  s.items.forEach(i=>{ h+='<div class="row"><span>'+i.qty+' × '+esc(i.name)+(i.listPrice>i.price ? ' <span class="muted">(was '+money(i.listPrice)+', '+fmtPct((i.listPrice-i.price)/i.listPrice*100)+'% off)</span>' : '')+'</span><span class="money">'+money(i.price*i.qty)+'</span></div>'; });
   h+='</div>';
   if(s.discount>0){
     h+='<div class="row"><span class="lbl">Items (incl GST)</span><span class="money">'+money(s.gross)+'</span></div>';
@@ -5638,6 +5737,7 @@ function bind(){
     else if(b.dataset.act==='rm') removeItem(i);
     else if(b.dataset.act==='link'){ e.preventDefault(); openSearch(p=>linkMisc(i, p)); }
     else if(b.dataset.act==='unlink'){ e.preventDefault(); unlinkMisc(i); }
+    else if(b.dataset.act==='disc'){ e.preventDefault(); openItemDisc(i); }
   });
   $('basketBody').addEventListener('change', e=>{
     const q=e.target.closest('[data-act="qty"]'); if(q){ const n=parseInt(q.value,10); if(isNaN(n)) render(); else setQty(+q.dataset.i, n); return; }   // junk typed = keep the old qty, not delete the line
@@ -5657,6 +5757,24 @@ function bind(){
   $('discAmt').addEventListener('input', ()=>{ discountMode='amount'; discountAmt=Math.max(0, parseFloat($('discAmt').value)||0); render(); });
   $('discPct').addEventListener('input', ()=>{ discountMode='pct';    discountPct=Math.max(0, parseFloat($('discPct').value)||0); render(); });
   $('discClear').onclick=()=>{ discountMode='amount'; discountAmt=0; discountPct=0; $('discAmt').value=''; $('discPct').value=''; render(); focusScan(); };
+  // individual item discount: $ off, % off and selling price follow whichever is typed in
+  $('btnItemDisc').onclick=()=>openItemDisc(-1);
+  $('idItem').addEventListener('change', ()=>loadItemDisc(+$('idItem').value));
+  [['idAmt','amt'],['idPct','pct'],['idPrice','price']].forEach(([id,field])=>{
+    $(id).addEventListener('input', ()=>{
+      if(!idCalc) return;
+      const raw=$(id).value.trim();
+      idCalc=Object.assign({i:idCalc.i}, itemDiscFrom(idCalc.list, field, raw==='' ? (field==='price' ? idCalc.list : 0) : raw));
+      paintItemDisc(id);
+    });
+    $(id).addEventListener('blur', ()=>{ if(idCalc) paintItemDisc(null); });          // tidy the box once you leave it
+    $(id).addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('idApply').click(); } });
+  });
+  $('idQuick').addEventListener('click', e=>{ const b=e.target.closest('[data-pct]'); if(!b || !idCalc) return;
+    idCalc=Object.assign({i:idCalc.i}, itemDiscFrom(idCalc.list, 'pct', b.dataset.pct)); paintItemDisc(null); });
+  $('idApply').onclick=()=>{ if(idCalc) setItemDiscount(idCalc.i, idCalc.price); closeItemDisc(); };
+  $('idRemove').onclick=()=>{ if(idCalc) setItemDiscount(idCalc.i, idCalc.list); closeItemDisc(); };
+  $('idCancel').onclick=closeItemDisc;
   $('discQuick').addEventListener('click', e=>{ const b=e.target.closest('[data-pct]'); if(!b)return; discountMode='pct'; discountPct=Number(b.dataset.pct)||0; render(); });
 
   $('btnFinalize').onclick=()=>finalizeSale(true);
