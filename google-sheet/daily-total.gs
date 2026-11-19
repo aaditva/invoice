@@ -18,6 +18,9 @@
  *  Money added (💰 Money Added on the till) works exactly the same, into the
  *  column headed MONEY_ADDED_HEADER.
  *
+ *  Miscellaneous sales (🧾 Misc Sales on the till) too, into the column
+ *  headed MISC_SALES_HEADER ("Miscellaneous Sales").
+ *
  *  Products tab — every product with its sell price and live stock, checked
  *  against the site every PRODUCTS_EVERY_MINUTES minutes and every time the
  *  sheet is opened (or 🧾 Till → Refresh products now). A product just added
@@ -64,6 +67,7 @@ const TOTAL_HEADER = 'Games';     // row-1 heading of the column the total goes 
 const EXPENSES_HEADER  = 'Expenses'; // row-1 heading of the expenses column; '' to turn off
 const EXPENSE_LOOKBACK = 14;         // days back to re-check for late-entered expenses / money added
 const MONEY_ADDED_HEADER = 'Money Added'; // row-1 heading of the money-added column; '' to turn off
+const MISC_SALES_HEADER = 'Miscellaneous Sales'; // row-1 heading of the misc sales column; '' to turn off
 const TIME_ZONE    = 'Australia/Melbourne';
 const PRODUCTS_TAB = 'Products';  // tab listing products, stock and YOUR cost price; '' to turn off
 const PROFIT_TAB   = 'Profit';    // tab with daily takings / cost / profit; '' to turn off
@@ -129,6 +133,9 @@ function updateDailyTotal() {
   }
   if (MONEY_ADDED_HEADER) {
     try { writeByDay('money-added', MONEY_ADDED_HEADER, now); } catch (e) { console.log('Money added skipped: ' + e.message); }
+  }
+  if (MISC_SALES_HEADER) {
+    try { writeByDay('misc-sales', MISC_SALES_HEADER, now); } catch (e) { console.log('Misc sales skipped: ' + e.message); }
   }
   if (PROFIT_TAB && PRODUCTS_TAB) {
     try { updateProfit(now); } catch (e) { console.log('Profit skipped: ' + e.message); }
@@ -950,7 +957,7 @@ function writeTotal(when) {
 
 // One request covers the look-back window. Every day in the window (up to today)
 // is written: the till's total for that day, or 0 when nothing was recorded, so
-// a day with no expenses / no money added shows 0 rather than a blank cell.
+// a day with no expenses / money added / misc sales shows 0 rather than a blank cell.
 // Days with no row in the sheet are skipped by writeCell.
 function writeByDay(what, header, now) {
   const to = Utilities.formatDate(now, TIME_ZONE, 'yyyy-MM-dd');

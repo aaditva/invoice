@@ -518,6 +518,13 @@ under **Other**, then press **Done** or **Enter**. Entries are saved on the site
 **Money Added** column (same 14-day look-back as expenses). Paste the updated script into
 Apps Script again.
 
+**Miscellaneous Sales.** The **🧾 Misc Sales** button next to Money Added is open to everyone
+(no login). Pick the date and store, type the amount and (optionally) what was sold, then press
+**Save** or **Enter**. Entries are saved on the site (`/api/misc-sales`), listed underneath with a
+✕ to delete, and the hourly script writes each day's total into the sheet's **Miscellaneous
+Sales** column (same 14-day look-back; a day with none shows $0.00). Paste the updated script
+into Apps Script again.
+
 **Cost prices & profit.** The same script also keeps two extra tabs in that sheet —
 they're created and styled for you (blue header, filter buttons, frozen header):
 
@@ -556,7 +563,7 @@ they're created and styled for you (blue header, filter buttons, frozen header):
   refresh, so new rules reach them. Add your own rules in `BRAND_RULES` (the script and
   `index.html` both have the list).
 - The year tabs (**2025**, **2026**…) are left exactly as they were — the script only fills the
-  Games / Expenses / Money Added cells, as before.
+  Games / Expenses / Money Added / Miscellaneous Sales cells, as before.
 
 The graphs are **no longer in the sheet** — the new script deletes the old charts, the brand and
 month tables and the *Sales lines* tab. They live on the website instead: **Admin → 📊 Insights**.
@@ -724,7 +731,7 @@ staff can practise, but **nothing they do is real**:
 - **Squarespace stock is never changed**, and the on-screen stock counts don't drop either.
 - Invoice numbers come from their own local run (`INV-TR-0001`, …), so the real stores' numbering
   doesn't move.
-- Money Added and Expenses don't save, and Open box is switched off.
+- Money Added, Misc Sales and Expenses don't save, and Open box is switched off.
 - Every docket prints **TRAINING — NOT A REAL SALE** at the top, and the header shows an orange
   **TRAINING** flag the whole time.
 

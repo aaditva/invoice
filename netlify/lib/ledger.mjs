@@ -1,5 +1,6 @@
 /* One cash ledger kept in Netlify Blobs, filed by day and store — the shape
-   shared by /api/expenses (cash paid out) and /api/money-added (cash put in).
+   shared by /api/expenses (cash paid out), /api/money-added (cash put in)
+   and /api/misc-sales (miscellaneous sales).
    One blob per entry (<prefix>/<day>/<store>/<id>), so two devices adding at
    once can never clobber each other.
 
