@@ -1507,8 +1507,8 @@ const LS = {
    The ids are what the server files sales under, so they never change - the
    display name, address and phone are editable in Settings → Stores. */
 const STORE_DEFS = [
-  { id:'south-melbourne', name:'South Melbourne', tag:'SM' },
-  { id:'roxy',            name:'Roxy',            tag:'RX' }
+  { id:'south-melbourne', name:'Seraglio Lotto', tag:'SM' },
+  { id:'roxy',            name:'Other Store',   tag:'RX' }
 ];
 /* Training: the same till, for practice. Not in STORE_DEFS, so it never shows in
    Admin, Insights, Expenses or the store lists. Its sales live only in this
@@ -1770,7 +1770,7 @@ function storeById(id){
 }
 function allStores(){ return STORE_DEFS.map(d=>storeById(d.id)); }
 // Label for any store id, including ones the server knows but we don't define.
-// Sales from before the store selector existed have no store; they're South Melbourne's.
+// Sales from before the store selector existed have no store; they're Seraglio Lotto's.
 const DEFAULT_STORE = 'south-melbourne';
 const ONLINE_ID = 'online';   // website orders (/api/online) - not a till, so never in STORE_DEFS
 function storeLabel(id){
@@ -1780,7 +1780,7 @@ function storeLabel(id){
   return s ? s.name : id;
 }
 // One-time: this device's own copies of sales from before the store selector
-// get filed under South Melbourne, the same as the site does with its copies.
+// get filed under Seraglio Lotto, the same as the site does with its copies.
 function adoptStorelessSales(){
   const sales=load(LS.sales,[]); let n=0;
   sales.forEach(s=>{ if(s && (!s.store || s.store==='unassigned')){ s.store=DEFAULT_STORE; s.storeName=storeLabel(DEFAULT_STORE); n++; } });
@@ -1855,8 +1855,8 @@ async function reserveNumber(){
 }
 // Supplier details for the docket: the business, with the store's own address
 // and phone when it has them, and the location named so the two differ. Pass the
-// sale when re-printing, so a Roxy invoice still prints Roxy's details even when
-// it's re-printed from the South Melbourne till.
+// sale when re-printing, so an Other Store invoice still prints Other Store's details even when
+// it's re-printed from the Seraglio Lotto till.
 function receiptStore(sale){
   const st = (sale && sale.store ? storeById(sale.store) : null) || currentStore;
   if(isTrainingSale(sale) || (!sale && isTraining()))
@@ -2410,7 +2410,7 @@ function renderToday(){
     (isTraining() ? '<span class="trainflag">🎓 TRAINING (practice only)</span>' : t.local ? '<span class="muted">this device only</span>' : '');
 }
 // Does this locally-stored sale belong to the store that's open? (Sales from before
-// the store selector are filed under South Melbourne by adoptStorelessSales.)
+// the store selector are filed under Seraglio Lotto by adoptStorelessSales.)
 function sameStore(s){ return !!currentStore && String((s&&s.store)||'') === currentStore.id; }
 function localTally(day){
   const t = aggregate(load(LS.sales,[]).filter(s=>s.day===day && sameStore(s)));
@@ -4795,13 +4795,13 @@ function lineCost(s, it, i){
 
 /* ---------------- Games takings from before the till ----------------
    The daily "Games" column of the Google Sheet (tatts eod balance → 2025 / 2026
-   tabs), South Melbourne, 1 Oct 2025 → 19 Sep 2026 - a one-off copy, never
+   tabs), Seraglio Lotto, 1 Oct 2025 → 19 Sep 2026 - a one-off copy, never
    synced. From 20 Sep the sheet's Games column is written from the till, so
    it adds nothing.
    The till rang up some of these days itself (sales made on the device before
    the site kept them were uploaded when it went live), so up to the day the
    till starts matching the sheet (TILL_FROM) the sheet is used and those
-   South Melbourne till sales are left out; from that day, only the till. Only
+   Seraglio Lotto till sales are left out; from that day, only the till. Only
    the day's total is known - no items, no cash/card split - so sheet days are
    costed at a conservative 50%.
    Per month: "day:takings", space-separated. */
@@ -4836,10 +4836,10 @@ const HIST_FIRST = [...HIST_GAMES.keys()].sort()[0];
 // Melbourne's till matches the sheet's Games figure every day (checked against
 // the site's sales on 30 Sep 2026 - the till was in use from 8 Aug, but a few
 // days up to 3 Sep differ from the sheet, and the sheet is always right).
-// Before it, the sheet is used and the till's South Melbourne sales are left
+// Before it, the sheet is used and the till's Seraglio Lotto sales are left
 // out; from it, only the till counts.
 const TILL_FROM = '2026-09-04';
-// Is this sale one the sheet stands in for (South Melbourne, before the till took over)?
+// Is this sale one the sheet stands in for (Seraglio Lotto, before the till took over)?
 function beforeTill(s){
   const sid=(!s.store || s.store==='unassigned') ? DEFAULT_STORE : s.store;
   return sid===DEFAULT_STORE && String(s.day)<TILL_FROM;

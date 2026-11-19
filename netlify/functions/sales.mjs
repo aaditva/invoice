@@ -88,8 +88,8 @@ import { fulfilOrder } from '../lib/squarespace.mjs';
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const UNASSIGNED = 'unassigned';       // where sales without a store used to be filed (pre-store-selector tills)
-const DEFAULT_STORE = 'south-melbourne'; // …they belong to South Melbourne, so that's where they go now
-const DEFAULT_STORE_NAME = 'South Melbourne';
+const DEFAULT_STORE = 'south-melbourne'; // …they belong to Seraglio Lotto, so that's where they go now
+const DEFAULT_STORE_NAME = 'Seraglio Lotto';
 const MAX_RANGE_DAYS = 62;             // keeps an Admin range inside the function timeout
 const CONCURRENCY = 10;                // parallel blob reads
 const INDEX_V = 1;
@@ -143,7 +143,7 @@ async function handlePost(req, headers) {
 
   const store = slugStore(sale.store);
   const clean = { ...sale, no, day, store };
-  if (store === DEFAULT_STORE && sale.store !== DEFAULT_STORE) clean.storeName = DEFAULT_STORE_NAME; // no store → South Melbourne
+  if (store === DEFAULT_STORE && sale.store !== DEFAULT_STORE) clean.storeName = DEFAULT_STORE_NAME; // no store → Seraglio Lotto
   for (const k of LOCAL_ONLY) delete clean[k];
   for (const k of PICKUP_STATE) delete clean[k];
   if (clean.pickupCode != null) {
@@ -444,9 +444,9 @@ async function readDay(day, storeFilter) {
   const st = blobs();
   const prefix = 'sale/' + day + '/' + (storeFilter ? storeFilter + '/' : '');
 
-  // Sales once filed as Unassigned belong to South Melbourne: move any still
+  // Sales once filed as Unassigned belong to Seraglio Lotto: move any still
   // sitting there the first time their day is read. An all-stores read sees
-  // them in its own listing; a South Melbourne read has to look for them.
+  // them in its own listing; a Seraglio Lotto read has to look for them.
   if (!storeFilter || storeFilter === DEFAULT_STORE) {
     try {
       const legacy = await st.list({ prefix: 'sale/' + day + '/' + UNASSIGNED + '/' });
@@ -510,7 +510,7 @@ async function readDay(day, storeFilter) {
   return out;
 }
 
-// Re-file a day's Unassigned sales under South Melbourne, then drop the old
+// Re-file a day's Unassigned sales under Seraglio Lotto, then drop the old
 // blobs and index. Each sale lands in its new home before its old copy goes,
 // so a failure part-way leaves it in one place or both — never neither.
 async function moveUnassigned(st, day, blobList) {
@@ -518,7 +518,7 @@ async function moveUnassigned(st, day, blobList) {
     const old = await getJSON(st, b.key);
     if (!old || !old.no) continue;
     let no = String(old.no);
-    // Old tills numbered INV-0001 and South Melbourne numbers INV-SM-0001, so
+    // Old tills numbered INV-0001 and Seraglio Lotto numbers INV-SM-0001, so
     // a clash is unlikely — but never overwrite a different sale if there is one.
     const there = await getJSON(st, saleKey(day, DEFAULT_STORE, no));
     if (there && String(there.ts) !== String(old.ts)) no = no + '-U';
