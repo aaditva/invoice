@@ -217,6 +217,8 @@ deployed copy, not the one in this folder.
 > copy only picks it up when you re-run whichever installer you used.
 > Test: `perl receipt-bridge/t/receipt-ts.t`.
 
+Tests for the bridge: `prove receipt-bridge/t/` (the toploader slip is `t/receipt-label.t`).
+
 **Single-user setup:** double-click **`receipt-bridge/Install Receipt Printer.command`**.
 No admin password, no driver install. It finds your Epson queue, prints a test
 docket, asks you to confirm it's readable, then installs a login item so the
@@ -433,10 +435,23 @@ scanner in the box. Needs the Squarespace key to have **Products: Read/Write** (
 site on https (Netlify is). On an iPhone the barcode reader loads from jsDelivr the first time.
 
 **🏷️ Barcodes → Make our own barcode** — for one-off things with no barcode (a single card, a second-hand item).
-Type the name, sell price, cost price and stock, pick a label size (50 × 25, 62 × 29 or 40 × 30 mm
-rolls, or an A4 sheet of 21 stickers such as Avery L7160) and hit **Make barcode & print**. For a
-single card in a toploader use **50 × 25 mm** on the **back** of the toploader — it fits inside the
-edges and leaves the front of the card clear. The
+Type the name, sell price, cost price and stock, pick a label size and hit **Make barcode & print**.
+
+- **🧾 Receipt printer, toploader slip** (the default, best for single cards) prints on the Epson
+  TM-T88V through the receipt bridge: just the name (two lines at most), the price and the barcode
+  (Code 128, digits underneath), then it cuts **straight after the barcode with no spare paper**
+  (`GS V 66 0`), with no store header, date or footer. Each copy is its own slip, cut on its own
+  (up to 100 at once). The only blank paper is the short lead at the top, which the printer always
+  feeds because its print head sits a little behind the blade. Slide the slip into the toploader
+  **behind the card, sideways**: the 80 mm paper width runs down the toploader's length, and the
+  slip is short enough to fit across it. Needs the receipt bridge **re-installed once** (run
+  *Install Receipt Printer* again); until then the till says so instead of printing. With no bridge
+  on that computer (e.g. a phone), it says so too; it never falls back to the print dialog, which
+  prints junk on the Epson. Test print: `perl escpos-bridge.pl --labeltest`.
+- **50 × 25, 62 × 29 or 40 × 30 mm** sticker rolls, or an **A4 sheet** of 21 stickers such as
+  Avery L7160, print through the normal print dialog to a label printer.
+
+The
 site gives it a 12-digit barcode starting with **2** (the range kept for in-store codes, so it
 can't clash with a maker's barcode) and the labels print as Code 128. Every till scans it after its
 next ⟳ Sync, and its stock counts down on each sale (back up on a void/refund). The list underneath

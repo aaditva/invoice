@@ -16,6 +16,7 @@
  *
  *   node escpos-bridge.js              # serve on 127.0.0.1:9100
  *   node escpos-bridge.js --selftest   # print one test docket and exit
+ *   node escpos-bridge.js --labeltest  # print one barcode slip and exit
  *   node escpos-bridge.js --dry-run    # print ESC/POS to stdout, don't spool
  */
 
@@ -58,6 +59,18 @@ function barcode128(d, data){
    .raw([GS, 0x66, 0])
    .raw([GS, 0x6b, 73, data.length + 2]).text('{B' + data).ln()
    .raw(CMD.alignLeft);
+}
+
+/* Code 128 bytes for GS k (m=73). An even run of digits uses set C - two digits
+   a bar, so a 12-digit in-store code is half as wide and can take wider bars;
+   anything else uses set B. In set C each byte is the pair's value (0-99). */
+function code128Data(data){
+  if (/^(?:\d\d)+$/.test(data)){
+    const out = [0x7b, 0x43];             // "{C"
+    for (let i = 0; i < data.length; i += 2) out.push(Number(data.slice(i, i + 2)));
+    return Buffer.from(out);
+  }
+  return Buffer.from('{B' + data, 'latin1');
 }
 
 class Doc {
@@ -234,6 +247,39 @@ function buildReceipt({ store = {}, sale = {}, options = {} }){
   return d.build();
 }
 
+/* A barcode slip for a single card, cut as short as the printer allows so it
+   slides into a toploader behind the card (sideways: the 80mm paper width runs
+   down the toploader's length). Nothing but the name, the price and the
+   barcode: no header, no footer, no blank lines. The printer feeds a short
+   blank lead before the first line on its own (its print head sits behind the
+   blade); GS V 66 0 cuts straight after the last line. Each copy is its own
+   slip, cut on its own. Same bytes as build_label in escpos-bridge.pl. */
+function buildLabel({ label = {}, copies = 1 }){
+  copies = Math.trunc(Number(copies)) || 1;
+  copies = Math.max(1, Math.min(100, copies));
+  const code = ascii(label.code).toUpperCase().replace(/[^0-9A-Z]/g, '');
+  if (!code) throw new Error('label needs a code');
+  const bc = code128Data(code);
+  // Widest bars that fit the 512-dot (72mm) print line: a code is
+  // 35 + 11 per symbol modules (start, check, stop + data).
+  const modules = 35 + 11 * (bc.length - 2);
+  const w = 3 * modules <= 500 ? 3 : 2;          // 2 is the thinnest the TM-T88V takes
+
+  const slip = new Doc().raw(CMD.alignCentre);
+  if (ascii(label.name)) slip.raw(CMD.boldOn).ln(wrap(label.name).slice(0, 2).join('\n')).raw(CMD.boldOff);
+  if (label.price != null && String(label.price) !== '')
+    slip.raw(CMD.bigOn).raw(CMD.boldOn).ln(money(label.price)).raw(CMD.boldOff).raw(CMD.bigOff);
+  slip.raw([GS, 0x68, 64])                       // bar height in dots (~9mm)
+      .raw([GS, 0x77, w])                        // module width in dots
+      .raw([GS, 0x48, 2])                        // digits under the bars
+      .raw([GS, 0x66, 1])                        // in the small font
+      .raw([GS, 0x6b, 73, bc.length]);
+  slip.parts.push(bc);
+  slip.raw([GS, 0x56, 0x42, 0]);                 // feed to the blade, cut, no extra paper
+  const one = slip.build();
+  return Buffer.concat([Buffer.from(CMD.init), ...new Array(copies).fill(one)]);
+}
+
 function buildReport({ store = {}, report = {}, options = {} }){
   const d = new Doc().raw(CMD.init);
   header(d, store);
@@ -290,7 +336,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && req.url === '/health')
     return res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket'] }));
+              .end(JSON.stringify({ ok: true, queue: QUEUE, cols: COLS, fields: ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket', 'label'] }));
 
   if (req.method !== 'POST' || req.url !== '/print')
     return res.writeHead(404, CORS).end('not found');
@@ -303,7 +349,8 @@ const server = http.createServer((req, res) => {
   req.on('end', async () => {
     try {
       const payload = JSON.parse(body);
-      const buf = payload.type === 'report' ? buildReport(payload) : buildReceipt(payload);
+      const buf = payload.type === 'report' ? buildReport(payload)
+                : payload.type === 'label'  ? buildLabel(payload) : buildReceipt(payload);
       const how = await spool(buf);
       res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' })
          .end(JSON.stringify({ ok: true, how, bytes: buf.length }));
@@ -320,6 +367,11 @@ const server = http.createServer((req, res) => {
 // Only act when run directly — `require()`ing this (tests) must not open a port.
 if (require.main !== module){
   // exports only
+} else if (process.argv.includes('--labeltest')){
+  const buf = buildLabel({ label: { name: 'Bridge test - Charizard ex 199/165', price: 12.5, code: '212345678903' }, copies: 1 });
+  spool(buf)
+    .then(() => { console.log(`Label test sent to "${QUEUE}" (${buf.length} bytes).`); process.exit(0); })
+    .catch(e => { console.error('Label test FAILED:', e.message); process.exit(1); });
 } else if (process.argv.includes('--selftest')){
   const buf = buildReceipt({
     store: { name: 'Remactables', address: '111 Cecil St', abn: '12 345 678 901',
@@ -340,4 +392,4 @@ if (require.main !== module){
   });
 }
 
-module.exports = { buildReceipt, buildReport, pair, wrap, ascii, COLS };
+module.exports = { buildReceipt, buildReport, buildLabel, pair, wrap, ascii, COLS };

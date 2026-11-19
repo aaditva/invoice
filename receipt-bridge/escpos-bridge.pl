@@ -15,6 +15,7 @@
 #
 #   perl escpos-bridge.pl              # serve on 127.0.0.1:9100
 #   perl escpos-bridge.pl --selftest   # print one test docket and exit
+#   perl escpos-bridge.pl --labeltest  # print one barcode slip and exit
 #   perl escpos-bridge.pl --dry-run    # write ESC/POS to stdout, don't spool
 #
 # Only core modules are used: JSON::PP, Unicode::Normalize, IO::Socket::INET,
@@ -67,6 +68,15 @@ sub barcode128 {
          . $GS . 'f' . chr(0)
          . $GS . 'k' . chr(73) . chr(length($data) + 2) . '{B' . $data
          . "\n" . $CMD{align_left};
+}
+
+# Code 128 bytes for GS k (m=73). An even run of digits uses set C - two digits
+# a bar, so a 12-digit in-store code is half as wide and can take wider bars;
+# anything else uses set B. In set C each byte is the pair's value (0-99).
+sub code128_data {
+    my ($data) = @_;
+    return '{C' . join('', map { chr($_) } unpack('(A2)*', $data)) if $data =~ /^(?:\d\d)+$/;
+    return '{B' . $data;
 }
 
 # ---------------- text helpers ----------------
@@ -300,6 +310,46 @@ sub build_report {
     return $out;
 }
 
+# A barcode slip for a single card, cut as short as the printer allows so it
+# slides into a toploader behind the card (sideways: the 80mm paper width runs
+# down the toploader's length). Nothing but the name, the price and the
+# barcode: no header, no footer, no blank lines. The printer feeds a short
+# blank lead before the first line on its own (its print head sits behind the
+# blade); GS V 66 0 cuts straight after the last line. Each copy is its own
+# slip, cut on its own.
+sub build_label {
+    my ($p)     = @_;
+    my $lab     = $p->{label} || {};
+    my $copies  = int($p->{copies} // 1);
+    $copies = 1   if $copies < 1;
+    $copies = 100 if $copies > 100;
+    my $code = uc(ascii($lab->{code}));
+    $code =~ s/[^0-9A-Z]//g;
+    die "label needs a code\n" unless length $code;
+    my $bc = code128_data($code);
+
+    # Widest bars that fit the 512-dot (72mm) print line: a code is
+    # 35 + 11 per symbol modules (start, check, stop + data).
+    my $modules = 35 + 11 * (length($bc) - 2);
+    my $w = 3 * $modules <= 500 ? 3 : 2;                         # 2 is the thinnest the TM-T88V takes
+
+    my $slip = $CMD{align_mid};
+    my @name = wrap_text($lab->{name}, $COLS);
+    @name = (@name[0, 1]) if @name > 2;                           # two lines at most
+    $slip .= $CMD{bold_on} . join("\n", grep { defined } @name) . "\n" . $CMD{bold_off}
+        if length ascii($lab->{name});
+    $slip .= $CMD{big_on} . $CMD{bold_on} . money($lab->{price}) . "\n" . $CMD{bold_off} . $CMD{big_off}
+        if defined $lab->{price} && length $lab->{price};
+    $slip .= $GS . 'h' . chr(64)                                 # bar height in dots (~9mm)
+           . $GS . 'w' . chr($w)                                 # module width in dots
+           . $GS . 'H' . chr(2)                                  # digits under the bars
+           . $GS . 'f' . chr(1)                                  # in the small font
+           . $GS . 'k' . chr(73) . chr(length $bc) . $bc
+           . $GS . 'V' . chr(66) . chr(0);                       # feed to the blade, cut, no extra paper
+
+    return $CMD{init} . ($slip x $copies);
+}
+
 # ---------------- spooling ----------------
 
 sub spool {
@@ -363,15 +413,16 @@ sub serve {
             elsif ($method eq 'GET' && $path eq '/health') {
                 respond($c, '200 OK',
                     encode_json({ ok => JSON::PP::true, queue => $QUEUE, cols => $COLS,
-                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket'] }));
+                                 fields => ['order', 'contact', 'pickupCode', 'pickupWhen', 'orderNo', 'split', 'refund', 'docket', 'label'] }));
             }
             elsif ($method eq 'POST' && $path eq '/print') {
                 my $body = '';
                 read($c, $body, $len) if $len && $len < 1_000_000;
                 my $res = eval {
                     my $p = JSON::PP->new->utf8->decode($body);
-                    my $bytes = (($p->{type} // '') eq 'report')
-                              ? build_report($p) : build_receipt($p);
+                    my $type  = $p->{type} // '';
+                    my $bytes = $type eq 'report' ? build_report($p)
+                              : $type eq 'label'  ? build_label($p) : build_receipt($p);
                     my $how = spool($bytes);
                     encode_json({ ok => JSON::PP::true, how => $how,
                                   bytes => length($bytes) });
@@ -394,6 +445,16 @@ sub serve {
 # ---------------- entry ----------------
 
 return 1 if caller;                     # loaded by a test: define subs only
+
+if (grep { $_ eq '--labeltest' } @ARGV) {
+    my $bytes = build_label({ label => { name => 'Bridge test - Charizard ex 199/165', price => 12.5,
+                                         code => '212345678903' }, copies => 1 });
+    my $ok = eval { spool($bytes); 1 };
+    if ($ok) { print "Label test sent to \"$QUEUE\" (" . length($bytes) . " bytes).\n"; exit 0 }
+    my $e = $@; chomp $e;
+    print STDERR "Label test FAILED: $e\n";
+    exit 1;
+}
 
 if (grep { $_ eq '--selftest' } @ARGV) {
     my $bytes = build_receipt({
