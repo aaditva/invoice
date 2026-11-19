@@ -22,9 +22,9 @@
  *
  *  What counts: paid (or partly refunded) web orders. Test orders, cancelled
  *  orders, unpaid ones, and Squarespace POS sales (channel 'pos' — in-store,
- *  not online) are left out. total = what was charged less anything refunded,
- *  shipping included; `shipping` is reported separately so Insights can leave
- *  it out of product revenue.
+ *  not online) are left out. Each sale's total = what was charged less anything
+ *  refunded, shipping included; `shipping` is reported separately. The day and
+ *  range totals (online / total) are goods only — shipping is left out.
  *
  *  How it reaches the customer (each sale's `delivery`), read straight off the order:
  *    'pickup'    the shipping option chosen at checkout (shippingLines[0].method, or
@@ -320,7 +320,7 @@ function deliveryOf(o) {
 function aggregate(sales) {
   let online = 0, gst = 0, sub = 0, shipping = 0, pickup = 0, delivery = 0, unmarked = 0;
   for (const s of sales) {
-    online += s.total; gst += s.gst; sub += s.sub; shipping += s.shipping;
+    online += s.total - s.shipping; gst += s.gst; sub += s.sub; shipping += s.shipping; // goods only: shipping is reported apart
     if (s.delivery === 'pickup') pickup++; else if (s.delivery === 'delivery') delivery++; else unmarked++;
   }
   online = r2(online);
