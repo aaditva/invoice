@@ -2781,7 +2781,7 @@ function aggregate(sales){
   live.forEach(s=>{
     if(s.method==='split'){ cash+=Number(s.cashPaid)||0; card+=Number(s.cardPaid)||0; }
     else if(s.method==='cash') cash+=Number(s.paid!=null?s.paid:s.total)||0;
-    else if(s.method==='online') online+=Number(s.total)||0; else card+=Number(s.total)||0;
+    else if(s.method==='online') online+=goodsTotal(s); else card+=Number(s.total)||0;
     gst+=Number(s.gst)||0; sub+=Number(s.sub)||0;
   });
   cash=round2(cash); card=round2(card); online=round2(online);
@@ -4112,7 +4112,7 @@ function renderAdmin(){
   $('adSummary').innerHTML='<div class="cards" style="margin-bottom:14px">'+
     adCard('Total takings', money(t.total), t.count+' sale'+(t.count===1?'':'s'))+
     (adState.store===ONLINE_ID ? '' : adCard('Cash', money(t.cash), '')+adCard('Card', money(t.card), ''))+
-    (withOnline ? adCard('Online', money(t.online||0), 'Website orders'+(adState.online.totals.shipping ? ', incl. '+money(adState.online.totals.shipping)+' shipping' : '')+
+    (withOnline ? adCard('Online', money(t.online||0), 'Website orders'+(adState.online.totals.shipping ? ', excl. '+money(adState.online.totals.shipping)+' shipping' : '')+
       (deliverySplit(adState.online.totals) ? ' · '+deliverySplit(adState.online.totals) : '')) : '')+
     adCard('GST collected', money(t.gst), 'Subtotal ex GST '+money(t.sub))+
     '</div>';
