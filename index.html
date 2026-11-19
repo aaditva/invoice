@@ -1075,11 +1075,13 @@
         <div class="field">
           <label>Label size</label>
           <div class="seg" id="lbSizes">
-            <button data-size="50x25">50 × 25 mm (best for single cards)</button>
+            <button data-size="receipt">🧾 Receipt printer, toploader slip (best for single cards)</button>
+            <button data-size="50x25">50 × 25 mm</button>
             <button data-size="62x29">62 × 29 mm</button>
             <button data-size="40x30">40 × 30 mm</button>
             <button data-size="a4">A4 sheet (21 per page)</button>
           </div>
+          <div class="muted" id="lbSizeNote" style="margin-top:6px"></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="primary" id="lbMake">🏷️ Make barcode &amp; print</button>
@@ -4165,9 +4167,9 @@ function adPeriod(){ return adState.from===adState.to ? niceDay(adState.from) : 
    so every till can scan it. Its cost goes with the website's other typed
    costs (/api/costs) for Insights. Labels print from a hidden frame, sized to
    the label roll, or 21 to an A4 sticker sheet. */
-const LB_SIZES = { '50x25':[50,25], '62x29':[62,29], '40x30':[40,30], 'a4':null };
+const LB_SIZES = { 'receipt':'receipt', '50x25':[50,25], '62x29':[62,29], '40x30':[40,30], 'a4':null };
 const LB_SIZE_KEY = 'inv_label_size';
-let lb = { items:null, costs:{}, editing:null, size:'50x25' };
+let lb = { items:null, costs:{}, editing:null, size:'receipt' };
 try{ const v=localStorage.getItem(LB_SIZE_KEY); if(v in LB_SIZES) lb.size=v; }catch(e){}
 
 function lbHeaders(json){ const h=shareHeaders(json); h['x-admin-pin']=adminPin(); return h; }
@@ -4201,6 +4203,10 @@ function renderLabels(){
 }
 function markLabelSize(){
   $('lbSizes').querySelectorAll('button').forEach(b=>b.classList.toggle('sel', b.dataset.size===lb.size));
+  $('lbSizeNote').textContent = lb.size==='receipt'
+    ? 'Prints on the Epson receipt printer: just the name, price and barcode, cut straight after the barcode with no spare paper. '+
+      'Slide it into the toploader behind the card, sideways (the slip’s 80 mm width runs down the toploader’s length).'
+    : '';
 }
 function resetLabelForm(){
   lb.editing=null;
@@ -4288,7 +4294,31 @@ function labelHtml(x){
   return '<div class="lb"><div class="nm">'+esc(x.name)+'</div><div class="pr">'+esc(money(x.price))+'</div>'+
     '<div class="bc">'+code128Svg(x.sku)+'</div><div class="cd">'+esc(x.sku)+'</div></div>';
 }
+/* Toploader slip: the receipt bridge builds it in ESC/POS (build_label) - name,
+   price, Code 128 barcode, then a cut at the blade with no extra feed - so it
+   comes out as short as the printer can make it. A bridge from before slips
+   would print the job as a blank receipt, so check it says it can first, and
+   never fall back to the print dialog (the Epson's Mac driver prints junk). */
+async function printLabelSlips(x, copies){
+  // Keep "Made …"/"Saved …" from makeLabel (and any cost-price note) in front of the print result.
+  const before=$('lbStatus').textContent;
+  const say=m=>{ $('lbStatus').textContent=(/^(Made|Saved) /.test(before) ? before+'. ' : '')+m; toast(m); };
+  let info=null;
+  try{
+    const c=new AbortController(); const t=setTimeout(()=>c.abort(), 1500);
+    const r=await fetch(BRIDGE_URL+'/health', {signal:c.signal});
+    clearTimeout(t);
+    if(r.ok) info=await r.json().catch(()=>null);
+  }catch(e){}
+  if(!info){ say('Receipt printer not reachable: the receipt bridge isn’t running on this computer. Print from the till computer, or pick a sticker size.'); return; }
+  if(!bridgeHas(info, 'label')){ say('The receipt printer needs updating once to print barcode slips: run “Install Receipt Printer” again, then print.'); return; }
+  try{
+    await bridgeSend({type:'label', label:{name:x.name, price:x.price, code:x.sku}, copies});
+    say('Printed '+copies+' slip'+(copies===1?'':'s')+' for '+x.name+' ('+x.sku+')');
+  }catch(e){ say('Receipt printer error: '+e.message); }
+}
 function printLabels(x, copies){
+  if(lb.size==='receipt') return printLabelSlips(x, Math.min(100, copies));
   const size=LB_SIZES[lb.size];
   const one=labelHtml(x);
   let body=new Array(copies).fill(one).join('');
