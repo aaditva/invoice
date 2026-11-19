@@ -814,6 +814,7 @@
     <button class="ghost" id="btnPickups" title="Orders waiting to be picked up. Scan a pick-up barcode to jump to one">🛍 Pick ups<span class="badge" id="puBadge">0</span></button>
     <!-- Money Added is for everyone; Expenses shows only while an admin is logged in -->
     <button class="ghost" id="btnMoneyAdded" title="Record money put into the till">💰 Money Added</button>
+    <button class="ghost" id="btnMiscSales" title="Record a miscellaneous sale (goes into the sheet's Miscellaneous Sales column)">🧾 Misc Sales</button>
     <button class="ghost" id="btnExpenses" title="Record cash paid out (admin)">💸 Expenses</button>
     <!-- Admin drop-down: takings, the dashboard and the admin login -->
     <div class="dd" id="admMenu">
@@ -1153,6 +1154,33 @@
       <div class="field">
         <label id="maListLbl">Money added that day</label>
         <div class="scroller"><table class="dtable" id="maList"></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MISC SALES MODAL - anyone can record a miscellaneous sale; the sheet's Miscellaneous Sales column gets each day's total -->
+<div class="modal" id="miscModal">
+  <div class="sheet wide">
+    <header><span class="store">Miscellaneous Sales</span><span class="spacer"></span><button class="ghost" id="closeMisc">Close</button></header>
+    <div class="body">
+      <div class="grid2">
+        <div class="field"><label for="msDate">Date of the sale</label><input type="date" id="msDate" /></div>
+        <div class="field"><label for="msStore">Store</label><select id="msStore"></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="msAmount">Amount</label>
+          <input type="number" id="msAmount" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 15" style="font-size:22px" /></div>
+        <div class="field"><label for="msNote">What was sold (optional)</label><input id="msNote" maxlength="200" placeholder="e.g. phone card, photocopy" /></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <span class="spacer" style="flex:1"></span>
+        <button class="primary" id="msDone">Save ⏎</button>
+      </div>
+      <div class="muted" id="msStatus"></div>
+      <div class="field">
+        <label id="msListLbl">Miscellaneous sales that day</label>
+        <div class="scroller"><table class="dtable" id="msList"></table></div>
       </div>
     </div>
   </div>
@@ -4037,6 +4065,67 @@ async function deleteMoneyAdded(id){
   }catch(e){ alert('Could not delete: '+e.message); }
 }
 
+/* ---------------- miscellaneous sales (anyone) ----------------
+   A sale that isn't rung up through the basket: type the amount and,
+   optionally, what it was. Saved under the chosen date and store; the
+   Google Sheet script pulls each day's total into the sheet's
+   Miscellaneous Sales column. */
+function openMiscSales(){
+  $('msStore').innerHTML=allStores().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
+  if(currentStore) $('msStore').value=currentStore.id;
+  $('msDate').value=todayKey();
+  $('msAmount').value=''; $('msNote').value=''; $('msStatus').textContent='';
+  $('miscModal').classList.add('show');
+  loadMiscSales();
+  setTimeout(()=>$('msAmount').focus(), 50);
+}
+async function saveMiscSale(){
+  const amount=round2(Number($('msAmount').value));
+  if(!(amount>0)){ toast('Type an amount first'); $('msAmount').focus(); return; }
+  const day=$('msDate').value, store=$('msStore').value, note=$('msNote').value.trim();
+  if(!day){ toast('Pick a date'); return; }
+  if(isTraining()){ $('msAmount').value=''; $('msNote').value=''; savedPill('Training: misc sale of '+money(amount)+' not saved'); return; }
+  $('msDone').disabled=true; $('msStatus').textContent='Saving…';
+  try{
+    const res=await fetch(apiUrl('/api/misc-sales'), {method:'POST', headers:shareHeaders(true),
+      body:JSON.stringify({day, store, amount, note})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    $('msAmount').value=''; $('msNote').value='';
+    $('msStatus').textContent='';
+    savedPill('Misc sale added: '+money(amount));
+    loadMiscSales();
+    $('msAmount').focus();
+  }catch(e){ $('msStatus').textContent='Could not save: '+e.message; }
+  finally{ $('msDone').disabled=false; }
+}
+async function loadMiscSales(){
+  const day=$('msDate').value, store=$('msStore').value;
+  if(!day) return;
+  $('msListLbl').textContent='Miscellaneous sales on '+day+', '+storeLabel(store);
+  try{
+    const res=await fetch(apiUrl('/api/misc-sales', {from:day, to:day, store}), {headers:shareHeaders(false)});
+    const d=await res.json();
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    const rows=d.entries||[];
+    $('msList').innerHTML=rows.length
+      ? '<tr><th>Time</th><th>What</th><th class="num">Amount</th><th></th></tr>'+
+        rows.map(e=>'<tr><td>'+esc(new Date(e.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))+'</td><td>'+esc(e.note||'-')+
+          '</td><td class="num">'+money(e.amount)+'</td><td class="num"><button class="ghost" data-del="'+esc(e.id)+'">✕</button></td></tr>').join('')+
+        '<tfoot><tr><td></td><td>Total</td><td class="num">'+money(d.totals.total)+'</td><td></td></tr></tfoot>'
+      : '<tr><td class="muted">No miscellaneous sales recorded for this day.</td></tr>';
+  }catch(e){ $('msList').innerHTML='<tr><td class="muted">Could not load: '+esc(e.message)+'</td></tr>'; }
+}
+async function deleteMiscSale(id){
+  if(!confirm('Delete this miscellaneous sale?')) return;
+  try{
+    const res=await fetch(apiUrl('/api/misc-sales', {day:$('msDate').value, store:$('msStore').value, id}), {method:'DELETE', headers:shareHeaders(false)});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(d.error||('HTTP '+res.status));
+    loadMiscSales();
+  }catch(e){ alert('Could not delete: '+e.message); }
+}
+
 function openBoxes(){
   $('boxModal').classList.add('show');
   $('bxScan').value=''; $('bxFind').value=''; $('bxFindRes').innerHTML=''; $('bxStatus').textContent='';
@@ -5882,6 +5971,16 @@ function bind(){
     if(e.key==='Enter' && e.target.id==='maOther'){ e.preventDefault(); if(!addOther()) saveMoneyAdded(); }
     else if(e.key==='Enter' && e.target.id!=='maDate'){ e.preventDefault(); saveMoneyAdded(); }
     else if(e.key==='Backspace' && e.target.tagName!=='INPUT'){ e.preventDefault(); maTaps.pop(); renderAddPad(); }
+  });
+  $('btnMiscSales').onclick=openMiscSales;
+  $('closeMisc').onclick=()=>{ $('miscModal').classList.remove('show'); focusScan(); };
+  $('msDone').onclick=saveMiscSale;
+  $('msDate').addEventListener('change', loadMiscSales);
+  $('msStore').addEventListener('change', loadMiscSales);
+  $('msList').addEventListener('click', e=>{ const d=e.target.closest('[data-del]'); if(d) deleteMiscSale(d.dataset.del); });
+  document.addEventListener('keydown', e=>{
+    if(!$('miscModal').classList.contains('show')) return;
+    if(e.key==='Enter' && (e.target.id==='msAmount' || e.target.id==='msNote')){ e.preventDefault(); saveMiscSale(); }
   });
   $('adExpenses').onclick=openExpenses;
   $('adAddSale').onclick=openAddSale;
