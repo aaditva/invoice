@@ -1,7 +1,7 @@
 # Store Till & Tax Invoice
 
 A barcode-scanning point-of-sale + **ATO tax-invoice** printer for two Australian
-retail shopfronts — **South Melbourne** and **Roxy**. Tallies a basket as you scan, calculates
+retail shopfronts — **Seraglio Lotto** and **Other Store**. Tallies a basket as you scan, calculates
 GST (10% inclusive), takes **cash or card**, records **who served**, and prints to an
 **80 mm thermal receipt printer**.
 
@@ -129,7 +129,7 @@ Requires a **Business** or **Commerce** Squarespace plan.
 
 ## 5. Daily use
 
-- **Pick the store first.** The till opens on two boxes — **South Melbourne** and **Roxy**.
+- **Pick the store first.** The till opens on two boxes — **Seraglio Lotto** and **Other Store**.
   Tap one and that's the location this till is ringing up for; the one you used last on this
   device is outlined, so it's a single tap each morning. Nothing behind the screen can be
   touched until a store is chosen. The store's tag (e.g. **SM**) then shows on the **Invoices ▾**
@@ -268,7 +268,7 @@ underneath), and stays with the sale forever. It's separate from the invoice num
 a number can still change after printing (a clash is renamed `…-2`), the code never does.
 
 - **Order number on top.** Every pick-up also gets an **order number**, printed as the docket's
-  first line in big type: `SMP0001`, `SMP0002`… at South Melbourne, `RXP0001`… at Roxy. Write it
+  first line in big type: `SMP0001`, `SMP0002`… at Seraglio Lotto, `RXP0001`… at Other Store. Write it
   on the bag so the items are easy to find. Each store has its own sequence on the site, shared by
   every till. One rung up offline carries the device id (`SMP0012-K7Q`), like an offline invoice number.
 - **Two receipts.** A new pick-up prints **twice**, one for the customer and one to keep with the
@@ -307,9 +307,9 @@ the store picked on the opening screen, so:
 - **Admin** shows both stores side by side over any date range.
 
 ```
-South Melbourne till ─┐
+Seraglio Lotto till ─┐
                       ├─►  /api/sales  ──►  Netlify Blobs  ──►  Today · Invoices · Takings · Admin
-Roxy till ────────────┘   (one blob per sale)                    on any device, any store, any day
+Other Store till ─────┘   (one blob per sale)                    on any device, any store, any day
 ```
 
 ### Setup
@@ -332,7 +332,7 @@ Roxy till ────────────┘   (one blob per sale)         
 ### Invoice numbers
 
 Each store counts its own sequence, tagged so the two can never collide:
-`INV-SM-0001`, `INV-SM-0002`… at South Melbourne, `INV-RX-0001`… at Roxy.
+`INV-SM-0001`, `INV-SM-0002`… at Seraglio Lotto, `INV-RX-0001`… at Other Store.
 Set the prefix and each store's next number in **Settings → Tax & printing**.
 
 The count lives **on the site**, not in each browser: every device at a store takes its next
@@ -476,9 +476,9 @@ each store's tax invoices can print its own address. Renaming is safe: sales are
 fixed internal id, so history follows the rename.
 
 > Sales rung up **before** the store selector existed have no store on them. They belong to
-> **South Melbourne**, so that's where they're filed: the site moves any old *Unassigned* sales
+> **Seraglio Lotto**, so that's where they're filed: the site moves any old *Unassigned* sales
 > across the first time their day is read (Takings, Invoices, Admin or the sheet script), and a
-> sale that still arrives with no store is filed under South Melbourne too.
+> sale that still arrives with no store is filed under Seraglio Lotto too.
 
 ### Weekly backup to Google Drive (Sundays)
 A separate spreadsheet, **Till Backup**, in your Google Drive holds a full copy of the till. Its
@@ -580,11 +580,11 @@ Items with no cost are left out of profit, and the page says how many there are.
 2026 tabs, 1 Oct 2025 → 19 Sep 2026) is built into the site as a one-off copy — it never syncs — so
 Insights reaches back before the till. The till rang up some of those days itself (sales made on the
 device before the site kept them were uploaded when it went live). The switch-over is fixed at
-**4 Sep 2026** (`TILL_FROM`) — the first day from which South Melbourne's till matches the sheet's
+**4 Sep 2026** (`TILL_FROM`) — the first day from which Seraglio Lotto's till matches the sheet's
 Games figure every day (the till was in use from 8 Aug, but a few days up to 3 Sep differ, and the
 sheet is always right). Before it the sheet is used and those till sales are left out; from it
 only the till counts — so every month matches the sheet and nothing is counted twice. Sheet days
-have no items, so each counts as one South Melbourne lump under **Games (before the till)**, with
+have no items, so each counts as one Seraglio Lotto lump under **Games (before the till)**, with
 the cost estimated at **50%** (`HIST_COST` in `index.html`). A red chip names that day — accurate profit margins were only tracked from then (the Margin card says “estimated before” it). They show
 in Insights only — not in Takings, the invoice list or the CSV export, which have no cash/card split
 for them. **All time** picks the whole period from the sheet's first day.
