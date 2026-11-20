@@ -8,7 +8,7 @@
  *
  *  Each run rewrites this sheet with everything the till keeps on the site:
  *  every sale and refund since BACKUP_FROM (both stores), each item sold,
- *  expenses, money added, website cost prices, the box → pack list, and a
+ *  expenses, money added, miscellaneous sales, website cost prices, the box → pack list, and a
  *  copy of the main sheet's Products tab (your cost prices). Everything is
  *  fetched before anything is written, so a failed run leaves last week's
  *  backup as it was. 🧾 Backup → Back up now runs it any time.
@@ -56,11 +56,13 @@ function weeklyBackup() {
   const sales = [];
   const expenses = [];
   const added = [];
+  const misc = [];
   chunks.forEach(c => {
     const s = fetchAll('sales', c[0], c[1], '&include=sales');
     (s.sales || []).forEach(x => sales.push(x));
     tryFetch(() => (fetchAll('expenses', c[0], c[1], '').entries || []).forEach(x => expenses.push(x)));
     tryFetch(() => (fetchAll('money-added', c[0], c[1], '').entries || []).forEach(x => added.push(x)));
+    tryFetch(() => (fetchAll('misc-sales', c[0], c[1], '').entries || []).forEach(x => misc.push(x)));
   });
   let costs = null, boxes = null;
   tryFetch(() => { costs = fetchSiteCosts(); });
@@ -91,6 +93,7 @@ function weeklyBackup() {
   writeTab(ss, 'Items sold', ['Date', 'Store', 'Invoice', 'Type', 'Barcode', 'Name', 'Price', 'Qty', 'Line total', 'Voided'], lineRows, [7, 9], [8]);
   writeEntries(ss, 'Expenses', expenses);
   writeEntries(ss, 'Money added', added);
+  writeEntries(ss, 'Misc sales', misc);
   writeTab(ss, 'Website costs', ['Barcode', 'Name', 'Brand', 'Cost'], costRows, [4]);
   writeTab(ss, 'Boxes', ['Box barcode', 'Pack barcode', 'Packs per box', 'Name'], boxRows, [], [3]);
   if (PRODUCTS_TAB) {
@@ -109,6 +112,7 @@ function weeklyBackup() {
     ['Items sold rows', lineRows.length],
     ['Expenses', expenses.length],
     ['Money added', added.length],
+    ['Misc sales', misc.length],
     ['Next backup', 'Sunday around ' + BACKUP_HOUR + ':00'],
   ], [], [], true);
   const first = ss.getSheetByName('Sheet1');
@@ -148,7 +152,7 @@ function tryFetch(fn) {
   try { fn(); } catch (e) { console.log('Backup: skipped a part — ' + e.message); }
 }
 
-// Expense / money-added entries: whatever fields the site keeps, one column each.
+// Expense / money-added / misc-sales entries: whatever fields the site keeps, one column each.
 function writeEntries(ss, name, entries) {
   const keys = [];
   entries.forEach(e => Object.keys(e || {}).forEach(k => {
