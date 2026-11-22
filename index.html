@@ -5830,7 +5830,7 @@ function reportHtml(m, opt){
   const sum=[['Sales', String(m.count)]];
   if(m.showCard) sum.push(['Cash', f2(m.t.cash)], ['Card', f2(m.t.card)]);
   if(m.showOnline) sum.push(['Online', f2(m.t.online||0)]);
-  sum.push(['GST collected', f2(round2(m.total/10))]);   // always 10% of the total sales
+  sum.push(['GST collected', f2(round2(m.total/11))]);   // GST in a GST-inclusive total: total ÷ 11 (the ATO's formula for a 10% GST)
   const maxCat=Math.max(1, ...m.cats.map(c=>c.rev));
   const catRows=m.cats.map(c=>{ const col=brandHex(c.name);
     return '<tr><td><i class="dot" style="background:'+col+'"></i>'+esc(c.name)+'</td><td class="n">'+(c.qty ? c.qty.toLocaleString('en-AU') : '–')+'</td>'+
