@@ -5763,21 +5763,22 @@ function reportSeries(r, sales, from, to, store){
   const n=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/864e5)+1;
   const short=k=>new Date(k+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short'});
   const out=[];
-  if(n<=31){
+  if(n<=14){
     for(let k=from; k<=to; k=shiftDay(k,1)) out.push({label:(+k.slice(8)===1||k===from) ? short(k) : String(+k.slice(8)), v:perDay.get(k)||0});
-  }else if(n<=130){
-    for(let k=shiftDay(from, -((new Date(from+'T00:00:00').getDay()+6)%7)); k<=to; k=shiftDay(k,7)){
-      let v=0; for(let i=0;i<7;i++){ const d=shiftDay(k,i); if(d>=from && d<=to) v+=perDay.get(d)||0; }
-      out.push({label:short(k), v});
-    }
   }else{
-    const months=new Map();
+    // Weeks of the month: Wk 1 = 1st–7th, Wk 2 = 8th–14th, Wk 3 = 15th–21st, Wk 4 = 22nd to month end.
+    const weeks=new Map();
     for(let k=from; k<=to; k=shiftDay(k,1)){
-      const ym=k.slice(0,7); months.set(ym, (months.get(ym)||0)+(perDay.get(k)||0));
+      const wk=Math.min(4, Math.floor((+k.slice(8)-1)/7)+1), key=k.slice(0,7)+'#'+wk;
+      if(!weeks.has(key)){
+        const last=new Date(+k.slice(0,4), +k.slice(5,7), 0).getDate();
+        weeks.set(key, {ym:k.slice(0,7), wk, v:0, end:k.slice(0,7)+'-'+String(wk<4 ? wk*7 : last).padStart(2,'0')});
+      }
+      weeks.get(key).v+=perDay.get(k)||0;
     }
-    months.forEach((v,ym)=>{
-      const d=new Date(ym+'-01T00:00:00');
-      out.push({label:d.toLocaleDateString('en-AU', n>366 ? {month:'short', year:'2-digit'} : {month:'short'}), v});
+    weeks.forEach(w=>{
+      const mon=new Date(w.ym+'-01T00:00:00').toLocaleDateString('en-AU', n>366 ? {month:'short', year:'2-digit'} : {month:'short'});
+      out.push({label:'Wk '+w.wk+' '+mon, wk:w.wk, v:w.v, partial:to<w.end});
     });
   }
   return out;
@@ -5789,8 +5790,10 @@ function reportChartSvg(series){
   let bars='', labs='', vals='';
   series.forEach((s,i)=>{
     const h=Math.max(0, Math.round(s.v/mx*64)), x=i*w+(w-bw)/2, y=78-h, cx=x+bw/2;
-    bars+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+bw.toFixed(1)+'" height="'+h+'" rx="1.5"/>';
-    if(i%step===0) labs+='<text x="'+cx.toFixed(1)+'" y="90">'+esc(s.label)+'</text>';
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+bw.toFixed(1)+'" height="'+h+'" rx="1.5"'+(s.partial ? ' fill="#b8d3f5"' : '')+'/>';
+    // a label near either edge hangs inward instead of running off the page
+    const anchor=cx<22 ? ' text-anchor="start" x="0"' : cx>678 ? ' text-anchor="end" x="700"' : '';
+    if(s.wk===undefined ? i%step===0 : (step===1 || s.wk===1)) labs+='<text'+(anchor || ' x="'+cx.toFixed(1)+'"')+' y="90">'+esc(s.label)+'</text>';
     if(n<=14 || s.v===top) vals+='<text x="'+cx.toFixed(1)+'" y="'+(y-3)+'">'+esc(moneyShort(s.v))+'</text>';
   });
   return '<svg width="100%" viewBox="0 -12 700 104"><g fill="#2a78d6">'+bars+'</g><line x1="0" y1="78" x2="700" y2="78" stroke="#cfd6e0"/>'+
@@ -5812,7 +5815,7 @@ function reportModel(){
   });
   const cats=topWithOther([...r.brands.values()].map(b=>({name:b.name, rev:b.rev, qty:b.qty})), 8);
   const days=Math.round((new Date(to+'T00:00:00')-new Date(from+'T00:00:00'))/864e5)+1;
-  const perLabel = from===to ? 'one bar per hour' : days<=31 ? 'one bar per day' : days<=130 ? 'one bar per week, Mon–Sun' : 'one bar per month';
+  const perLabel = from===to ? 'one bar per hour' : days<=14 ? 'one bar per day' : 'one bar per week · Wk 1 = 1st–7th, Wk 2 = 8th–14th, Wk 3 = 15th–21st, Wk 4 = 22nd to month end';
   return {title:reportTitle(adState.preset, from), from, to, perLabel,
     scope:adState.store ? storeLabel(adState.store) : 'All stores',
     total, count:r.count, t, hist:r.histRev, stores, cats,
@@ -5872,7 +5875,8 @@ function reportHtml(m, opt){
     '<div class="sum"><div class="tot"><small>Total takings</small><b>'+f2(m.total)+'</b></div>'+
       sum.map(x=>'<div><small>'+esc(x[0])+'</small><b>'+esc(x[1])+'</b></div>').join('')+'</div>'+
     (m.tillLine ? '<div class="till">'+esc(m.tillLine)+'</div>' : '')+
-    (m.series.length ? '<div><h2>Takings over time <span>'+esc(m.perLabel||'')+'</span></h2>'+reportChartSvg(m.series)+'</div>' : '')+
+    (m.series.length ? '<div><h2>Takings over time <span>'+esc(m.perLabel||'')+'</span></h2>'+reportChartSvg(m.series)+
+      (m.series[m.series.length-1].partial ? '<div class="note">The lighter bar is a week that isn\'t over yet.</div>' : '')+'</div>' : '')+
     (m.stores.length ? '<div><h2>Stores <span>with each store\'s categories</span></h2><div class="stores">'+cards+'</div></div>' : '')+
     '<div><h2>Categories <span>all stores, by revenue</span></h2>'+(m.cats.length ?
       '<table><thead><tr><th>Category</th><th class="n">Items</th><th class="n">Revenue</th><th class="n" style="width:11%">Share</th><th style="width:34%"></th></tr></thead><tbody>'+catRows+'</tbody>'+
