@@ -1328,12 +1328,10 @@
       </fieldset>
 
       <fieldset><legend>Website orders</legend>
-        <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-          <input type="checkbox" id="sWebPrint" style="width:auto;margin-top:3px" />
-          <span><b>Print website orders on this till</b>
-            <span class="hint" style="display:block">Each new Squarespace order prints here by itself on the receipt printer. <b>Store Pickup</b> orders print twice (one for the bag, one for the customer) and go on this store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. Delivery orders print once. With no wifi or no printer they wait and print once it's back. Tick this on <b>one till</b> (the one that holds the pickups). Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</span>
-          </span>
-        </label>
+        <div class="field"><label>Print website orders at</label>
+          <select id="sWebPrintAt"></select>
+          <div class="hint">Each new paid Squarespace order prints by itself, within about a minute, on the receipt printer of the till at this store: the products, the customer's name, phone, email and address, and whether it's a <b>delivery</b> (with the ship-to address) or a <b>Store Pickup</b>. A pickup prints twice (one for the bag, one for the customer) and goes on this store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. With no wifi or no printer they wait, and the header says how many. Each order prints once, even with two tills at the store. Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</div>
+        </div>
       </fieldset>
 
       <fieldset><legend>Live stock: update Squarespace on each sale (optional)</legend>
@@ -1528,6 +1526,9 @@ const DEFAULTS = {
   staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
   // The site's sales record - where Today / Invoices / Takings / Admin read from.
   shareUrl:'/api/sales', shareToken:'', device:'',
+  // The store whose tills print website orders ('' = none). On by default, so a
+  // new or reset till never sits there quietly printing nothing.
+  webPrintAt:'south-melbourne',
   // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
   stores:{}
 };
@@ -1741,6 +1742,10 @@ function loadSettings(){
   // saved, which would keep it on browser-only storage. Point it at the site's
   // log once. After the next Save (which stores v) a blank is taken as deliberate.
   if(!saved.v && !saved.shareUrl) s.shareUrl = DEFAULTS.shareUrl;
+  // The old per-device tick box (off unless ticked) gave way to a store choice.
+  // A till that never had it ticked now prints at the default store.
+  delete s.webPrint;
+  if(s.webPrintAt!=='' && !STORE_DEFS.some(x=>x.id===s.webPrintAt)) s.webPrintAt = DEFAULTS.webPrintAt;
   s.v = 2;
   return s;
 }
@@ -3331,7 +3336,7 @@ let webWaiting=[];        // orders the site says are waiting that this till cou
 let webErr='';            // why website orders can't be read, if they can't
 let webDialogSale=null;   // the order on its way through the print dialog
 function webUrl(params){ return apiUrl('/api/web-orders', params); }
-function webPrintOn(){ return !!settings.webPrint && !!currentStore && !isTraining() && !!settings.shareUrl; }
+function webPrintOn(){ return !!currentStore && !isTraining() && !!settings.shareUrl && currentStore.id===settings.webPrintAt; }
 function webId(s){ return s && s.web ? s.web.orderId : ''; }
 
 async function pollWebOrders(){
@@ -5687,7 +5692,9 @@ function openSettings(tokenFix){
   loadSiteCounter();
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
   $('sInvUrl').value=settings.invUrl;
-  $('sWebPrint').checked=!!settings.webPrint;
+  $('sWebPrintAt').innerHTML = STORE_DEFS.map(x=>'<option value="'+esc(x.id)+'">'+esc(storeById(x.id).name)+'</option>').join('')
+    + '<option value="">Nowhere (off)</option>';
+  $('sWebPrintAt').value=settings.webPrintAt||'';
   renderStoreFields();
   const sales=load(LS.sales,[]);
   const pending=sales.filter(s=>!s.synced).length;
@@ -5745,7 +5752,7 @@ function saveSettingsUI(){
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
   settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
-  settings.webPrint=$('sWebPrint').checked;
+  settings.webPrintAt=$('sWebPrintAt').value;
   // Per-store overrides - only what was actually filled in gets stored.
   const stores={};
   $('sStores').querySelectorAll('input[data-store]').forEach(inp=>{

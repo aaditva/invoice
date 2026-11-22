@@ -387,9 +387,10 @@ key lacks Orders permission, they say so and show the tills' figures alone.
 
 ### Website orders: printing and Store Pickup
 
-Tick **Settings → Website orders → Print website orders on this till** on **one** till (the one
-whose store holds the pickups). Every new paid Squarespace order then prints there by itself, on
-the receipt printer, within about a minute:
+Every new paid Squarespace order prints by itself, within about a minute, on the receipt printer
+of the till at **Seraglio Lotto**. That's on out of the box: nothing to tick. To print them at
+the other store instead, or nowhere, change **Settings → Website orders → Print website orders at**
+on that store's till (it's kept per device, so set it on each till at that store).
 
 - **Store Pickup** (the order's checkout shipping option says *pick up*): prints **twice**, one for
   the bag and one for the customer, with the **Squarespace order number** big on top (e.g. **#1001**)
@@ -411,16 +412,17 @@ has it.
 **Nothing gets lost.** `/api/web-orders` keeps a print queue, and an order only leaves it once a
 till has printed it. With no wifi, the till closed or the receipt printer off, orders wait and print
 as soon as it's all back. While the printer can't be reached the header shows **🖨 N website orders
-to print**; tap it to print them through the print dialog instead. If two tills have the box ticked,
-each order still prints once (the first till to take it prints it, and a pickup goes on *that*
-store's list).
+to print**; tap it to print them through the print dialog instead. With two tills at that store,
+each order still prints once (the first till to take it prints it).
 
 **Kept in step with Squarespace.** An order cancelled or fully refunded in Squarespace leaves the
 queue and the Pick ups list. One marked fulfilled in Squarespace is ticked off the list (*by
 Squarespace*). Website orders are never counted in a store's takings: they're already in **Online**.
 
 Only orders placed after the first time a till asks are printed (30 minutes back), so switching it on
-doesn't print the whole history. `WEB_PRINT_SINCE` (an ISO time) starts it from somewhere else.
+doesn't print the whole history. `WEB_PRINT_SINCE` (an ISO time) starts it from somewhere else. An order that's more than 4 days old
+when the site first sees it is never printed, so a queue nobody has read for a while can't print a
+backlog all at once.
 
 The receipt bridge needs **re-installing once** (run *Install Receipt Printer* again) to print the
 full docket. An older bridge still prints the order, with the details squeezed onto the customer line.
