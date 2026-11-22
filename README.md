@@ -387,10 +387,11 @@ key lacks Orders permission, they say so and show the tills' figures alone.
 
 ### Website orders: printing and Store Pickup
 
-Every new paid Squarespace order prints by itself, within about a minute, on the receipt printer
-of the till at **Seraglio Lotto**. That's on out of the box: nothing to tick. To print them at
-the other store instead, or nowhere, change **Settings → Website orders → Print website orders at**
-on that store's till (it's kept per device, so set it on each till at that store).
+Every new paid Squarespace order prints by itself, within about a minute, on **any till with the
+receipt printer connected**, at either store. Nothing to set up, and no device ID needed: each
+device already has its own, which the site uses so that each order prints **once**, on whichever
+till takes it first. Phones and tablets never print them. To stop one till printing them, untick
+**Settings → Website orders → Print website orders on this till** there.
 
 - **Store Pickup** (the order's checkout shipping option says *pick up*): prints **twice**, one for
   the bag and one for the customer, with the **Squarespace order number** big on top (e.g. **#1001**)
@@ -412,8 +413,9 @@ has it.
 **Nothing gets lost.** `/api/web-orders` keeps a print queue, and an order only leaves it once a
 till has printed it. With no wifi, the till closed or the receipt printer off, orders wait and print
 as soon as it's all back. While the printer can't be reached the header shows **🖨 N website orders
-to print**; tap it to print them through the print dialog instead. With two tills at that store,
-each order still prints once (the first till to take it prints it).
+to print** (only on a device where the receipt printer has worked before); tap it to print them
+through the print dialog instead. A Store Pickup goes on the Pick ups list of the store whose till
+printed it.
 
 **Kept in step with Squarespace.** An order cancelled or fully refunded in Squarespace leaves the
 queue and the Pick ups list. One marked fulfilled in Squarespace is ticked off the list (*by

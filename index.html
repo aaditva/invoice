@@ -1328,10 +1328,12 @@
       </fieldset>
 
       <fieldset><legend>Website orders</legend>
-        <div class="field"><label>Print website orders at</label>
-          <select id="sWebPrintAt"></select>
-          <div class="hint">Each new paid Squarespace order prints by itself, within about a minute, on the receipt printer of the till at this store: the products, the customer's name, phone, email and address, and whether it's a <b>delivery</b> (with the ship-to address) or a <b>Store Pickup</b>. A pickup prints twice (one for the bag, one for the customer) and goes on this store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. With no wifi or no printer they wait, and the header says how many. Each order prints once, even with two tills at the store. Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</div>
-        </div>
+        <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+          <input type="checkbox" id="sWebPrint" style="width:auto;margin-top:3px" />
+          <span><b>Print website orders on this till</b> (on unless you untick it)
+            <span class="hint" style="display:block">Each new paid Squarespace order prints by itself, within about a minute, on any till with the receipt printer connected: the products, the customer's name, phone, email and address, and whether it's a <b>delivery</b> (with the ship-to address) or a <b>Store Pickup</b>. Each order prints once, on whichever till takes it first. A pickup prints twice (one for the bag, one for the customer) and goes on that till's store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. With no wifi or the printer off they wait, and the header says how many. Phones and tablets never print them. Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</span>
+          </span>
+        </label>
       </fieldset>
 
       <fieldset><legend>Live stock: update Squarespace on each sale (optional)</legend>
@@ -1526,9 +1528,9 @@ const DEFAULTS = {
   staff:['Staff'], gst:10, paper:'80', prefix:'INV-', currency:'$',
   // The site's sales record - where Today / Invoices / Takings / Admin read from.
   shareUrl:'/api/sales', shareToken:'', device:'',
-  // The store whose tills print website orders ('' = none). On by default, so a
-  // new or reset till never sits there quietly printing nothing.
-  webPrintAt:'south-melbourne',
+  // true = this till never prints website orders. Off by default: any till with
+  // the receipt printer connected prints them, so none sits there printing nothing.
+  webPrintOff:false,
   // Per-store overrides: { 'south-melbourne': {name, address, phone}, … }
   stores:{}
 };
@@ -1742,10 +1744,9 @@ function loadSettings(){
   // saved, which would keep it on browser-only storage. Point it at the site's
   // log once. After the next Save (which stores v) a blank is taken as deliberate.
   if(!saved.v && !saved.shareUrl) s.shareUrl = DEFAULTS.shareUrl;
-  // The old per-device tick box (off unless ticked) gave way to a store choice.
-  // A till that never had it ticked now prints at the default store.
+  // The old tick box was off unless ticked (and saved as off by any Save), so it's
+  // dropped: a till with the receipt printer prints unless webPrintOff says not.
   delete s.webPrint;
-  if(s.webPrintAt!=='' && !STORE_DEFS.some(x=>x.id===s.webPrintAt)) s.webPrintAt = DEFAULTS.webPrintAt;
   s.v = 2;
   return s;
 }
@@ -2882,7 +2883,7 @@ async function bridgeReady(){
     const t = setTimeout(()=>c.abort(), 800);      // never hang the till
     const r = await fetch(BRIDGE_URL + '/health', {signal:c.signal});
     clearTimeout(t);
-    if(r.ok) bridgeInfo = await r.json().catch(()=>null);
+    if(r.ok){ bridgeInfo = await r.json().catch(()=>null); storeItem(PRINTER_SEEN, '1'); }
     return r.ok;
   }catch(e){ return false; }
 }
@@ -3336,7 +3337,13 @@ let webWaiting=[];        // orders the site says are waiting that this till cou
 let webErr='';            // why website orders can't be read, if they can't
 let webDialogSale=null;   // the order on its way through the print dialog
 function webUrl(params){ return apiUrl('/api/web-orders', params); }
-function webPrintOn(){ return !!currentStore && !isTraining() && !!settings.shareUrl && currentStore.id===settings.webPrintAt; }
+// Any computer till with a store open prints them, once its receipt printer answers.
+// Phones and tablets never have the printer, so they don't ask.
+function webPrintOn(){ return !!currentStore && !isTraining() && !!settings.shareUrl && !settings.webPrintOff && !isMobileDevice(); }
+// This device has had the receipt printer answer before: it's a till, so while the
+// printer is off it says how many orders are waiting. A laptop never wired to one stays quiet.
+const PRINTER_SEEN='inv_printer_seen';
+function printerSeen(){ try{ return localStorage.getItem(PRINTER_SEEN)==='1'; }catch(e){ return false; } }
 function webId(s){ return s && s.web ? s.web.orderId : ''; }
 
 async function pollWebOrders(){
@@ -3344,13 +3351,15 @@ async function pollWebOrders(){
   if(webBusy || webDialogSale) return;
   webBusy=true;
   try{
+    const ready=await bridgeReady();
+    if(!ready && !printerSeen()){ webWaiting=[]; webErr=''; return; }   // not a till with a printer
     const res=await fetch(webUrl({device:deviceId()}), {headers:shareHeaders(false)});
     const d=await res.json().catch(()=>null);
     if(!res.ok || !d){ webErr=(d && d.error) || ('Website orders: HTTP '+res.status); return; }
     webErr = d.sync && d.sync.ok===false ? (d.sync.error||'') : '';
     const pending=Array.isArray(d.pending) ? d.pending : [];
     webWaiting=pending;
-    if(pending.length && await bridgeReady()){
+    if(pending.length && ready){
       webWaiting=[];
       for(const s of pending){ if(!await printWebOrder(s)) webWaiting.push(s); }
     }
@@ -5692,9 +5701,7 @@ function openSettings(tokenFix){
   loadSiteCounter();
   $('sShareUrl').value=settings.shareUrl; $('sShareToken').value=settings.shareToken; $('sDevice').value=settings.device;
   $('sInvUrl').value=settings.invUrl;
-  $('sWebPrintAt').innerHTML = STORE_DEFS.map(x=>'<option value="'+esc(x.id)+'">'+esc(storeById(x.id).name)+'</option>').join('')
-    + '<option value="">Nowhere (off)</option>';
-  $('sWebPrintAt').value=settings.webPrintAt||'';
+  $('sWebPrint').checked=!settings.webPrintOff;
   renderStoreFields();
   const sales=load(LS.sales,[]);
   const pending=sales.filter(s=>!s.synced).length;
@@ -5752,7 +5759,7 @@ function saveSettingsUI(){
   settings.shareUrl=$('sShareUrl').value.trim().replace(/\/+$/,''); settings.shareToken=$('sShareToken').value.trim();
   settings.device=$('sDevice').value.trim();
   settings.invUrl=$('sInvUrl').value.trim().replace(/\/+$/,'');
-  settings.webPrintAt=$('sWebPrintAt').value;
+  settings.webPrintOff=!$('sWebPrint').checked;
   // Per-store overrides - only what was actually filled in gets stored.
   const stores={};
   $('sStores').querySelectorAll('input[data-store]').forEach(inp=>{
