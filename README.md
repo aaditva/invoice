@@ -353,6 +353,15 @@ it can't clash with a number another till gets.
   **day-by-day table** — click any row to open that day's invoices for that store.
 - **Export range CSV** — every sale in the period, with a **Store** column, straight from the
   site. This is the file for your accountant. Website orders are in it too, as store **Online**.
+- **This quarter / Last quarter / This financial year / Last financial year** — a second row of
+  period buttons. The financial year is the Australian one (1 Jul – 30 Jun; quarters Jul–Sep,
+  Oct–Dec, Jan–Mar, Apr–Jun). The quarter and current-year buttons run to today.
+- **🖨️ Print A4 report** (bottom of Takings and Insights) — a one-page, document-style printout of
+  the store and dates showing: the Remactables logo and ABN (Settings), total takings, sales, cash,
+  card, online and GST, a chart over time (per hour, day, week or month depending on the length),
+  each store with its categories, and a categories table. It uses the same data as Insights, so
+  the numbers match that tab. Days before the till that come from the Google Sheet are included
+  and noted at the bottom. It prints from its own hidden frame, so the receipt printer isn't used.
 
 ### Online sales (the website)
 
