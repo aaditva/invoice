@@ -5816,6 +5816,9 @@ function reportModel(){
   return {title:reportTitle(adState.preset, from), from, to, perLabel,
     scope:adState.store ? storeLabel(adState.store) : 'All stores',
     total, count:r.count, t, hist:r.histRev, stores, cats,
+    // Seraglio Lotto's accurate profit tracking starts on TILL_FROM; the line shows only when that day is in the period.
+    tillLine:(from<=TILL_FROM && TILL_FROM<=to && (!adState.store || adState.store===DEFAULT_STORE))
+      ? storeLabel(DEFAULT_STORE)+': accurate profit tracking starts '+reportDate(TILL_FROM)+'. Days before it come from the Google Sheet and are estimated.' : '',
     series:reportSeries(r, sales, from, to, adState.store),
     showCard:adState.store!==ONLINE_ID, showOnline:adWantsOnline()};
 }
@@ -5827,7 +5830,7 @@ function reportHtml(m, opt){
   const sum=[['Sales', String(m.count)]];
   if(m.showCard) sum.push(['Cash', f2(m.t.cash)], ['Card', f2(m.t.card)]);
   if(m.showOnline) sum.push(['Online', f2(m.t.online||0)]);
-  sum.push(['GST collected', f2(m.t.gst)]);
+  sum.push(['GST collected', f2(round2(m.total/11))]);   // GST in a GST-inclusive total: total ÷ 11 (the ATO's formula for a 10% GST)
   const maxCat=Math.max(1, ...m.cats.map(c=>c.rev));
   const catRows=m.cats.map(c=>{ const col=brandHex(c.name);
     return '<tr><td><i class="dot" style="background:'+col+'"></i>'+esc(c.name)+'</td><td class="n">'+(c.qty ? c.qty.toLocaleString('en-AU') : '–')+'</td>'+
@@ -5859,7 +5862,7 @@ function reportHtml(m, opt){
     'td{padding:1.15mm 2mm;border-bottom:1px solid #eef0f3}.n{text-align:right;font-variant-numeric:tabular-nums}th.n{text-align:right}'+
     '.dot{display:inline-block;width:2.6mm;height:2.6mm;border-radius:50%;margin-right:2mm;vertical-align:-.3mm}.bar{height:2.8mm;border-radius:.8mm}'+
     'tfoot td{font-weight:700;border-top:1.5px solid #0b3d7a;border-bottom:none;color:#0b3d7a}'+
-    '.note{font-size:8pt;color:#6b7280}'+
+    '.note{font-size:8pt;color:#6b7280}.till{font-size:9pt;font-weight:700;color:#d92d20;margin-top:-2mm}'+
     '.ft{margin-top:auto;display:flex;justify-content:space-between;font-size:7.5pt;color:#8a8f98;border-top:1px solid #e3e3e6;padding-top:2mm}';
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(m.title)+'</title><style>'+css+'</style></head><body><div class="page">'+
     '<div class="hd"><div>'+(opt.logo ? '<img src="'+opt.logo+'" alt="'+esc(settings.name)+'">' : '<div class="nm0">'+esc(settings.name)+'</div>')+
@@ -5868,6 +5871,7 @@ function reportHtml(m, opt){
     '<div class="d">'+esc(reportDate(m.from))+(m.from===m.to ? '' : ' – '+esc(reportDate(m.to)))+' · '+esc(m.scope)+'</div></div></div>'+
     '<div class="sum"><div class="tot"><small>Total takings</small><b>'+f2(m.total)+'</b></div>'+
       sum.map(x=>'<div><small>'+esc(x[0])+'</small><b>'+esc(x[1])+'</b></div>').join('')+'</div>'+
+    (m.tillLine ? '<div class="till">'+esc(m.tillLine)+'</div>' : '')+
     (m.series.length ? '<div><h2>Takings over time <span>'+esc(m.perLabel||'')+'</span></h2>'+reportChartSvg(m.series)+'</div>' : '')+
     (m.stores.length ? '<div><h2>Stores <span>with each store\'s categories</span></h2><div class="stores">'+cards+'</div></div>' : '')+
     '<div><h2>Categories <span>all stores, by revenue</span></h2>'+(m.cats.length ?
