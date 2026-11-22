@@ -35,6 +35,7 @@
  *                         Transactions: Read adds the card type to the printout.
  *    WEB_PRINT_SINCE      optional ISO time to start from. Default: 30 minutes before
  *                         the first time a till asks, so older orders don't all print.
+ *                         An order more than 4 days old when first seen never prints.
  *    SQ_PICKUP_NOTIFY     '0' = no Squarespace email to the customer when a pickup is ticked
  *                         (by default they get Squarespace's "order fulfilled" email).
  *    STORE_TZ             optional, default Australia/Melbourne (the day an order is filed under)
@@ -58,6 +59,10 @@ const STATE = 'web/state';
 const MIN_GAP_MS = 30 * 1000;            // ask Squarespace at most twice a minute
 const OVERLAP_MS = 2 * 60 * 1000;        // re-read a little before syncedTo, in case of clock skew
 const FIRST_LOOKBACK_MS = 30 * 60 * 1000;
+// An order older than this when first seen isn't printed: the tills printing
+// website orders by default could otherwise turn up weeks of them at once (a
+// queue nobody read for a while). Four days still covers a long weekend offline.
+const MAX_AGE_MS = 4 * 24 * 60 * 60 * 1000;
 const BUDGET_MS = 6000;
 const CLAIM_MS = 2 * 60 * 1000;
 const GST_RATE = 10;                     // fallback only, when Squarespace reports no tax
@@ -221,7 +226,8 @@ async function fileOrder(st, o, since) {
   const rec = await getJSON(st, key);
   const live = counts(o);
   if (!rec) {
-    if (!live || !(Date.parse(o.createdOn) >= Date.parse(since))) return;
+    const made = Date.parse(o.createdOn);
+    if (!live || !(made >= Date.parse(since)) || Date.now() - made > MAX_AGE_MS) return;
     const sale = toWebSale(o);
     await st.setJSON(key, sale);
     await st.setJSON(QUEUE + encodeURIComponent(o.id), { id: o.id });
