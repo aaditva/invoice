@@ -22,7 +22,7 @@
  *      { orderId, orderNumber, kind, shipMethod, email, phone, billTo, shipTo,
  *        notes, discounts, payment }.
  *    POST /api/web-orders?claim=1     body { id, device, store, storeName }
- *      → { ok, sale }   this till prints it. Another till's claim lasts 2 minutes.
+ *      → { ok, sale }   this till prints it. A claim (any till's, or another tab's) lasts 2 minutes.
  *      A pickup is filed under `store` (the claiming till's) and put on its list.
  *    POST /api/web-orders?printed=1   body { id, device }   → { ok }   off the queue.
  *    POST /api/web-orders?release=1   body { id, device }   → { ok }   print failed: back to waiting.
@@ -124,7 +124,9 @@ async function claim(st, id, device, body, headers) {
   const cur = await getWithEtag(st, key);
   if (!cur.data) return json({ error: 'That order isn\'t waiting to print.' }, 404, headers);
   const q = cur.data;
-  if (q.claimedBy && q.claimedBy !== device && Date.parse(q.claimUntil) > Date.now()) {
+  // Any live claim, even this device's own: two tabs of the till on one computer
+  // share a device id, and must not both print it.
+  if (q.claimedBy && Date.parse(q.claimUntil) > Date.now()) {
     return json({ error: 'Another till is printing it.' }, 409, headers);
   }
   const res = await st.setJSON(key, { ...q, claimedBy: device, claimUntil: new Date(Date.now() + CLAIM_MS).toISOString() },

@@ -1331,7 +1331,7 @@
         <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
           <input type="checkbox" id="sWebPrint" style="width:auto;margin-top:3px" />
           <span><b>Print website orders on this till</b> (on unless you untick it)
-            <span class="hint" style="display:block">Each new paid Squarespace order prints by itself, within about a minute, on any till with the receipt printer connected: the products, the customer's name, phone, email and address, and whether it's a <b>delivery</b> (with the ship-to address) or a <b>Store Pickup</b>. Each order prints once, on whichever till takes it first. A pickup prints twice (one for the bag, one for the customer) and goes on that till's store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. With no wifi or the printer off they wait, and the header says how many. Phones and tablets never print them. Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</span>
+            <span class="hint" style="display:block">Each new paid Squarespace order prints by itself, within about a minute, on any till with the receipt printer connected: the products, the customer's name, phone, email and address, and whether it's a <b>delivery</b> (with the ship-to address) or a <b>Store Pickup</b>. Each order prints once (one printout), on whichever till takes it first. A pickup goes on that till's store's <b>Pick ups</b> list with a barcode; ticking one there marks it <b>fulfilled in Squarespace</b>. With no wifi or the printer off they wait, and the header says how many. Phones and tablets never print them. Needs <b>SQUARESPACE_API_KEY</b> with <b>Orders: Read and Write</b> (and <b>Transactions: Read</b> to print the card type).</span>
           </span>
         </label>
       </fieldset>
@@ -3328,7 +3328,7 @@ function openPickupInvoice(code){
    on this till" ticked. /api/web-orders keeps the queue: an order stays on it
    until a till has printed it, so with no wifi, the till closed or the printer
    off it waits, and prints once everything is back. A Store Pickup order prints
-   twice (bag + customer) and goes on this store's Pick ups list with a barcode;
+   once and goes on this store's Pick ups list with a barcode;
    ticking it there marks it fulfilled in Squarespace. A delivery prints once.
    With no receipt bridge, nothing pops up in the middle of a sale: the header
    says how many are waiting, and tapping it prints them through the dialog. */
@@ -3385,7 +3385,7 @@ async function webDone(s, printed){
 }
 async function printWebOrder(s){
   const sale=await claimWeb(s); if(!sale) return true;   // another till has it, or it was cancelled
-  const copies = sale.order==='pickup' ? 2 : 1;
+  const copies = 1;               // one printout per website order, pickup or delivery
   try{
     const job={type:'receipt', store:storeForBridge(sale), sale:saleForBridge(sale, bridgeInfo)};
     for(let i=0;i<copies;i++) await bridgeSend(Object.assign({}, job, {options:{cut:true, drawer:false}}));
@@ -3409,7 +3409,7 @@ async function printWaitingWeb(){
   if(!sale){ pollWebOrders(); return; }
   webDialogSale=sale;
   suppressClearOnPrint=true;     // keep any basket in progress
-  buildReceipt(sale, sale.order==='pickup' ? 2 : 1);
+  buildReceipt(sale, 1);
   window.print();
 }
 // The dialog can't say whether it printed or was cancelled; taking it as printed

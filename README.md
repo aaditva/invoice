@@ -393,8 +393,7 @@ device already has its own, which the site uses so that each order prints **once
 till takes it first. Phones and tablets never print them. To stop one till printing them, untick
 **Settings → Website orders → Print website orders on this till** there.
 
-- **Store Pickup** (the order's checkout shipping option says *pick up*): prints **twice**, one for
-  the bag and one for the customer, with the **Squarespace order number** big on top (e.g. **#1001**)
+- **Store Pickup** (the order's checkout shipping option says *pick up*): prints **once**, with the **Squarespace order number** big on top (e.g. **#1001**)
   and a **pick-up barcode**. It also goes on that store's **🛍 Pick ups** list, the same as a till
   pick-up: scan the barcode (or search the name, phone or #1001), the order comes up, tick ✓, and the
   order is marked **fulfilled in Squarespace**, and Squarespace emails the customer its usual
